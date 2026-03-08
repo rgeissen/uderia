@@ -1,0 +1,4261 @@
+/**
+ * eventHandlers.js
+ * * This module sets up all the event listeners for the application.
+ * It connects user interactions (clicks, form submissions, etc.) to the corresponding application logic.
+ */
+
+import * as DOM from './domElements.js';
+import { state, setCanvasSplitMode } from './state.js';
+import * as API from './api.js';
+import * as UI from './ui.js?v=1.5';
+import { handleViewSwitch, toggleSideNav } from './ui.js?v=1.5';
+import * as Utils from './utils.js';
+import { copyToClipboard, copyTableToClipboard, classifyConfirmation } from './utils.js';
+import { renameSession, deleteSession } from './api.js'; // Import the rename/delete API functions
+import { startRecognition, stopRecognition, startConfirmationRecognition } from './voice.js';
+import {
+    handleStartNewSession,
+    handleLoadSession,
+    handleDeleteSessionClick,
+    renameActiveSession
+} from './handlers/sessionManagement.js?v=3.6';
+import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
+import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
+import { getPendingAttachments, clearPendingAttachments, renderAttachmentChips, isUploadInProgress } from './handlers/chatDocumentUpload.js';
+import { renderComponent, hasRenderer } from './componentRenderers.js';
+import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowManager.js';
+import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
+import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
+import { loadContextPanel, renderContextWindowSnapshot } from './handlers/contextPanelHandler.js';
+import { loadSkillsPanel } from './handlers/skillsPanelHandler.js';
+import { loadExtensionsPanel } from './handlers/extensionsPanelHandler.js';
+import { openContextAnalyticsModal } from './handlers/contextAnalyticsModal.js';
+
+// ─── KG Live Animation Bridge (lazy-loaded) ────────────────────────────
+let _kgAnimBridge = null;
+let _kgAnimLoadAttempted = false;
+async function _loadKGAnimBridge() {
+    if (_kgAnimLoadAttempted) return _kgAnimBridge;
+    _kgAnimLoadAttempted = true;
+    try {
+        _kgAnimBridge = await import('/api/v1/components/knowledge_graph/renderer');
+    } catch { _kgAnimBridge = null; }
+    return _kgAnimBridge;
+}
+function _tryKGAnimate(eventType, payload) {
+    if (!_kgAnimBridge) return;
+    try {
+        if (_kgAnimBridge.isKGPanelActive()) {
+            _kgAnimBridge.dispatchKGAnimation(eventType, payload);
+        }
+    } catch { /* KG component not available */ }
+}
+function _tryKGAnimateEnd() {
+    if (!_kgAnimBridge) return;
+    try {
+        if (_kgAnimBridge.isKGPanelActive()) {
+            _kgAnimBridge.endKGExecutionAnimations();
+        }
+    } catch { /* KG component not available */ }
+}
+import {
+    // handleCloseConfigModalRequest, // REMOVED
+    // handleConfigActionButtonClick, // REMOVED
+    finalizeConfiguration,
+    handleConfigFormSubmit,
+    loadCredentialsAndModels,
+    handleProviderChange,
+    handleModelChange,
+    handleRefreshModelsClick,
+    openPromptEditor,
+    closePromptEditor,
+    saveSystemPromptChanges,
+    resetSystemPrompt
+} from './handlers/configManagement.js';
+
+
+// --- Binary Extension Download Helpers ---
+
+/** MIME types that trigger file download instead of text rendering. */
+const _BINARY_CONTENT_TYPES = new Set([
+    'application/pdf',
+    'application/octet-stream',
+    'application/zip',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+/** SVG icons for download cards (industrial style, 28x28). */
+const _FILE_TYPE_SVGS = {
+    'application/pdf': `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="2" width="20" height="24" rx="2" stroke="#fbbf24" stroke-width="1.5" fill="rgba(251,191,36,0.08)"/>
+        <path d="M10 2V8H4" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="14" y="19" text-anchor="middle" fill="#fbbf24" font-size="7" font-weight="600" font-family="sans-serif">PDF</text>
+    </svg>`,
+    'application/zip': `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="2" width="20" height="24" rx="2" stroke="#fbbf24" stroke-width="1.5" fill="rgba(251,191,36,0.08)"/>
+        <text x="14" y="19" text-anchor="middle" fill="#fbbf24" font-size="7" font-weight="600" font-family="sans-serif">ZIP</text>
+    </svg>`,
+    'default': `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="2" width="20" height="24" rx="2" stroke="#fbbf24" stroke-width="1.5" fill="rgba(251,191,36,0.08)"/>
+        <path d="M10 2V8H4" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="9" y1="14" x2="19" y2="14" stroke="#fbbf24" stroke-width="1" opacity="0.5"/>
+        <line x1="9" y1="17" x2="19" y2="17" stroke="#fbbf24" stroke-width="1" opacity="0.5"/>
+        <line x1="9" y1="20" x2="15" y2="20" stroke="#fbbf24" stroke-width="1" opacity="0.5"/>
+    </svg>`,
+};
+
+/**
+ * Check if an extension result contains binary/file content
+ * that should trigger a download rather than text rendering.
+ */
+function _isExtensionBinaryContent(result) {
+    if (!result || !result.content_type) return false;
+    if (_BINARY_CONTENT_TYPES.has(result.content_type)) return true;
+    if (result.content_type.startsWith('application/vnd.')) return true;
+    if (result.content_type.startsWith('image/')) return true;
+    return false;
+}
+
+/**
+ * Build an HTML download card for binary extension output.
+ * Stores the base64 data in a global map and renders a download button.
+ */
+function _buildExtensionDownloadCard(extName, result) {
+    const content = result.content || {};
+    const filename = content.filename || `${extName}-output`;
+    const pages = content.pages;
+    const sizeBytes = content.size_bytes || 0;
+    const icon = _FILE_TYPE_SVGS[result.content_type] || _FILE_TYPE_SVGS['default'];
+
+    // Store binary data in global map for download handler
+    const dataKey = `${extName}_${Date.now()}`;
+    window._extensionBinaryData = window._extensionBinaryData || {};
+    window._extensionBinaryData[dataKey] = {
+        data: content.data,
+        contentType: result.content_type,
+        filename: filename,
+    };
+
+    // Format file size
+    let sizeLabel = '';
+    if (sizeBytes > 0) {
+        sizeLabel = sizeBytes < 1024
+            ? `${sizeBytes} B`
+            : sizeBytes < 1048576
+                ? `${(sizeBytes / 1024).toFixed(1)} KB`
+                : `${(sizeBytes / 1048576).toFixed(1)} MB`;
+    }
+
+    // Build meta line
+    const metaParts = [];
+    if (pages) metaParts.push(`${pages} page${pages > 1 ? 's' : ''}`);
+    if (sizeLabel) metaParts.push(sizeLabel);
+    const metaLine = metaParts.length > 0
+        ? `<span class="text-xs text-gray-500">${metaParts.join(' \u00B7 ')}</span>`
+        : '';
+
+    return `
+        <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${extName}"
+             style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="text-xs font-semibold px-1.5 py-0.5 rounded"
+                      style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">
+                    !${extName}
+                </span>
+                <span class="text-xs text-gray-500">${result.content_type}</span>
+            </div>
+            <div class="flex items-center gap-3 mt-1">
+                <div class="shrink-0 flex items-center justify-center" style="width:28px;height:28px;">${icon}</div>
+                <div class="flex flex-col gap-0.5 flex-1 min-w-0">
+                    <span class="text-sm text-gray-200 truncate">${filename}</span>
+                    ${metaLine}
+                </div>
+                <button onclick="window._downloadExtensionFile('${dataKey}')"
+                        class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0"
+                        style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3);"
+                        onmouseover="this.style.background='rgba(251, 191, 36, 0.25)'"
+                        onmouseout="this.style.background='rgba(251, 191, 36, 0.15)'">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:2px;"><path d="M7 2v8m0 0l-3-3m3 3l3-3M3 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Download
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+// Expose helpers on window for cross-module access (notifications.js)
+window._isExtensionBinaryContent = _isExtensionBinaryContent;
+window._buildExtensionDownloadCard = _buildExtensionDownloadCard;
+
+/**
+ * Global download handler — triggered by download buttons in extension cards.
+ * Decodes base64 data and triggers a browser file download.
+ */
+window._downloadExtensionFile = function(dataKey) {
+    const store = window._extensionBinaryData || {};
+    const entry = store[dataKey];
+    if (!entry || !entry.data) {
+        console.warn('[Extension] No binary data found for key:', dataKey);
+        return;
+    }
+    try {
+        const raw = atob(entry.data);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        const blob = new Blob([bytes], { type: entry.contentType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = entry.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        console.error('[Extension] Download failed:', err);
+    }
+};
+
+// --- Stream Processing ---
+
+/**
+ * Get human-readable step title for genie coordination events.
+ * @deprecated Use getGenieTitle() from harmonized functions instead
+ * This function now delegates to the harmonized implementation
+ */
+function _getGenieStepTitle(eventType, payload) {
+    // Delegate to harmonized function (defined below) for consistent terminology
+    return getGenieTitle(eventType, payload);
+}
+
+/**
+ * Get human-readable step title for conversation agent events.
+ * @deprecated Use profile-specific harmonized functions instead
+ * This function now delegates to the harmonized implementation
+ */
+function _getConversationAgentStepTitle(eventType, payload) {
+    // Route to appropriate harmonized function based on event type
+
+    // lifecycle events → getLifecycleTitle (execution_start, execution_complete, etc.)
+    if (eventType === 'execution_start' || eventType === 'execution_complete' ||
+        eventType === 'execution_error' || eventType === 'execution_cancelled') {
+        const profileType = payload?.profile_type || 'unknown';
+        return getLifecycleTitle(eventType, payload, profileType);
+    }
+
+    // conversation_* events → llm_only profile
+    if (eventType.startsWith('conversation_') || eventType.startsWith('llm_execution')) {
+        return getLlmOnlyTitle(eventType, payload);
+    }
+
+    // knowledge_* events → rag_focused profile (uses "Stage" terminology)
+    // This is used for rag_focused profiles and knowledge retrieval in other profiles
+    if (eventType.startsWith('knowledge_') || eventType === 'rag_llm_step' || eventType === 'tool_result') {
+        return getRagFocusedTitle(eventType, payload);
+    }
+
+    // Knowledge Graph enrichment event
+    if (eventType === 'kg_enrichment') {
+        const entities = payload?.total_entities || 0;
+        const rels = payload?.total_relationships || 0;
+        return `Knowledge Graph Enrichment (${entities} entities, ${rels} relationships)`;
+    }
+
+    // Component-internal LLM events (e.g., chart mapping resolution)
+    if (eventType === 'component_llm_resolution') {
+        return payload?.step || 'Component LLM Resolution';
+    }
+
+    // Fallback for unknown events
+    return eventType;
+}
+
+/**
+ * Extract total turn cost from all LLM calls in turnData for reload display.
+ * Sums up cost_usd from all event types that contain cost information.
+ *
+ * @param {Object} turnData - Turn data containing various event arrays
+ * @returns {number} Total cost in USD for the turn (0 if no cost data found)
+ */
+function _getTurnCost(turnData) {
+    let totalCost = 0;
+
+    // Helper to extract cost from event payload
+    const extractCost = (event) => {
+        if (!event || !event.payload) return 0;
+        const payload = event.payload;
+        // Handle nested details structure
+        const details = payload.details || payload;
+        return parseFloat(details.cost_usd || 0);
+    };
+
+    // CRITICAL FIX: Skip aggregate events that duplicate individual step costs
+    // Aggregate events to exclude (they sum individual steps, causing double-counting):
+    const aggregateEventTypes = [
+        'conversation_llm_complete',      // Duplicates last conversation_llm_step
+        'conversation_agent_complete',    // Sums all conversation_llm_step costs
+        'genie_coordinator_complete',     // Sums all genie_llm_step costs
+        'knowledge_retrieval_complete'    // Sums knowledge step costs
+    ];
+
+    // Individual step events to include (actual LLM calls):
+    const stepEventTypes = [
+        'conversation_llm_step',          // Conversation agent individual steps
+        'genie_llm_step',                 // Genie coordinator individual steps
+        'rag_llm_step',                   // RAG retrieval LLM calls
+        'llm_execution_complete',         // Knowledge repository LLM calls
+        'session_name_generation_complete' // Session naming LLM call (when present)
+    ];
+
+    // Sum costs from all event types
+    const eventArrays = [
+        turnData.genie_events || [],
+        turnData.conversation_agent_events || [],
+        turnData.knowledge_events || [],
+        turnData.system_events || []
+    ];
+
+    eventArrays.forEach(events => {
+        if (Array.isArray(events)) {
+            events.forEach(event => {
+                const eventType = event.type;
+
+                // Skip aggregate events to avoid double-counting
+                if (aggregateEventTypes.includes(eventType)) {
+                    return; // Skip this event
+                }
+
+                // Only count individual step events (or any event with cost not in aggregate list)
+                const cost = extractCost(event);
+                if (cost > 0) {
+                    totalCost += cost;
+                }
+            });
+        }
+    });
+
+    // Also check execution_trace for tool_enabled profiles
+    if (turnData.execution_trace && Array.isArray(turnData.execution_trace)) {
+        turnData.execution_trace.forEach(step => {
+            if (step.action && step.action.cost_usd) {
+                totalCost += parseFloat(step.action.cost_usd);
+            }
+            // Check for cost in TDA_SystemLog event details (LLM call events)
+            if (step.action && step.action.tool_name === 'TDA_SystemLog' && step.action.arguments?.details?.cost_usd) {
+                totalCost += parseFloat(step.action.arguments.details.cost_usd);
+            }
+        });
+    }
+
+    // Compare with backend-provided cost if available (for verification)
+    if (turnData.turn_cost !== undefined) {
+        const backendCost = parseFloat(turnData.turn_cost);
+        const diff = Math.abs(totalCost - backendCost);
+
+        if (diff > 0.000001) {  // Allow for floating-point rounding
+            console.warn(`[Cost Verification] Discrepancy detected:
+                Backend turn_cost: $${backendCost.toFixed(6)}
+                Event sum: $${totalCost.toFixed(6)}
+                Difference: $${diff.toFixed(6)}`);
+        } else {
+            console.log(`[Cost Verification] Backend and event costs match: $${backendCost.toFixed(6)}`);
+        }
+    }
+
+    return totalCost;
+}
+
+/**
+ * Extract per-model (strategic vs tactical) token/cost breakdown from turn data.
+ * Used for dual-model tooltip display on historical reload.
+ *
+ * @param {Object} turnData - Turn data containing execution_trace and system_events
+ * @returns {Object} { strategicIn, strategicOut, strategicCost, tacticalIn, tacticalOut, tacticalCost }
+ */
+function _getPerModelBreakdown(turnData) {
+    const result = {
+        strategicIn: 0, strategicOut: 0, strategicCost: 0,
+        tacticalIn: 0, tacticalOut: 0, tacticalCost: 0
+    };
+
+    // Walk execution_trace for TDA_SystemLog entries with token/cost data
+    if (turnData.execution_trace && Array.isArray(turnData.execution_trace)) {
+        turnData.execution_trace.forEach(step => {
+            if (step.action && step.action.tool_name === 'TDA_SystemLog') {
+                const details = step.action.arguments?.details || {};
+                const inTk = details.input_tokens || 0;
+                const outTk = details.output_tokens || 0;
+                const cost = parseFloat(details.cost_usd || 0);
+                if (details.planning_phase === 'strategic') {
+                    result.strategicIn += inTk;
+                    result.strategicOut += outTk;
+                    result.strategicCost += cost;
+                } else if (inTk > 0 || cost > 0) {
+                    result.tacticalIn += inTk;
+                    result.tacticalOut += outTk;
+                    result.tacticalCost += cost;
+                }
+            }
+        });
+    }
+
+    // Also sum from system_events (session name gen, etc.)
+    const systemEvents = turnData.system_events || [];
+    if (Array.isArray(systemEvents)) {
+        systemEvents.forEach(evt => {
+            const payload = evt.payload || {};
+            const details = payload.details || payload;
+            const cost = parseFloat(details.cost_usd || 0);
+            const inTk = details.input_tokens || 0;
+            const outTk = details.output_tokens || 0;
+            if (cost > 0 || inTk > 0) {
+                result.tacticalIn += inTk;
+                result.tacticalOut += outTk;
+                result.tacticalCost += cost;
+            }
+        });
+    }
+
+    return result;
+}
+
+/**
+ * Extract the last statement token counts from turnData for reload display.
+ * The "Last Statement" should show the most recent individual LLM call, not turn totals.
+ *
+ * Priority (checked in order):
+ * 1. system_events: session_name_generation_complete (always last if present)
+ * 2. genie_events: genie_llm_step (genie profile)
+ * 3. conversation_agent_events: conversation_llm_complete or conversation_llm_step
+ * 4. knowledge_events: rag_llm_step, llm_execution_complete, or conversation_llm_step
+ * 5. Fallback: turn totals
+ */
+function _getLastStatementTokens(turnData) {
+    // Helper function to extract tokens from an event payload
+    const extractTokens = (event) => {
+        if (!event || !event.payload) return null;
+        const payload = event.payload;
+        // Handle nested details structure (session_name_generation_complete)
+        const details = payload.details || payload;
+        if (details.input_tokens !== undefined && details.output_tokens !== undefined) {
+            return { input: details.input_tokens, output: details.output_tokens };
+        }
+        return null;
+    };
+
+    // Helper function to find last matching event from array (reverse search)
+    const findLastEventWithTokens = (events, eventTypes) => {
+        if (!events || !Array.isArray(events)) return null;
+        for (let i = events.length - 1; i >= 0; i--) {
+            const event = events[i];
+            if (eventTypes.includes(event.type)) {
+                const tokens = extractTokens(event);
+                if (tokens) return tokens;
+            }
+        }
+        return null;
+    };
+
+    // PRIORITY 1: Session name generation (always chronologically last if present)
+    const systemEvents = turnData.system_events || [];
+    const sessionNameTokens = findLastEventWithTokens(systemEvents, ['session_name_generation_complete']);
+    if (sessionNameTokens) return sessionNameTokens;
+
+    // PRIORITY 2: Genie profile - genie_llm_step (routing + synthesis calls)
+    const genieEvents = turnData.genie_events || [];
+    if (genieEvents.length > 0) {
+        const genieTokens = findLastEventWithTokens(genieEvents, ['genie_llm_step']);
+        if (genieTokens) return genieTokens;
+    }
+
+    // PRIORITY 3: Conversation profile - conversation_agent_events
+    const agentEvents = turnData.conversation_agent_events || [];
+    if (agentEvents.length > 0) {
+        // First try conversation_llm_complete (final response)
+        const completeTokens = findLastEventWithTokens(agentEvents, ['conversation_llm_complete']);
+        if (completeTokens) return completeTokens;
+        // Fallback to conversation_llm_step
+        const stepTokens = findLastEventWithTokens(agentEvents, ['conversation_llm_step']);
+        if (stepTokens) return stepTokens;
+    }
+
+    // PRIORITY 4: RAG/LLM-only profile - knowledge_events
+    const knowledgeEvents = turnData.knowledge_events || [];
+    if (knowledgeEvents.length > 0) {
+        // RAG focused: rag_llm_step
+        const ragTokens = findLastEventWithTokens(knowledgeEvents, ['rag_llm_step']);
+        if (ragTokens) return ragTokens;
+        // LLM-only: llm_execution_complete
+        const llmCompleteTokens = findLastEventWithTokens(knowledgeEvents, ['llm_execution_complete']);
+        if (llmCompleteTokens) return llmCompleteTokens;
+        // LLM-only variant: conversation_llm_step
+        const conversationTokens = findLastEventWithTokens(knowledgeEvents, ['conversation_llm_step']);
+        if (conversationTokens) return conversationTokens;
+    }
+
+    // PRIORITY 5: Fallback to turn totals (tool_enabled or missing data)
+    return {
+        input: turnData.turn_input_tokens || turnData.input_tokens || 0,
+        output: turnData.turn_output_tokens || turnData.output_tokens || 0
+    };
+}
+
+/**
+ * Merge conversation_tool_invoked events with their corresponding conversation_tool_completed events.
+ * This prevents duplicate rows in historical replay - we only show the final state.
+ *
+ * For 5 parallel base_tableDDL calls, we want to show 5 completed rows, not 10 (5 invoked + 5 completed).
+ *
+ * @param {Array} events - Array of conversation agent events
+ * @returns {Array} Processed events with tool invokes merged into completions
+ */
+function _mergeToolEvents(events) {
+    const result = [];
+    const pendingInvokes = new Map(); // tool_name -> array of events
+
+    for (const event of events) {
+        const type = event.type;
+        const toolName = event.payload?.tool_name;
+
+        if (type === 'conversation_tool_invoked' && toolName) {
+            // Queue invoked events by tool name
+            if (!pendingInvokes.has(toolName)) {
+                pendingInvokes.set(toolName, []);
+            }
+            pendingInvokes.get(toolName).push(event);
+        } else if (type === 'conversation_tool_completed' && toolName) {
+            // Match with oldest pending invoke for this tool
+            const pending = pendingInvokes.get(toolName);
+            if (pending && pending.length > 0) {
+                // Remove the matched invoke (don't render it separately)
+                pending.shift();
+            }
+            // Always render the completed event (it has the final state)
+            result.push(event);
+        } else {
+            // Keep all other events (start, llm_step, agent_complete)
+            result.push(event);
+        }
+    }
+
+    // Any unmatched invokes (tool started but didn't complete - error case) get added as-is
+    for (const pending of pendingInvokes.values()) {
+        for (const event of pending) {
+            result.push(event);
+        }
+    }
+
+    return result;
+}
+
+// ============================================================================
+// PROFILE TYPE BRANDING (IFOC Methodology)
+// ============================================================================
+
+/**
+ * Map profile types to branded agent names (IFOC methodology)
+ * @param {string} profileType - Backend profile type
+ * @returns {string} Branded agent name
+ */
+function getBrandedAgentName(profileType) {
+    switch (profileType) {
+        case 'conversation_with_tools':
+        case 'llm_only':
+            return 'Ideate Agent';
+        case 'rag_focused':
+            return 'Focus Agent';
+        case 'tool_enabled':
+            return 'Optimize Agent';
+        case 'genie':
+            return 'Coordinate Agent';
+        default:
+            return 'Agent';
+    }
+}
+
+// ============================================================================
+// HARMONIZED EVENT TITLE GENERATION (Phase 1: Terminology Harmonization)
+// ============================================================================
+
+/**
+ * Generate harmonized display title for tool_enabled profile events
+ * @param {string} eventType - Backend event type
+ * @param {object} payload - Event payload data
+ * @returns {string} Harmonized display title
+ */
+function getToolEnabledTitle(eventType, payload) {
+    switch (eventType) {
+        case 'phase_start':
+            return `Phase ${payload.phase_num}/${payload.total_phases}: ${payload.goal}`;
+        case 'phase_end':
+            return `Phase ${payload.phase_num}/${payload.total_phases} Completed`;
+        case 'system_message':
+            if (payload.message?.includes('LLM')) {
+                return `Calling LLM: ${payload.purpose || 'Planning'}`;
+            }
+            return payload.message;
+        case 'plan_generated':
+            return 'Strategic Plan Generated';
+        case 'plan_optimization':
+            return 'Optimizing Plan';
+        case 'knowledge_retrieval_start': {
+            const collections = payload.collections || [];
+            return `Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})`;
+        }
+        case 'knowledge_reranking_start': {
+            const collection = payload.collection || 'Unknown';
+            return `Reranking Documents (${collection})`;
+        }
+        case 'knowledge_reranking_complete': {
+            const collection = payload.collection || 'Unknown';
+            const count = payload.reranked_count || 0;
+            return `Reranked ${count} documents (${collection})`;
+        }
+        case 'knowledge_retrieval_complete': {
+            const docCount = payload.document_count || 0;
+            const duration = payload.duration_ms || 0;
+            return `Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`;
+        }
+        case 'rag_llm_step': {
+            // Token counts are shown in the Tool Execution Result step, so don't duplicate them here
+            return `Calling LLM: Knowledge Synthesis`;
+        }
+        case 'knowledge_search_complete': {
+            const collections = payload.collections_searched || 0;
+            const docs = payload.documents_retrieved || 0;
+            const totalTime = payload.total_time_ms || 0;
+            const timeSeconds = (totalTime / 1000).toFixed(1);
+            return `Knowledge Search Complete (${collections} ${collections === 1 ? 'collection' : 'collections'}, ${docs} ${docs === 1 ? 'document' : 'documents'} in ${timeSeconds}s)`;
+        }
+        case 'workaround':
+            return 'System Correction';
+        case 'error':
+            return payload.error_message || 'Error';
+        case 'cancelled':
+            return 'Planner Execution Stopped';
+        case 'session_name_generation_start':
+            return 'Generating Session Name';
+        case 'session_name_generation_complete':
+            return payload.name ? `Session Named: ${payload.name}` : 'Session Name Generated';
+        default:
+            return eventType;
+    }
+}
+
+/**
+ * Generate harmonized display title for llm_only profile events
+ * Uses "Action" terminology instead of "LLM Step"
+ * @param {string} eventType - Backend event type
+ * @param {object} payload - Event payload data
+ * @returns {string} Harmonized display title
+ */
+function getLlmOnlyTitle(eventType, payload) {
+    switch (eventType) {
+        case 'conversation_agent_start': {
+            const toolCount = payload.available_tools?.length || 0;
+            const agentName = getBrandedAgentName(payload.profile_type || 'conversation_with_tools');
+            return `${agentName} Started (${toolCount} tools available)`;
+        }
+        case 'conversation_llm_step': {
+            // Harmonized naming across profile types
+            return 'LLM Synthesis Execution';
+        }
+        case 'conversation_llm_complete': {
+            // LLM synthesis results event for Conversation profile
+            const inputTokens = payload.input_tokens || 0;
+            const outputTokens = payload.output_tokens || 0;
+            return `LLM Synthesis Results (${inputTokens} in / ${outputTokens} out)`;
+        }
+        case 'conversation_tool_invoked':
+            return `Executing Tool: ${payload.tool_name || 'tool'}`;
+        case 'conversation_tool_completed': {
+            const status = payload.success ? 'Completed' : 'Failed';
+            const duration = payload.duration_ms ? ` (${(payload.duration_ms / 1000).toFixed(1)}s)` : '';
+            return `Tool Completed: ${payload.tool_name || 'Tool'}${duration}`;
+        }
+        case 'conversation_agent_complete': {
+            const toolCount = payload.tools_used?.length || 0;
+            const duration = payload.total_duration_ms ? ` in ${(payload.total_duration_ms / 1000).toFixed(1)}s` : '';
+            const completeAgentName = getBrandedAgentName(payload.profile_type || 'conversation_with_tools');
+            return payload.success
+                ? `${completeAgentName} Complete (${toolCount} tools executed${duration})`
+                : `${completeAgentName} Failed`;
+        }
+        case 'llm_execution':
+            return 'Calling LLM: Execution';
+        case 'llm_execution_complete': {
+            const inputTokens = payload.input_tokens || 0;
+            const outputTokens = payload.output_tokens || 0;
+            return `LLM Execution Complete (${inputTokens} in / ${outputTokens} out)`;
+        }
+        case 'session_name_generation_start':
+            return 'Generating Session Name';
+        case 'session_name_generation_complete':
+            return payload.name ? `Session Named: ${payload.name}` : 'Session Name Generated';
+        default:
+            return eventType;
+    }
+}
+
+/**
+ * Generate harmonized display title for rag_focused profile events
+ * Uses "Stage" terminology to reflect pipeline stages
+ * @param {string} eventType - Backend event type
+ * @param {object} payload - Event payload data
+ * @returns {string} Harmonized display title
+ */
+function getRagFocusedTitle(eventType, payload) {
+    switch (eventType) {
+        case 'knowledge_retrieval_start': {
+            const collections = payload.collections || [];
+            return `Stage: Retrieval - Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})`;
+        }
+        case 'knowledge_reranking_start': {
+            const collection = payload.collection || 'Unknown';
+            return `Stage: Reranking - Optimizing Results (${collection})`;
+        }
+        case 'knowledge_reranking_complete': {
+            const collection = payload.collection || 'Unknown';
+            const count = payload.reranked_count || 0;
+            return `Stage: Reranking - ${count} documents processed (${collection})`;
+        }
+        case 'knowledge_retrieval_complete': {
+            const docCount = payload.document_count || 0;
+            const duration = payload.duration_ms || 0;
+            return `Stage: Retrieval - ${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} retrieved in ${duration}ms`;
+        }
+        case 'rag_llm_step': {
+            // Token counts are shown in the LLM Synthesis Results step, so don't duplicate them here
+            return 'LLM Synthesis Execution';
+        }
+        case 'knowledge_search_complete': {
+            const collections = payload.collections_searched || 0;
+            const docs = payload.documents_retrieved || 0;
+            const totalTime = payload.total_time_ms || 0;
+            const timeSeconds = (totalTime / 1000).toFixed(1);
+            return `Stage: Complete - ${collections} ${collections === 1 ? 'collection' : 'collections'}, ${docs} ${docs === 1 ? 'document' : 'documents'} in ${timeSeconds}s`;
+        }
+        case 'knowledge_retrieval': {
+            const docCount = payload.document_count || 0;
+            return `Knowledge Retrieved (${docCount} chunks)`;
+        }
+        case 'tool_result': {
+            // LLM synthesis results event for RAG profile
+            return 'LLM Synthesis Results';
+        }
+        case 'session_name_generation_start':
+            return 'Generating Session Name';
+        case 'session_name_generation_complete':
+            return payload.name ? `Session Named: ${payload.name}` : 'Session Name Generated';
+        default:
+            return eventType;
+    }
+}
+
+/**
+ * Generate harmonized display title for genie profile events
+ * Uses "Coordination Step" terminology for coordinator steps
+ * @param {string} eventType - Backend event type
+ * @param {object} payload - Event payload data
+ * @returns {string} Harmonized display title
+ */
+function getGenieTitle(eventType, payload) {
+    switch (eventType) {
+        case 'genie_start':
+            return 'Coordinator Activated';
+        case 'genie_routing': {
+            const slaveCount = payload.slave_profiles?.length || 0;
+            return `Consulting ${slaveCount} expert${slaveCount > 1 ? 's' : ''}`;
+        }
+        case 'genie_coordination_start':
+            return 'Coordinator Started';
+        case 'genie_llm_step': {
+            const stepName = payload.step_name || 'Processing';
+            // Harmonize with other profile naming: "LLM X Execution"
+            if (stepName.toLowerCase().includes('routing')) {
+                return 'LLM Routing Execution';
+            } else if (stepName.toLowerCase().includes('synthesis')) {
+                return 'LLM Synthesis Execution';
+            }
+            return `LLM ${stepName} Execution`;
+        }
+        case 'genie_routing_decision': {
+            const profileCount = payload.selected_profiles?.length || 0;
+            return `Routing to ${profileCount} expert${profileCount > 1 ? 's' : ''}`;
+        }
+        case 'genie_slave_invoked':
+            return `Invoking Expert: @${payload.profile_tag || 'PROFILE'}`;
+        case 'genie_slave_progress':
+            return `Expert @${payload.profile_tag || 'PROFILE'}: ${payload.message || 'Processing'}`;
+        case 'genie_slave_completed': {
+            const status = payload.success ? 'Completed' : 'Failed';
+            const duration = payload.duration_ms ? ` (${(payload.duration_ms / 1000).toFixed(1)}s)` : '';
+            return `Expert @${payload.profile_tag || 'PROFILE'} ${status}${duration}`;
+        }
+        case 'genie_synthesis_start':
+            return 'LLM Synthesis Started';
+        case 'genie_synthesis_complete':
+            return 'LLM Synthesis Results';
+        case 'genie_coordination_complete':
+            return payload.success ? 'Coordinator Complete' : 'Coordinator Failed';
+        case 'genie_component_invoked':
+            return `Component: ${payload.tool_name || 'Tool'}`;
+        case 'genie_component_completed':
+            return `Component Complete: ${payload.component_id || payload.tool_name || 'Tool'}`;
+        case 'kg_enrichment': {
+            const entities = payload?.total_entities || 0;
+            const rels = payload?.total_relationships || 0;
+            return `Knowledge Graph Enrichment (${entities} entities, ${rels} relationships)`;
+        }
+        case 'session_name_generation_start':
+            return 'Generating Session Name';
+        case 'session_name_generation_complete':
+            return payload.name ? `Session Named: ${payload.name}` : 'Session Name Generated';
+        default:
+            return eventType;
+    }
+}
+
+/**
+ * Generate harmonized display title for lifecycle events (Phase 2)
+ * @param {string} eventType - Lifecycle event type ('execution_start', 'execution_complete', etc.)
+ * @param {object} payload - Event payload data
+ * @param {string} profileType - Profile type ('tool_enabled', 'llm_only', 'rag_focused', 'genie')
+ * @returns {string} Harmonized display title
+ */
+function getLifecycleTitle(eventType, payload, profileType) {
+    const profileLabels = {
+        'tool_enabled': 'Efficiency Focused',
+        'llm_only': 'Conversation Focused',
+        'rag_focused': 'Knowledge Focused',
+        'genie': 'Genie Coordinator'
+    };
+    const profileLabel = profileLabels[profileType] || profileType;
+
+    switch (eventType) {
+        case 'execution_start':
+            return `${profileLabel} Started`;
+        case 'execution_complete':
+            // Duration is shown in metrics section, not header (Issue #15 - harmonization)
+            return `${profileLabel} Complete`;
+        case 'execution_error': {
+            const errorType = payload.error_type || 'error';
+            return `${profileLabel} Error: ${errorType}`;
+        }
+        case 'execution_cancelled':
+            return `${profileLabel} Cancelled`;
+        default:
+            return eventType;
+    }
+}
+
+/**
+ * Main harmonized event title generator - routes to profile-specific functions
+ * @param {string} profileType - 'tool_enabled', 'llm_only', 'rag_focused', 'genie'
+ * @param {string} eventType - Backend event type (e.g., 'phase_start', 'conversation_tool_invoked')
+ * @param {object} payload - Event payload data
+ * @returns {string} Harmonized display title
+ */
+function getHarmonizedEventTitle(profileType, eventType, payload) {
+    // Handle universal lifecycle events (Phase 2 - not implemented yet)
+    if (eventType === 'execution_start') {
+        return `${getProfileDisplayName(profileType)} Execution Started`;
+    }
+    if (eventType === 'execution_complete') {
+        return `${getProfileDisplayName(profileType)} Execution Complete`;
+    }
+    if (eventType === 'execution_error') {
+        return `${getProfileDisplayName(profileType)} Execution Failed: ${payload.error_message || 'Unknown error'}`;
+    }
+    if (eventType === 'execution_cancelled') {
+        return `${getProfileDisplayName(profileType)} Execution Stopped`;
+    }
+
+    // Route to profile-specific title functions
+    switch (profileType) {
+        case 'tool_enabled':
+            return getToolEnabledTitle(eventType, payload);
+        case 'llm_only':
+            return getLlmOnlyTitle(eventType, payload);
+        case 'rag_focused':
+            return getRagFocusedTitle(eventType, payload);
+        case 'genie':
+            return getGenieTitle(eventType, payload);
+        default:
+            // Fallback to old functions if profile type unknown
+            return eventType;
+    }
+}
+
+/**
+ * Helper function to get human-readable profile display name
+ * @param {string} profileType - Profile type identifier
+ * @returns {string} Display name
+ */
+function getProfileDisplayName(profileType) {
+    const names = {
+        'tool_enabled': 'Planner',
+        'llm_only': 'Conversation',
+        'rag_focused': 'Knowledge',
+        'genie': 'Coordinator'
+    };
+    return names[profileType] || 'Agent';
+}
+
+// ============================================================================
+// END: Harmonized Event Title Generation
+// ============================================================================
+
+async function processStream(responseBody, originSessionId) {
+    // Lazy-load KG animation bridge on first stream (non-blocking)
+    if (!_kgAnimLoadAttempted) _loadKGAnimBridge();
+
+    const reader = responseBody.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const messages = buffer.split('\n\n');
+        buffer = messages.pop();
+
+        for (const message of messages) {
+            if (!message) continue;
+
+            // Session guard: skip all DOM writes if the user has switched
+            // to a different session. The stream stays alive so that when
+            // they switch back, new events resume rendering immediately.
+            if (state.currentSessionId !== originSessionId) continue;
+
+            let eventName = 'message';
+            let dataLine = '';
+
+            const lines = message.split('\n');
+            for(const line of lines) {
+                if (line.startsWith('data:')) {
+                    dataLine = line.substring(5).trim();
+                } else if (line.startsWith('event:')) {
+                    eventName = line.substring(6).trim();
+                }
+            }
+
+            if (dataLine) {
+                try {
+                    const eventData = JSON.parse(dataLine);
+
+                    if (eventData.task_id && state.currentTaskId !== eventData.task_id) {
+                        state.currentTaskId = eventData.task_id;
+                        UI.updateTaskIdDisplay(eventData.task_id);
+                    }
+
+                    // --- Event Handling Logic ---
+                    if (eventName === 'status_indicator_update') {
+                        const { target, state: statusState } = eventData;
+                        let dot;
+                        if (target === 'db') dot = DOM.mcpStatusDot;
+                        else if (target === 'llm') dot = DOM.llmStatusDot;
+                        // Handle LLM thinking indicator separately
+                        if (target === 'llm') UI.setThinkingIndicator(statusState === 'busy');
+
+                        if (dot) {
+                            if (statusState === 'busy') {
+                                dot.classList.replace('idle', 'busy') || dot.classList.replace('connected', 'busy');
+                                dot.classList.add('pulsing');
+                            } else {
+                                dot.classList.remove('pulsing');
+                                dot.classList.replace('busy', target === 'db' ? 'connected' : 'idle');
+                            }
+                        }
+                    } else if (eventName === 'context_state_update') {
+                         // Currently no specific UI update needed, but could add visual feedback here
+                    } else if (eventName === 'token_update') {
+                        UI.updateTokenDisplay(eventData);
+                        if (eventData.call_id && state.currentProvider !== 'Amazon') {
+                            const metricsEl = document.querySelector(`.per-call-metrics[data-call-id="${eventData.call_id}"]`);
+                            if (metricsEl) {
+                                let metricsText = `(LLM Call: ${eventData.statement_input.toLocaleString()} in / ${eventData.statement_output.toLocaleString()} out`;
+                                if (eventData.cost_usd !== undefined && eventData.cost_usd !== null) {
+                                    metricsText += ` · $${parseFloat(eventData.cost_usd).toFixed(6)}`;
+                                }
+                                metricsText += ')';
+                                metricsEl.innerHTML = metricsText;
+                                metricsEl.classList.remove('hidden');
+                            }
+                        }
+                    } else if (eventName === 'notification') {
+                        // Handle notifications sent during execution stream
+                        if (eventData.type === 'profile_override_failed') {
+                            const { override_profile_name, override_profile_tag, default_profile_tag, error_message } = eventData.payload;
+                            // Show banner - import the function from notifications.js
+                            const banner = document.getElementById('profile-override-warning-banner');
+                            const message = document.getElementById('profile-override-warning-message');
+                            if (banner && message) {
+                                const displayMessage = `Profile @${override_profile_tag}: Missing credentials. Using @${default_profile_tag} instead.`;
+                                message.textContent = displayMessage;
+                                banner.classList.remove('hidden');
+                                
+                                // Auto-dismiss after 5 seconds
+                                setTimeout(() => {
+                                    banner.classList.add('hidden');
+                                }, 5000);
+                                
+                                // Manual dismiss button still works
+                                const dismissBtn = document.getElementById('dismiss-profile-warning');
+                                if (dismissBtn) {
+                                    dismissBtn.onclick = () => banner.classList.add('hidden');
+                                }
+                            }
+                        } else if (eventData.type === 'session_model_update') {
+                            // Handle session metadata updates during execution
+                            const { session_id, models_used, profile_tags_used, last_updated, provider, model, name, dual_model_info } = eventData.payload;
+                            UI.updateSessionModels(session_id, models_used, profile_tags_used);
+                            if (session_id === state.currentSessionId) {
+                                state.currentProvider = provider;
+                                state.currentModel = model;
+                                state.currentDualModelInfo = dual_model_info;  // Store in state
+                                UI.updateStatusPromptName(provider, model, false, dual_model_info);
+                            }
+                        } else if (eventData.type === 'user_message_profile_tag') {
+                            // Update the last user message's profile badge with the backend-resolved tag
+                            // This is especially important for session primers where the frontend may not know the correct tag
+                            const payload = eventData.payload || eventData;
+                            const { profile_tag } = payload;
+                            if (profile_tag) {
+                                UI.updateLastUserMessageProfileTag(profile_tag);
+                            }
+                        } else if (eventData.type === 'conversation_agent_start' ||
+                                   eventData.type === 'conversation_llm_step' ||
+                                   eventData.type === 'conversation_llm_complete' ||
+                                   eventData.type === 'conversation_tool_invoked' ||
+                                   eventData.type === 'conversation_tool_completed' ||
+                                   eventData.type === 'conversation_agent_complete' ||
+                                   eventData.type === 'component_llm_resolution') {
+                            // Handle conversation agent events during execution stream
+                            const payload = eventData.payload || {};
+                            // Only handle events for current session
+                            if (payload.session_id && payload.session_id !== state.currentSessionId) {
+                                console.log('[ConversationAgent] Ignoring event for different session:', payload.session_id);
+                            } else {
+                                // IMPORTANT: Update status window BEFORE calling handler for completion event
+                                // because handler sets isConversationAgentActive=false which would trigger a reset
+                                const stepTitle = _getConversationAgentStepTitle(eventData.type, payload);
+                                UI.updateStatusWindow({
+                                    step: stepTitle,
+                                    details: payload,
+                                    type: eventData.type
+                                }, eventData.type === 'conversation_agent_complete', 'conversation_agent');
+
+                                // Update token display for cost tracking (llm_only and conversation_with_tools profiles)
+                                // CRITICAL: Skip aggregate events to avoid double/triple-counting costs
+                                if (payload.cost_usd) {
+                                    // Define aggregate event types that sum individual step costs
+                                    const aggregateEventTypes = [
+                                        'conversation_llm_complete',      // Duplicates last conversation_llm_step
+                                        'conversation_agent_complete',    // Sums all conversation_llm_step costs
+                                        'genie_coordinator_complete',     // Sums all genie_llm_step costs
+                                        'knowledge_retrieval_complete'    // Sums knowledge step costs
+                                    ];
+
+                                    // DEBUG: Log event type and cost
+                                    console.log('[COST DEBUG]', {
+                                        type: eventData.type,
+                                        cost: payload.cost_usd,
+                                        isAggregate: aggregateEventTypes.includes(eventData.type),
+                                        willAccumulate: !aggregateEventTypes.includes(eventData.type)
+                                    });
+
+                                    // Only accumulate costs from individual step events, not aggregates
+                                    if (!aggregateEventTypes.includes(eventData.type)) {
+                                        console.log('[COST DEBUG] ✓ Accumulating cost for:', eventData.type, '$' + payload.cost_usd);
+                                        UI.updateTokenDisplay(payload);
+                                    } else {
+                                        console.log('[COST DEBUG] ✗ Skipping aggregate event:', eventData.type, '$' + payload.cost_usd);
+                                    }
+                                }
+
+                                // Delegate to conversation agent handler for state tracking (after UI update)
+                                handleConversationAgentEvent(eventData.type, payload);
+
+                                // KG Live Animation: dispatch tool invoked/completed events
+                                if (eventData.type === 'conversation_tool_invoked' ||
+                                    eventData.type === 'conversation_tool_completed') {
+                                    _tryKGAnimate(eventData.type, payload);
+                                }
+                            }
+                        } else if (eventData.type === 'llm_execution' ||
+                                   eventData.type === 'llm_execution_complete' ||
+                                   eventData.type === 'knowledge_retrieval' ||
+                                   eventData.type === 'knowledge_retrieval_start' ||
+                                   eventData.type === 'knowledge_reranking_start' ||
+                                   eventData.type === 'knowledge_reranking_complete' ||
+                                   eventData.type === 'knowledge_retrieval_complete' ||
+                                   eventData.type === 'rag_llm_step') {
+                            // Handle all LLM execution and knowledge retrieval events during execution
+                            const payload = eventData.payload || {};
+
+                            // HARMONIZE rag_llm_step title
+                            const stepTitle = eventData.type === 'rag_llm_step'
+                                ? getRagFocusedTitle('rag_llm_step', payload)
+                                : _getConversationAgentStepTitle(eventData.type, payload);
+
+                            console.log(`[${eventData.type}] Received during execution:`, payload);
+
+                            // Update knowledge indicator for completion events
+                            if (eventData.type === 'knowledge_retrieval_complete' || eventData.type === 'knowledge_retrieval') {
+                                const collections = payload.collections || [];
+                                const documentCount = payload.document_count || 0;
+                                // Only blink during live execution, not when viewing historical turns
+                                if (!state.isViewingHistoricalTurn) {
+                                    UI.blinkKnowledgeDot();
+                                }
+                                UI.updateKnowledgeIndicator(collections, documentCount);
+                                // Store the knowledge event for potential replay
+                                state.pendingKnowledgeRetrievalEvent = payload;
+                            }
+
+                            // Update token display for cost tracking (rag_focused profiles)
+                            if (eventData.type === 'rag_llm_step' && payload.cost_usd) {
+                                UI.updateTokenDisplay(payload);
+                            }
+
+                            // Always update status window for these events
+                            // For conversation_with_tools, these arrive BEFORE conversation_agent_start
+                            // so we render them directly without checking isConversationAgentActive
+                            UI.updateStatusWindow({
+                                step: stepTitle,
+                                details: payload,
+                                type: eventData.type
+                            }, false, 'knowledge_retrieval');  // Use existing knowledge_retrieval rendering for all
+                        } else if (eventData.type === 'execution_start' ||
+                                   eventData.type === 'execution_complete' ||
+                                   eventData.type === 'execution_error' ||
+                                   eventData.type === 'execution_cancelled') {
+                            // --- PHASE 2: Handle lifecycle events for all profiles ---
+                            const payload = eventData.payload || {};
+                            const profile_type = payload.profile_type || 'unknown';
+
+                            // Capture turn number from execution_start for title display
+                            if (eventData.type === 'execution_start' && payload.turn_id) {
+                                state.currentTurnNumber = payload.turn_id;
+                            }
+
+                            console.log(`[${eventData.type}] Received for ${profile_type} profile:`, payload);
+
+                            // Generate harmonized title
+                            const stepTitle = getLifecycleTitle(eventData.type, payload, profile_type);
+
+                            // Update status window
+                            // Mark as final for completion/error/cancelled events
+                            const isFinal = ['execution_complete', 'execution_error', 'execution_cancelled'].includes(eventData.type);
+
+                            UI.updateStatusWindow({
+                                step: stepTitle,
+                                details: payload,
+                                type: eventData.type,
+                                metadata: eventData.metadata
+                            }, isFinal, 'lifecycle');
+
+                            // KG Live Animation: end animations on execution complete/error/cancelled
+                            if (isFinal) _tryKGAnimateEnd();
+                        } else if (eventData.type === 'skills_applied') {
+                            // Skill pre-processing transparency — emerald green
+                            const skillsPayload = eventData.payload || {};
+                            UI.updateStatusWindow({
+                                step: 'Skills applied',
+                                details: skillsPayload,
+                                type: 'skills_applied'
+                            }, false, 'skills');
+                        } else if (eventData.type === 'extension_start') {
+                            const extPayload = eventData.payload || {};
+                            UI.updateStatusWindow({
+                                step: `Running extension !${extPayload.name}${extPayload.param ? ':' + extPayload.param : ''}`,
+                                details: 'Processing...',
+                                type: 'extension_running'
+                            }, false, 'extension');
+                        } else if (eventData.type === 'extension_complete') {
+                            const extPayload = eventData.payload || {};
+                            UI.updateStatusWindow({
+                                step: `Extension !${extPayload.name}`,
+                                details: extPayload,
+                                type: 'extension_complete'
+                            }, false, 'extension');
+                        } else if (eventData.type === 'context_window_snapshot') {
+                            // Context Window Manager snapshot — render budget visualization
+                            const snapshotPayload = eventData.payload || {};
+                            const snapshotHtml = renderContextWindowSnapshot(snapshotPayload);
+                            UI.updateStatusWindow({
+                                step: eventData.step || 'Context Window Assembly',
+                                details: snapshotHtml,
+                                type: 'context_window_snapshot'
+                            }, true, 'context_window');
+                        }
+                    } else if (eventName === 'rag_retrieval') {
+                        state.lastRagCaseData = eventData; // Store the full CCR (Champion Case Retrieval) data
+                        UI.blinkCcrDot();
+                    } else if (eventName === 'llm_execution') {
+                        // LLM execution event for llm_only profile (emitted with specific event name like genie)
+                        const { details, step, type } = eventData;
+                        console.log(`[${eventName}] Received:`, details);
+
+                        UI.updateStatusWindow({
+                            step: getLlmOnlyTitle(type || eventName, details || {}),
+                            details: details || {},
+                            type: type || eventName
+                        }, false, 'knowledge_retrieval');  // Reuse knowledge_retrieval rendering
+                    } else if (eventName === 'llm_execution_complete') {
+                        // LLM execution complete event (shows token counts like RAG's rag_llm_step)
+                        const { details, step, type } = eventData;
+                        console.log(`[${eventName}] Received:`, details);
+
+                        UI.updateStatusWindow({
+                            step: step || _getConversationAgentStepTitle('llm_execution_complete', details),
+                            details: details || {},
+                            type: type || eventName
+                        }, false, 'knowledge_retrieval');  // Reuse knowledge_retrieval rendering
+                    } else if (eventName === 'knowledge_retrieval') {
+                        // Knowledge retrieval event (emitted with specific event name like genie)
+                        const { details, step, type } = eventData;
+                        console.log(`[${eventName}] Received:`, details);
+
+                        // Update knowledge indicator if we have collection info
+                        if (details && details.collections) {
+                            const collections = details.collections || [];
+                            const documentCount = details.document_count || 0;
+                            // Only blink during live execution, not when viewing historical turns
+                            if (!state.isViewingHistoricalTurn) {
+                                UI.blinkKnowledgeDot();
+                            }
+                            UI.updateKnowledgeIndicator(collections, documentCount);
+                        }
+
+                        UI.updateStatusWindow({
+                            step: step || 'Knowledge Retrieved',
+                            details: details || {},
+                            type: type || eventName
+                        }, false, 'knowledge_retrieval');  // Reuse knowledge_retrieval rendering
+                    } else if (eventName === 'session_name_generation_start' ||
+                               eventName === 'session_name_generation_complete') {
+                        // Route session name generation events to status window with proper rendering
+                        const { details, step, type } = eventData;
+
+                        console.log(`[${eventName}] Received:`, details);
+
+                        // Accumulate cost for session name generation (if available)
+                        if (eventName === 'session_name_generation_complete' && details?.cost_usd) {
+                            console.log('[COST DEBUG] Session name generation:', {
+                                cost: details.cost_usd,
+                                input: details.input_tokens,
+                                output: details.output_tokens
+                            });
+                            // Map session_name event field names to updateTokenDisplay contract
+                            // (event has input_tokens/output_tokens, display expects statement_input/statement_output)
+                            UI.updateTokenDisplay({
+                                statement_input: details.input_tokens,
+                                statement_output: details.output_tokens,
+                                cost_usd: details.cost_usd
+                            });
+                        }
+
+                        // Update status window with formatted rendering (existing renderers in ui.js will be called)
+                        UI.updateStatusWindow({
+                            step: step || (eventName === 'session_name_generation_start'
+                                            ? 'Generating Session Name'
+                                            : 'Session Name Generated'),
+                            details: details || {},
+                            type: type || eventName
+                        }, eventName === 'session_name_generation_complete', 'session_name');
+                    } else if (eventName === 'session_name_update') {
+                        const { session_id, newName } = eventData;
+                        UI.updateSessionListItemName(session_id, newName);
+                    } else if (eventName === 'session_model_update') {
+                        const { session_id, models_used, profile_tags_used, last_updated } = eventData;
+                        UI.updateSessionModels(session_id, models_used, profile_tags_used);
+                        UI.updateSessionTimestamp(session_id, last_updated);
+                    } else if (eventName === 'request_user_input') {
+                        UI.updateStatusWindow({ step: "Action Required", details: "Waiting for user to correct parameters.", type: 'workaround' });
+                        UI.setExecutionState(false);
+                        openCorrectionModal(eventData.details);
+                    } else if (eventName === 'session_update') {
+                        // Logic to potentially update session list if needed
+                    } else if (eventName === 'llm_thought') {
+                        UI.updateStatusWindow({ step: "Parser has generated the final answer", ...eventData });
+                    } else if (eventName === 'prompt_selected') {
+                        UI.updateStatusWindow(eventData);
+                        if (eventData.prompt_name) UI.highlightResource(eventData.prompt_name, 'prompts');
+                    } else if (eventName === 'tool_result' || eventName === 'tool_error' || eventName === 'tool_intent') {
+                        UI.updateStatusWindow(eventData);
+                        if (eventData.tool_name) {
+                            const toolType = eventData.tool_name.startsWith('generate_') ? 'charts' : 'tools';
+                            UI.highlightResource(eventData.tool_name, toolType);
+                        }
+                    // --- Extension Results (combined event, own SSE type) ---
+                    } else if (eventName === 'extension_results') {
+                        const payload = eventData.payload || {};
+                        console.log('[SSE] Extension results received:', Object.keys(payload));
+
+                        // Display results based on each extension's output_target
+                        for (const [extName, result] of Object.entries(payload)) {
+                            if (!result.success) {
+                                console.warn(`[Extension] ${extName} failed:`, result.error);
+                                continue;
+                            }
+
+                            const outputTarget = result.output_target || 'silent';
+
+                            if (outputTarget === 'chat_append' && result.content) {
+                                // Check if this is a binary/file download (e.g. PDF)
+                                const isBinaryContent = _isExtensionBinaryContent(result);
+
+                                let extHtml;
+                                if (isBinaryContent) {
+                                    extHtml = _buildExtensionDownloadCard(extName, result);
+                                } else {
+                                    extHtml = `
+                                    <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${extName}" style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="text-xs font-semibold px-1.5 py-0.5 rounded" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">!${extName}</span>
+                                            <span class="text-xs text-gray-500">${result.content_type}</span>
+                                        </div>
+                                        <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-48" style="font-family: 'JetBrains Mono', monospace;">${
+                                            typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content
+                                        }</pre>
+                                    </div>
+                                    `;
+                                }
+                                // Append to the last chat message
+                                const chatLog = document.getElementById('chat-log');
+                                if (chatLog) {
+                                    const lastMsg = chatLog.querySelector('.message-bubble:last-child .message-content');
+                                    if (lastMsg) {
+                                        lastMsg.insertAdjacentHTML('beforeend', extHtml);
+                                    }
+                                }
+                            } else if (outputTarget === 'status_panel' && result.content) {
+                                UI.updateStatusWindow({
+                                    step: `Extension: !${extName}`,
+                                    details: typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content,
+                                    type: 'extension_result'
+                                }, false, 'extension');
+                            }
+                            // 'silent' — show output preview in Live Status (collapsible)
+                        }
+
+                        // Also render silent extension output previews in Live Status
+                        UI.updateStatusWindow({
+                            step: 'Extension results',
+                            details: payload,
+                            type: 'extension_results'
+                        }, false, 'extension');
+
+                    // --- Component Render Events (Generative UI) ---
+                    } else if (eventName === 'component_render') {
+                        const { component_id, window_id, action, spec, title, render_target } = eventData;
+                        console.log('[SSE] Component render event:', component_id, action, render_target);
+
+                        if (render_target === 'sub_window') {
+                            // Sub-window component: create, update, or close a persistent panel
+                            if (action === 'close' && window_id) {
+                                closeSubWindow(window_id);
+                            } else if (action === 'update' && window_id) {
+                                updateSubWindow(window_id, spec);
+                            } else {
+                                // 'create' or default
+                                const swEl = createSubWindow(window_id || `sw-${Date.now()}`, component_id, {
+                                    title: title || component_id,
+                                    spec,
+                                    interactive: !!eventData.interactive
+                                });
+                                if (swEl && spec && hasRenderer(component_id)) {
+                                    const bodyEl = swEl.querySelector('.sub-window-body');
+                                    if (bodyEl) {
+                                        bodyEl.id = bodyEl.id || `sw-body-${Date.now()}`;
+                                        renderComponent(component_id, bodyEl.id, spec);
+                                    }
+                                }
+                            }
+                        } else {
+                            // Inline component: rendered via [data-component-id] in the chat message
+                            // (already handled by ui.js appendMessage). Log for debugging.
+                            console.log('[SSE] Inline component_render — will be rendered by appendMessage().');
+                        }
+
+                        UI.updateStatusWindow({
+                            step: `Component: ${title || component_id}`,
+                            details: { component_id, render_target: render_target || 'inline', action: action || 'render' },
+                            type: 'component_render'
+                        }, false, 'interactive');
+
+                    // --- Genie Coordination Events ---
+                    } else if (eventName === 'genie_start' || eventName === 'genie_routing' ||
+                               eventName === 'genie_coordination_start' || eventName === 'genie_llm_step' ||
+                               eventName === 'genie_routing_decision' ||
+                               eventName === 'genie_slave_invoked' || eventName === 'genie_slave_progress' ||
+                               eventName === 'genie_slave_completed' || eventName === 'genie_synthesis_start' ||
+                               eventName === 'genie_synthesis_complete' ||
+                               eventName === 'genie_coordination_complete' ||
+                               eventName === 'genie_component_invoked' ||
+                               eventName === 'genie_component_completed') {
+                        // Handle genie coordination events - delegate to genieHandler
+                        console.log('[SSE] Genie event received:', eventName, eventData);
+                        handleGenieEvent(eventName, eventData);
+
+                        // Update token display for cost tracking (genie coordinator LLM calls)
+                        if (eventName === 'genie_llm_step' && eventData.cost_usd) {
+                            UI.updateTokenDisplay(eventData);
+                        }
+
+                        // Also update status window
+                        const genieStepTitle = _getGenieStepTitle(eventName, eventData);
+                        UI.updateStatusWindow({
+                            step: genieStepTitle,
+                            details: eventData,
+                            type: eventName
+                        }, eventName === 'genie_coordination_complete', 'genie');
+
+                        // KG Live Animation: dispatch genie tool events
+                        if (eventName === 'genie_slave_invoked' || eventName === 'genie_slave_completed' ||
+                            eventName === 'genie_component_invoked' || eventName === 'genie_component_completed') {
+                            _tryKGAnimate(eventName, eventData);
+                        }
+                        // KG Live Animation: end animations on genie coordination complete
+                        if (eventName === 'genie_coordination_complete') _tryKGAnimateEnd();
+                    } else if (eventName === 'cancelled') {
+                        const lastStep = document.getElementById(`status-step-${state.currentStatusId}`);
+                        if (lastStep) {
+                            lastStep.classList.remove('active');
+                            lastStep.classList.add('cancelled');
+                        }
+                        UI.updateStatusWindow({ step: "Execution Stopped", details: eventData.message || "Process cancelled by user.", type: 'cancelled'}, true);
+
+                        // Create a cancelled message in the chat so the turn badge is clickable
+                        if (eventData.turn_id) {
+                            // Only add if this is for the current session
+                            if (!eventData.session_id || eventData.session_id === state.currentSessionId) {
+                                const cancelledMessage = `<span class="cancelled-tag">CANCELLED</span> Execution was stopped by user.`;
+                                UI.addMessage('assistant', cancelledMessage, eventData.turn_id, true);
+                            }
+                        }
+
+                        UI.setExecutionState(false);
+                    } else if (eventName === 'final_answer') {
+                        // Check if this event is for the current session (prevents cross-session message leakage during Genie execution)
+                        if (eventData.session_id && eventData.session_id !== state.currentSessionId) {
+                            console.log('[final_answer] Ignoring event for different session:', eventData.session_id, 'current:', state.currentSessionId);
+                            // Don't add message to UI, but still reset execution state
+                            UI.setExecutionState(false);
+                            continue; // Skip to next event
+                        }
+                        // All new messages are valid by default, so we don't need to pass `true`
+                        // Pass is_session_primer flag for Primer badge display
+                        // Enable live coding animation for canvas components in this response
+                        window.__canvasLiveMode = true;
+                        UI.addMessage('assistant', eventData.final_answer, eventData.turn_id, true, null, null, eventData.is_session_primer || false);
+                        // Clear fallback in case no canvas was in this response
+                        setTimeout(() => { window.__canvasLiveMode = false; }, 100);
+                        // Note: "Finished" status step removed - redundant with execution_complete events
+                        // All profile types now emit execution_complete with profile-specific KPIs
+                        UI.setExecutionState(false);
+
+                        // KG Live Animation: end animations on final answer
+                        _tryKGAnimateEnd();
+
+                        // Auto-focus input field so user can immediately type next question
+                        if (DOM.userInput) {
+                            DOM.userInput.focus();
+                        }
+
+                        if (eventData.source === 'voice' && eventData.tts_payload) {
+                            state.ttsCancelled = false;
+                            const { direct_answer, key_observations } = eventData.tts_payload;
+
+                            if (direct_answer) {
+                                await playTTSAudio(truncateForTTS(direct_answer));
+                            }
+
+                            if (key_observations && !state.ttsCancelled) {
+                                switch (state.keyObservationsMode) {
+                                    case 'autoplay-off':
+                                        state.ttsState = 'AWAITING_OBSERVATION_CONFIRMATION';
+                                        state.ttsObservationBuffer = key_observations;
+                                        UI.updateVoiceModeUI();
+
+                                        await playTTSAudio("Do you want to hear the key observations?");
+
+                                        if (!state.ttsCancelled) {
+                                            startConfirmationRecognition(handleObservationConfirmation);
+                                        } else {
+                                            state.ttsState = 'IDLE';
+                                            state.ttsObservationBuffer = '';
+                                            UI.updateVoiceModeUI();
+                                        }
+                                        break;
+
+                                    case 'autoplay-on':
+                                        await playTTSAudio(key_observations);
+                                        // fall through to 'off' for voice restart
+                                    case 'off':
+                                        if (state.isVoiceModeLocked && !state.ttsCancelled) {
+                                            setTimeout(() => startRecognition(), 100);
+                                        }
+                                        break;
+                                }
+                            } else if (state.isVoiceModeLocked && !state.ttsCancelled) {
+                                setTimeout(() => startRecognition(), 100);
+                            }
+                        }
+
+
+                    } else if (eventName === 'error') {
+                        // Include turn_id so badge is created and clickable
+                        const errorTurnId = eventData.turn_id || null;
+                        // Only add if this is for the current session
+                        if (!eventData.session_id || eventData.session_id === state.currentSessionId) {
+                            const errorMessage = `<span class="error-tag">ERROR</span> ${eventData.error || 'Unknown error'}`;
+                            UI.addMessage('assistant', errorMessage, errorTurnId, true);
+                        }
+                        UI.updateStatusWindow({ step: "Error", details: eventData.details || eventData.error, type: 'error' }, true);
+                        UI.setExecutionState(false);
+                    } else if (eventName === 'rest_task_update') {
+                        const { task_id, session_id, event } = eventData.payload; // eslint-disable-line no-unused-vars
+                        UI.updateStatusWindow(event, false, 'rest', task_id);
+                    } else if (eventName === 'task_start') { // Handle the new task_start event
+                        UI.updateTaskIdDisplay(eventData.task_id);
+                    } else if (eventData.type === 'system_message' && eventData.details?.summary === 'Synthesizing answer from retrieved knowledge') {
+                        // SKIP this event - it's redundant and fires BEFORE the LLM call (no data)
+                        // The actual rag_llm_step event will follow with correct token/model data
+                        console.log('[RAG Synthesis] Skipping redundant system_message preview event - waiting for rag_llm_step with data');
+                        // Don't call updateStatusWindow - skip this event entirely
+                    } else if (eventData.type === 'context_window_snapshot') {
+                        // Context Window Assembly from executor.py path (arrives as eventName='message')
+                        // Use same rich rendering as the notification handler
+                        const snapshotPayload = eventData.payload || {};
+                        const snapshotHtml = renderContextWindowSnapshot(snapshotPayload);
+                        UI.updateStatusWindow({
+                            step: eventData.step || 'Context Window Assembly',
+                            details: snapshotHtml,
+                            type: 'context_window_snapshot'
+                        }, true, 'context_window');
+                    } else {
+                        UI.updateStatusWindow(eventData);
+
+                        // KG Live Animation: dispatch tool_enabled events (phase_start, plan_generated, kg_enrichment)
+                        if (eventData.type) {
+                            _tryKGAnimate(eventData.type, eventData.details || eventData.payload || eventData);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error parsing SSE data line:", dataLine, e);
+                }
+            }
+        }
+    }
+    if (buffer.trim()) {
+    }
+}
+
+
+/**
+ * Truncates text to a TTS-safe length (Google Cloud TTS limit is ~5000 bytes).
+ * Cuts at the last sentence boundary before the limit.
+ */
+function truncateForTTS(text, maxLength = 4500) {
+    if (!text || text.length <= maxLength) return text;
+    const truncated = text.substring(0, maxLength);
+    const lastSentenceEnd = Math.max(
+        truncated.lastIndexOf('. '),
+        truncated.lastIndexOf('! '),
+        truncated.lastIndexOf('? '),
+        truncated.lastIndexOf('.\n')
+    );
+    if (lastSentenceEnd > maxLength * 0.5) {
+        return truncated.substring(0, lastSentenceEnd + 1);
+    }
+    return truncated + '...';
+}
+
+/**
+ * Synthesizes and plays TTS audio, storing the Audio reference in state for cancellation.
+ * Resolves when audio finishes, errors, or is paused (cancelled).
+ */
+async function playTTSAudio(text) {
+    const audioBlob = await API.synthesizeText(text);
+    if (!audioBlob || state.ttsCancelled) return;
+
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    state.currentTTSAudio = audio;
+
+    await new Promise(resolve => {
+        const cleanup = () => { URL.revokeObjectURL(audioUrl); resolve(); };
+        audio.onended = cleanup;
+        audio.onerror = cleanup;
+        audio.onpause = cleanup;
+        audio.play().catch(cleanup);
+    });
+
+    state.currentTTSAudio = null;
+}
+
+/**
+ * Cancels any in-progress TTS playback and resets TTS state.
+ * Called when user presses Escape during TTS playback.
+ */
+export function cancelTTS() {
+    state.ttsCancelled = true;
+    if (state.currentTTSAudio) {
+        state.currentTTSAudio.pause();
+        state.currentTTSAudio = null;
+    }
+    state.ttsState = 'IDLE';
+    state.ttsObservationBuffer = '';
+    UI.updateVoiceModeUI();
+    if (state.isVoiceModeLocked) {
+        setTimeout(() => startRecognition(), 100);
+    }
+}
+
+async function handleObservationConfirmation(transcribedText) {
+    const classification = Utils.classifyConfirmation(transcribedText);
+
+    if (classification === 'yes' && state.ttsObservationBuffer) {
+        await playTTSAudio(state.ttsObservationBuffer);
+    }
+    state.ttsState = 'IDLE';
+    state.ttsObservationBuffer = '';
+    UI.updateVoiceModeUI();
+    if (state.isVoiceModeLocked && !state.ttsCancelled) {
+        setTimeout(() => startRecognition(), 100);
+    }
+}
+
+
+export async function handleStreamRequest(endpoint, body) {
+    if (body.message) {
+        // Only add user message if it's NOT a replay initiated by the replay button
+        if (!body.is_replay) {
+            // Extract profile tag - parse the actual message to detect @TAG (same pattern as handleChatSubmit)
+            let profileTag = null;
+
+            // Parse the actual message to detect @TAG
+            if (body.message) {
+                const tagMatch = body.message.match(/^@(\w+)\s/);
+                if (tagMatch && window.configState?.profiles) {
+                    const tag = tagMatch[1].toUpperCase();
+                    const profile = window.configState.profiles.find(p => p.tag === tag);
+                    if (profile && profile.id !== window.configState?.defaultProfileId) {
+                        profileTag = tag;
+                    }
+                }
+            }
+
+            // Fall back to default profile if no tag detected
+            if (!profileTag && window.configState?.defaultProfileId && window.configState?.profiles) {
+                const defaultProfile = window.configState.profiles.find(p => p.id === window.configState.defaultProfileId);
+                profileTag = defaultProfile?.tag || null;
+            }
+            // Build message with attachment chips if files are attached
+            let displayMessage = body.message;
+            if (body.attachments && body.attachments.length > 0) {
+                const chipHtml = renderAttachmentChips(body.attachments);
+                displayMessage = body.message + chipHtml;
+            }
+            UI.addMessage('user', displayMessage, null, true, 'text', profileTag, body.is_session_primer || false, body.extensions || null, body.skills || null);
+        } else {
+        }
+    } else {
+        // For MCP prompt execution, always use default profile (no message to parse for @TAG)
+        let profileTag = null;
+        if (window.configState?.defaultProfileId && window.configState?.profiles) {
+            const defaultProfile = window.configState.profiles.find(p => p.id === window.configState.defaultProfileId);
+            profileTag = defaultProfile?.tag || null;
+        }
+        UI.addMessage('user', `Executing prompt: ${body.prompt_name}`, null, true, 'text', profileTag);
+    }
+    DOM.userInput.value = '';
+
+    // Hide suggestions and profile selector when clearing input
+    const suggestionsContainer = document.getElementById('rag-suggestions-container');
+    if (suggestionsContainer) {
+        suggestionsContainer.innerHTML = '';
+        suggestionsContainer.classList.add('hidden');
+    }
+
+    const profileTagSelector = document.getElementById('profile-tag-selector');
+    if (profileTagSelector) {
+        profileTagSelector.innerHTML = '';
+        profileTagSelector.classList.add('hidden');
+    }
+
+    UI.setExecutionState(true);
+    UI.resetStatusWindowForNewTask();
+    // Set default title for the brief window before execution_start arrives with branding
+    const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+    if (statusTitle) statusTitle.textContent = 'Live Status';
+
+    // This call remains to set the prompt name specifically for the new execution
+    UI.updateStatusPromptName();
+
+    const useLastTurnMode = state.isLastTurnModeLocked || state.isTempLastTurnMode;
+    body.disabled_history = useLastTurnMode || body.is_replay; // Disable if last turn mode OR replay
+
+
+    DOM.contextStatusDot.classList.remove('history-disabled-preview');
+
+    const originSessionId = state.currentSessionId;
+    state.activeStreamSessions.add(originSessionId);
+
+    try {
+        const response = await API.startStream(endpoint, body);
+        if (response && response.ok && response.body) {
+            await processStream(response.body, originSessionId);
+        }
+    } catch (error) {
+        // Only show error if the user is still on the originating session
+        if (state.currentSessionId === originSessionId) {
+            UI.addMessage('assistant', `Sorry, a stream processing error occurred: ${error.message}`);
+            UI.updateStatusWindow({ step: "Error", details: error.stack, type: 'error' }, true);
+        } else {
+            console.warn('[handleStreamRequest] Stream error for previous session, suppressing:', error.message);
+        }
+    } finally {
+        state.activeStreamSessions.delete(originSessionId);
+        delete state.sessionUiCache[originSessionId];
+
+        if (state.currentSessionId === originSessionId) {
+            // User is viewing this session - clean up normally
+            UI.setExecutionState(false);
+            UI.updateHintAndIndicatorState();
+        }
+        // When user is viewing a DIFFERENT session, we intentionally do NOT
+        // reset execution state or global flags - those belong to the viewed session.
+        // The stale cache is deleted so the next load of this completed session
+        // goes through the normal server path with fresh data.
+    }
+}
+
+
+// --- Event Handlers ---
+
+export async function handleChatSubmit(e, source = 'text') {
+    e.preventDefault();
+
+    // Block submit while files are still uploading
+    if (isUploadInProgress()) return;
+
+    // Get the active tag prefix from main.js if badge is showing
+    const rawMessage = DOM.userInput.value.trim();
+
+    // Only use activeTagPrefix if the raw message doesn't have its own @TAG
+    // This prevents stale @TAG from previous queries being automatically prepended
+    const hasExplicitTag = /^@\w+\s/.test(rawMessage);
+    const activeTagPrefix = hasExplicitTag ? '' : (window.activeTagPrefix || '');
+
+    // Reconstruct full message with tag if badge was active
+    const message = activeTagPrefix ? activeTagPrefix + rawMessage : rawMessage;
+    
+    if (!message || !state.currentSessionId) return;
+    
+    // Check for @TAG profile override
+    let profileOverrideId = null;
+    let cleanedMessage = message;
+    const tagMatch = message.match(/^@(\w+)\s+(.+)/);
+    
+    if (tagMatch && window.configState?.profiles) {
+        const tag = tagMatch[1].toUpperCase();
+        console.log('🔍 Tag detected:', tag);
+        const overrideProfile = window.configState.profiles.find(p => p.tag === tag);
+        if (overrideProfile) {
+            // Don't treat default profile as an override
+            if (overrideProfile.id !== window.configState?.defaultProfileId) {
+                profileOverrideId = overrideProfile.id;
+                cleanedMessage = tagMatch[2]; // Strip @TAG from message
+                console.log(`✅ Profile override found: ${overrideProfile.name} (${profileOverrideId})`);
+                console.log(`📝 Cleaned message: "${cleanedMessage}"`);
+                // Store the active profile override for autocomplete to use
+                window.activeProfileOverrideId = profileOverrideId;
+            } else {
+                // Default profile tag typed — strip the tag but don't set override
+                cleanedMessage = tagMatch[2];
+                console.log(`ℹ️  @${tag} is the default profile, not treating as override`);
+            }
+        } else {
+            console.log(`❌ No profile found with tag: ${tag}`);
+        }
+    } else {
+        console.log('ℹ️  No @TAG detected or profiles not loaded');
+    }
+    
+    // Check for #skill:param directives in text (manual typing)
+    let skillSpecs = [];
+    const skillRegex = /#(\w[\w-]*)(?::(\S+))?/g;
+    let skillMatch;
+    while ((skillMatch = skillRegex.exec(cleanedMessage)) !== null) {
+        skillSpecs.push({
+            name: skillMatch[1].toLowerCase(),
+            param: skillMatch[2] || null
+        });
+    }
+    // Strip #skill tags from message sent to LLM
+    if (skillSpecs.length > 0) {
+        cleanedMessage = cleanedMessage.replace(/#\w[\w-]*(?::\S+)?/g, '').trim();
+    }
+
+    // Merge badge-based skills (from autocomplete selection)
+    const badgeSkills = window.activeSkills || [];
+    for (const skill of badgeSkills) {
+        if (!skillSpecs.find(s => s.name === skill.name)) {
+            skillSpecs.push({ name: skill.name, param: skill.param || null });
+        }
+    }
+
+    if (skillSpecs.length > 0) {
+        console.log(`✦ Skills: ${skillSpecs.map(s => '#' + s.name + (s.param ? ':' + s.param : '')).join(' ')}`);
+    }
+
+    // Check for !extension:param directives in text (manual typing)
+    let extensionSpecs = [];
+    const extensionRegex = /!(\w+)(?::(\S+))?/g;
+    let extMatch;
+    while ((extMatch = extensionRegex.exec(cleanedMessage)) !== null) {
+        extensionSpecs.push({
+            name: extMatch[1].toLowerCase(),
+            param: extMatch[2] || null
+        });
+    }
+    // Strip !extension tags from message sent to LLM
+    if (extensionSpecs.length > 0) {
+        cleanedMessage = cleanedMessage.replace(/!\w+(?::\S+)?/g, '').trim();
+    }
+
+    // Merge badge-based extensions (from autocomplete selection)
+    const badgeExtensions = window.activeExtensions || [];
+    for (const ext of badgeExtensions) {
+        if (!extensionSpecs.find(e => e.name === ext.name)) {
+            extensionSpecs.push({ name: ext.name, param: ext.param || null });
+        }
+    }
+
+    if (extensionSpecs.length > 0) {
+        console.log(`🧩 Extensions: ${extensionSpecs.map(e => '!' + e.name + (e.param ? ':' + e.param : '')).join(' ')}`);
+    }
+
+    // Collect pending file attachments
+    const attachments = getPendingAttachments();
+
+    // Collect open canvas state for bidirectional context
+    const canvasState = getOpenCanvasState();
+    let canvasContext = undefined;
+    if (canvasState) {
+        canvasContext = {
+            title: canvasState.title,
+            language: canvasState.language,
+            content: canvasState.content,
+            modified: canvasState.modified,
+        };
+    }
+
+    handleStreamRequest('/ask_stream', {
+        message: cleanedMessage,
+        session_id: state.currentSessionId,
+        source: source,
+        profile_override_id: profileOverrideId,
+        skills: skillSpecs.length > 0 ? skillSpecs : undefined,
+        extensions: extensionSpecs.length > 0 ? extensionSpecs : undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        canvas_context: canvasContext
+        // is_replay is implicitly false here
+    });
+
+    // Keep skill badges active (sticky) — user must click × to remove
+    // Clear extension badges after sending
+    if (window.clearExtensionBadges) {
+        window.clearExtensionBadges();
+    }
+
+    // Clear attachments after sending
+    if (attachments.length > 0) {
+        clearPendingAttachments();
+    }
+}
+
+async function handleStopExecutionClick() {
+    if (!state.currentSessionId) {
+        return;
+    }
+
+    // CRITICAL: Keep button enabled but show visual feedback
+    if(DOM.stopExecutionButton) {
+        const originalText = DOM.stopExecutionButton.textContent;
+        DOM.stopExecutionButton.textContent = 'Stopping...';
+        DOM.stopExecutionButton.classList.add('opacity-75', 'cursor-wait');
+
+        // Store original text for restoration
+        DOM.stopExecutionButton.dataset.originalText = originalText;
+    }
+
+    // Set a failsafe timeout - button MUST re-enable after 10 seconds
+    const failsafeTimer = setTimeout(() => {
+        console.warn('[FAILSAFE] Stop button timeout - forcing UI reset');
+        forceResetExecutionState();
+    }, 10000);
+
+    try {
+        const result = await API.cancelStream(state.currentSessionId);
+        console.log('[StopButton] Cancellation API response:', result);
+
+        // Success - wait for backend to emit 'cancelled' event
+        // But also set a backup timer in case event never arrives
+        setTimeout(() => {
+            if (DOM.stopExecutionButton && !DOM.stopExecutionButton.classList.contains('hidden')) {
+                console.warn('[FAILSAFE] Backend cancelled event never arrived - forcing reset');
+                forceResetExecutionState();
+            }
+        }, 5000);
+
+    } catch (error) {
+        console.error("Error sending cancellation request:", error);
+        UI.addMessage('assistant', `Error trying to stop execution: ${error.message}`);
+        // Force reset immediately on error
+        forceResetExecutionState();
+    } finally {
+        clearTimeout(failsafeTimer);
+    }
+}
+
+/**
+ * Force reset execution state - ensures UI is always recoverable.
+ * This is a failsafe function that guarantees the stop button never stays disabled.
+ */
+function forceResetExecutionState() {
+    console.log('[FORCE RESET] Resetting execution state');
+
+    // Reset button state
+    if(DOM.stopExecutionButton) {
+        const originalText = DOM.stopExecutionButton.dataset.originalText || 'Stop';
+        DOM.stopExecutionButton.textContent = originalText;
+        DOM.stopExecutionButton.classList.remove('opacity-75', 'cursor-wait');
+        DOM.stopExecutionButton.disabled = false;
+        DOM.stopExecutionButton.classList.add('hidden');
+        delete DOM.stopExecutionButton.dataset.originalText;
+    }
+
+    // Reset execution state
+    UI.setExecutionState(false);
+
+    // Reset status window with error message
+    UI.updateStatusWindow({
+        step: "Execution Stopped (Forced)",
+        details: "Process forcibly terminated after timeout.",
+        type: 'error'
+    }, true);
+}
+
+/**
+ * Render extension lifecycle events and results into the status panel for historical turn recall.
+ * Called after each profile-type block renders its own events — appends an "Extensions" section.
+ *
+ * @param {Object} turnData - The turn data from the API (contains extension_events + extension_results)
+ * @param {HTMLElement} container - The DOM container to append extension rendering to
+ */
+function _renderSkillEventsForReload(turnData, container) {
+    const skills = turnData.skills_applied || [];
+    if (skills.length === 0) return;
+
+    // --- Emerald divider ---
+    const divider = document.createElement('div');
+    divider.className = 'px-4 py-2 mt-2 border-t';
+    divider.dataset.filterCategory = 'system';
+    divider.style.borderColor = 'rgba(52, 211, 153, 0.3)';
+    divider.innerHTML = `<span class="text-xs font-semibold uppercase tracking-wider" style="color: #34d399;">Skills</span>`;
+    container.appendChild(divider);
+
+    // --- Render each skill ---
+    let totalTokens = 0;
+    skills.forEach(skill => {
+        const nameDisplay = skill.param ? `#${skill.name}:${skill.param}` : `#${skill.name}`;
+        const target = skill.injection_target === 'user_context' ? 'user context' : 'system prompt';
+        const tokens = skill.estimated_tokens || 0;
+        totalTokens += tokens;
+
+        const stepEl = document.createElement('div');
+        stepEl.className = 'px-4 py-2 status-step';
+        stepEl.dataset.filterCategory = 'system';
+        stepEl.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="text-xs" style="color: #34d399;">&#10038;</span>
+                <span class="text-xs text-gray-300"><span class="font-medium" style="color: #34d399;">${nameDisplay}</span> &rarr; ${target}</span>
+                <span class="text-xs text-gray-500 ml-auto">~${tokens.toLocaleString()} tokens</span>
+            </div>`;
+        container.appendChild(stepEl);
+    });
+
+    // Total overhead summary (only if multiple skills)
+    if (skills.length > 1) {
+        const totalEl = document.createElement('div');
+        totalEl.className = 'px-4 py-1';
+        totalEl.innerHTML = `<span class="text-xs text-gray-500">Skill context: ~${totalTokens.toLocaleString()} tokens added to prompt</span>`;
+        container.appendChild(totalEl);
+    }
+}
+
+function _renderExtensionEventsForReload(turnData, container) {
+    const extEvents = turnData.extension_events || [];
+    const extResults = turnData.extension_results || {};
+
+    if (extEvents.length === 0 && Object.keys(extResults).length === 0) {
+        return; // No extension data to render
+    }
+
+    // --- Divider ---
+    const divider = document.createElement('div');
+    divider.className = 'px-4 py-2 mt-2 border-t border-amber-500/30';
+    divider.dataset.filterCategory = 'system';
+    divider.innerHTML = `<span class="text-xs font-semibold text-amber-400 uppercase tracking-wider">Extensions</span>`;
+    container.appendChild(divider);
+
+    // --- Replay lifecycle events (extension_start / extension_complete) ---
+    extEvents.forEach(event => {
+        const eventType = event.type;
+        const payload = event.payload || {};
+
+        if (eventType === 'extension_start') {
+            const stepEl = document.createElement('div');
+            stepEl.className = 'px-4 py-2 status-step';
+            stepEl.dataset.filterCategory = 'system';
+            stepEl.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="text-amber-400 text-xs">&#9654;</span>
+                    <span class="text-xs text-gray-300">Running <span class="text-amber-300 font-medium">!${payload.name || '?'}${payload.param ? ':' + payload.param : ''}</span></span>
+                </div>`;
+            container.appendChild(stepEl);
+        } else if (eventType === 'extension_complete') {
+            const success = payload.success !== false;
+            const icon = success ? '&#10003;' : '&#10007;';
+            const color = success ? 'text-green-400' : 'text-red-400';
+
+            // Build metrics string (tokens, cost, time) — same as live renderer
+            let metricsHtml = '';
+            const inputTokens = payload.input_tokens;
+            const outputTokens = payload.output_tokens;
+            const costUsd = payload.cost_usd;
+            const execTimeMs = payload.execution_time_ms;
+
+            if (inputTokens || outputTokens) {
+                const parts = [];
+                parts.push(`${(inputTokens || 0).toLocaleString()} in / ${(outputTokens || 0).toLocaleString()} out`);
+                if (costUsd !== undefined && costUsd > 0) {
+                    parts.push(`$${parseFloat(costUsd).toFixed(6)}`);
+                }
+                if (execTimeMs) {
+                    parts.push(`${execTimeMs}ms`);
+                }
+                metricsHtml = `<span class="text-xs text-gray-500 ml-auto">${parts.join(' &middot; ')}</span>`;
+            } else if (execTimeMs) {
+                metricsHtml = `<span class="text-xs text-gray-500 ml-auto">${execTimeMs}ms</span>`;
+            }
+
+            const stepEl = document.createElement('div');
+            stepEl.className = 'px-4 py-2 status-step';
+            stepEl.dataset.filterCategory = 'system';
+            stepEl.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="${color} text-xs">${icon}</span>
+                    <span class="text-xs text-gray-300"><span class="text-amber-300 font-medium">!${payload.name || '?'}</span> ${success ? 'completed' : 'failed'}</span>
+                    ${metricsHtml}
+                </div>`;
+            container.appendChild(stepEl);
+        }
+    });
+
+    // --- Show result summaries for silent/status_panel extensions ---
+    for (const [name, result] of Object.entries(extResults)) {
+        const target = result.output_target || 'silent';
+        if (target === 'chat_append') continue; // Handled separately below (rendered into chat pane)
+
+        if (result.success && result.content) {
+            const contentPreview = typeof result.content === 'object'
+                ? JSON.stringify(result.content, null, 2).substring(0, 300)
+                : String(result.content).substring(0, 300);
+
+            const resultEl = document.createElement('div');
+            resultEl.className = 'px-4 py-2';
+            resultEl.innerHTML = `
+                <details class="group">
+                    <summary class="text-xs text-amber-300 cursor-pointer hover:text-amber-200">
+                        !${name} output <span class="text-gray-500">(${result.content_type || 'json'})</span>
+                    </summary>
+                    <pre class="mt-1 text-xs text-gray-400 bg-gray-800/50 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap">${contentPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                </details>`;
+            container.appendChild(resultEl);
+        }
+    }
+
+    // --- Re-render chat_append extension cards into the chat message bubble ---
+    // After a reload, chat_append cards are NOT in the chat log (they were only
+    // inserted into the DOM during live execution). Re-render them here from
+    // persisted extension_results so download buttons survive page reloads.
+    const reloadTurnId = turnData.turn || turnData.turn_id;
+    if (reloadTurnId) {
+        for (const [name, result] of Object.entries(extResults)) {
+            const target = result.output_target || 'silent';
+            if (target !== 'chat_append' || !result.success || !result.content) continue;
+
+            // Use .assistant-badge (not .clickable-avatar) to find the assistant bubble.
+            // .clickable-avatar[data-turn-id] matches the USER avatar, not the assistant's.
+            const chatLog = document.getElementById('chat-log');
+            const badge = chatLog?.querySelector(`.assistant-badge[data-turn-id="${reloadTurnId}"]`);
+            if (!badge) continue;
+            const msgContent = badge.closest('.message-bubble')?.querySelector('.message-content');
+            if (!msgContent) continue;
+
+            // Skip if card already rendered (avoid duplicates on repeated clicks)
+            if (msgContent.querySelector(`.extension-output[data-ext-name="${name}"]`)) continue;
+
+            if (window._isExtensionBinaryContent && window._isExtensionBinaryContent(result)) {
+                msgContent.insertAdjacentHTML('beforeend', window._buildExtensionDownloadCard(name, result));
+            } else {
+                // Non-binary chat_append (e.g., JSON text output)
+                const cardHtml = `
+                    <div class="extension-output mt-3 p-3 rounded-lg" data-ext-name="${name}"
+                         style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15);">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-semibold px-1.5 py-0.5 rounded"
+                                  style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">!${name}</span>
+                            <span class="text-xs text-gray-500">${result.content_type}</span>
+                        </div>
+                        <pre class="text-xs text-gray-300 whitespace-pre-wrap overflow-auto max-h-48"
+                             style="font-family: 'JetBrains Mono', monospace;">${
+                            typeof result.content === 'object' ? JSON.stringify(result.content, null, 2) : result.content
+                        }</pre>
+                    </div>`;
+                msgContent.insertAdjacentHTML('beforeend', cardHtml);
+            }
+        }
+    }
+}
+
+/**
+ * Render context window snapshot during historical turn reload.
+ * Appends the snapshot visualization to the Live Status panel if available.
+ */
+function _renderContextWindowSnapshotForReload(turnData) {
+    const snapshotEvent = turnData?.context_window_snapshot_event;
+    if (!snapshotEvent) return;
+    const snapshotHtml = renderContextWindowSnapshot(snapshotEvent);
+    UI.updateStatusWindow({
+        step: 'Context Window Assembly',
+        details: snapshotHtml,
+        type: 'context_window_snapshot'
+    }, true, 'context_window');
+}
+
+/**
+ * Handles clicks on the "Reload Plan" button or user avatar. Fetches and displays the full turn details.
+ * @param {HTMLElement} element - The element that was clicked (button or avatar div).
+ */
+export async function handleReloadPlanClick(element) {
+    const turnId = element.dataset.turnId; // Get turnId from data attribute
+    const sessionId = state.currentSessionId;
+    if (!turnId || !sessionId) {
+        console.error("Missing turnId or sessionId for reloading plan details.");
+        return;
+    }
+
+    // Set flag to prevent status indicator blinks during historical viewing
+    state.isViewingHistoricalTurn = true;
+
+    // Indicate loading in the status window
+    DOM.statusWindowContent.innerHTML = `<p class="p-4 text-gray-400">Loading details for Turn ${turnId}...</p>`;
+    // Scroll to top of status window
+    DOM.statusWindowContent.scrollTop = 0;
+    // Ensure status panel is open
+    const statusCheckbox = document.getElementById('toggle-status-checkbox');
+    if (statusCheckbox && !statusCheckbox.checked) {
+        statusCheckbox.checked = true;
+        // Manually trigger the toggle logic if checkbox change doesn't automatically do it
+        const event = new Event('change');
+        statusCheckbox.dispatchEvent(event);
+    }
+
+
+    try {
+        // Fetch the full turn details (plan + trace)
+        const turnData = await API.fetchTurnDetails(sessionId, turnId);
+
+        console.log('[ReloadPlan] Turn data received:', turnData);
+        console.log('[ReloadPlan] System events in turn data:', turnData?.system_events);
+
+        // Handle cancelled or error turns FIRST (before profile-specific handling)
+        // These turns have partial data and need special display regardless of profile type
+        if (turnData && (turnData.status === 'cancelled' || turnData.status === 'error')) {
+            DOM.statusWindowContent.innerHTML = '';
+
+            // Update status title
+            const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+            if (statusTitle) {
+                const statusLabel = turnData.status === 'cancelled' ? 'Cancelled' : 'Error';
+                statusTitle.textContent = `${statusLabel} Turn ${turnId} (Partial)`;
+            }
+
+            // Create header with status indicator
+            const headerEl = document.createElement('div');
+            headerEl.className = `p-4 status-step ${turnData.status}`;
+
+            const statusIcon = turnData.status === 'cancelled' ?
+                '<svg class="w-5 h-5 text-yellow-400 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>' :
+                '<svg class="w-5 h-5 text-red-400 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+
+            const title = turnData.status === 'cancelled' ? 'Execution Cancelled' : 'Execution Error';
+
+            headerEl.innerHTML = `
+                <h4 class="font-bold text-sm text-white mb-2">${statusIcon}${title}</h4>
+                <p class="text-xs text-gray-300 mb-2">${turnData.error_message || 'Turn did not complete.'}</p>
+                ${turnData.error_details ? `<p class="text-xs text-gray-500 mt-1"><em>${turnData.error_details}</em></p>` : ''}
+                <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
+                    <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
+                    <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
+                    <p class="text-xs text-gray-400"><strong>Input Tokens:</strong> ${(turnData.turn_input_tokens || 0).toLocaleString()}</p>
+                    <p class="text-xs text-gray-400"><strong>Output Tokens:</strong> ${(turnData.turn_output_tokens || 0).toLocaleString()}</p>
+                </div>
+            `;
+            DOM.statusWindowContent.appendChild(headerEl);
+
+            // Render the plan and partial execution trace using the standard historical trace renderer
+            // This properly shows Plan Steps and execution progress
+            if (turnData.original_plan || turnData.execution_trace) {
+                UI.renderHistoricalTrace(
+                    turnData.original_plan || [],
+                    turnData.execution_trace || [],
+                    turnId,
+                    turnData.user_query,
+                    turnData.knowledge_retrieval_event || null,
+                    turnData.kg_enrichment_event || null,
+                    {
+                        turn_input_tokens: turnData.turn_input_tokens || 0,
+                        turn_output_tokens: turnData.turn_output_tokens || 0
+                    },
+                    turnData.system_events || [],  // Pass system events (session name generation, etc.)
+                    turnData.duration_ms || 0  // Pass duration for execution summary card
+                );
+            }
+
+            // Update token display with partial data (isHistorical = true for plan reloads)
+            const lastStatement = _getLastStatementTokens(turnData);
+
+            // Get turn cost from backend (preferred) or calculate from events (fallback)
+            let turnCost = 0;
+            if (turnData.turn_cost !== undefined) {
+                turnCost = parseFloat(turnData.turn_cost);
+                console.log(`[Reload] Using backend turn_cost: $${turnCost.toFixed(6)}`);
+            } else {
+                turnCost = _getTurnCost(turnData);
+                console.warn(`[Reload] Backend turn_cost missing, calculated from events: $${turnCost.toFixed(6)}`);
+            }
+
+            // Get session cost from backend (preferred)
+            let sessionCost = 0;
+            if (turnData.session_cost_usd !== undefined) {
+                sessionCost = parseFloat(turnData.session_cost_usd);
+                console.log(`[Reload] Using backend session_cost_usd: $${sessionCost.toFixed(6)}`);
+            } else {
+                console.warn('[Reload] Backend session_cost_usd missing');
+            }
+
+            UI.updateTokenDisplay({
+                statement_input: lastStatement.input,
+                statement_output: lastStatement.output,
+                turn_input: turnData.turn_input_tokens || turnData.input_tokens || 0,
+                turn_output: turnData.turn_output_tokens || turnData.output_tokens || 0,
+                total_input: turnData.session_input_tokens || 0,
+                total_output: turnData.session_output_tokens || 0,
+                turn_cost: turnCost,           // NEW - authoritative turn cost
+                session_cost_usd: sessionCost  // NEW - authoritative session cost
+            }, true);
+
+            // Hide replay buttons for partial turns
+            if (DOM.headerReplayPlannedButton) DOM.headerReplayPlannedButton.classList.add('hidden');
+            if (DOM.headerReplayOptimizedButton) DOM.headerReplayOptimizedButton.classList.add('hidden');
+
+            return;
+        }
+
+        // Check if this is a genie profile (coordination profile)
+        if (turnData && (turnData.genie_coordination || turnData.profile_type === 'genie')) {
+            DOM.statusWindowContent.innerHTML = '';
+
+            // Render skill events at the top (pre-processing, before main execution)
+            _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
+
+            // Render context window snapshot early (matches live execution order)
+            _renderContextWindowSnapshotForReload(turnData);
+
+            // If we have detailed genie_events, replay them for full UI experience
+            const genieEvents = turnData.genie_events || [];
+            if (genieEvents.length > 0) {
+                // Update status title to indicate historical view
+                const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+                if (statusTitle) {
+                    const brandedName = getBrandedAgentName('genie');
+                    statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
+                }
+
+                // Filter out obsolete and transient events:
+                // - genie_start, genie_routing: redundant with genie_coordination_start
+                // - status_indicator_update, token_update: transient UI-only events (no replay value)
+                const filteredGenieEvents = genieEvents.filter(e =>
+                    e.type !== 'genie_start' && e.type !== 'genie_routing' &&
+                    e.type !== 'status_indicator_update' && e.type !== 'token_update'
+                );
+
+                // Replay each event using the same renderer as live execution
+                filteredGenieEvents.forEach((event, index) => {
+                    const isFinal = index === filteredGenieEvents.length - 1;
+                    // Check if payload is already a complete event (has 'step' field)
+                    // or if it's just details that need to be wrapped
+                    let eventData;
+                    if (event.payload && typeof event.payload === 'object' && 'step' in event.payload) {
+                        // Payload is complete event_dict (session name events)
+                        eventData = event.payload;
+                    } else {
+                        // Payload is just details (coordinator events) - reconstruct eventData
+                        eventData = {
+                            step: _getGenieStepTitle(event.type, event.payload),
+                            details: event.payload,
+                            type: event.type
+                        };
+                    }
+                    UI.renderGenieStepForReload(eventData, DOM.statusWindowContent, isFinal);
+                });
+
+                // Scroll to top after replaying all events
+                DOM.statusWindowContent.scrollTop = 0;
+
+                // Update token counts from historical turn data (isHistorical = true)
+                const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
+                const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+                const lastStatement = _getLastStatementTokens(turnData);
+
+                // Get turn cost from backend (preferred) or calculate from events (fallback)
+                let turnCost = 0;
+                if (turnData.turn_cost !== undefined) {
+                    turnCost = parseFloat(turnData.turn_cost);
+                    console.log(`[Reload] Using backend turn_cost: $${turnCost.toFixed(6)}`);
+                } else {
+                    turnCost = _getTurnCost(turnData);
+                    console.warn(`[Reload] Backend turn_cost missing, calculated from events: $${turnCost.toFixed(6)}`);
+                }
+
+                // Get session cost from backend (preferred)
+                let sessionCost = 0;
+                if (turnData.session_cost_usd !== undefined) {
+                    sessionCost = parseFloat(turnData.session_cost_usd);
+                    console.log(`[Reload] Using backend session_cost_usd: $${sessionCost.toFixed(6)}`);
+                } else {
+                    console.warn('[Reload] Backend session_cost_usd missing');
+                }
+
+                UI.updateTokenDisplay({
+                    statement_input: lastStatement.input,
+                    statement_output: lastStatement.output,
+                    turn_input: inputTokens,
+                    turn_output: outputTokens,
+                    total_input: turnData.session_input_tokens || 0,
+                    total_output: turnData.session_output_tokens || 0,
+                    turn_cost: turnCost,           // NEW - authoritative turn cost
+                    session_cost_usd: sessionCost  // NEW - authoritative session cost
+                }, true);
+            } else {
+                // Fallback: Show simple summary if no detailed events available
+                const genieInfoEl = document.createElement('div');
+                genieInfoEl.className = 'p-4 status-step info';
+
+                const toolsUsed = turnData.tools_used || [];
+                const profilesConsulted = toolsUsed.length;
+                const success = turnData.success !== false;
+                const profileTags = toolsUsed.map(t => t.replace('invoke_', '')).join(', ');
+
+                const brandedName = getBrandedAgentName('genie');
+                genieInfoEl.innerHTML = `
+                    <h4 class="font-bold text-sm text-white mb-2">🔮 ${brandedName}</h4>
+                    <p class="text-xs text-gray-300 mb-2">${success ? 'Coordination completed successfully.' : 'Coordination encountered errors.'}</p>
+                    <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
+                        <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
+                        <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
+                        <p class="text-xs text-gray-400"><strong>Profiles Consulted:</strong> ${profilesConsulted}</p>
+                        ${profileTags ? `<p class="text-xs text-gray-400"><strong>Profiles:</strong> @${profileTags.replace(/, /g, ', @')}</p>` : ''}
+                        <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> Detailed event history not available for this turn.</p>
+                    </div>
+                `;
+                DOM.statusWindowContent.appendChild(genieInfoEl);
+            }
+
+            // Render extension events if present
+            _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
+
+            // Hide replay buttons for genie profiles (no plan to replay)
+            if (DOM.headerReplayPlannedButton) {
+                DOM.headerReplayPlannedButton.classList.add('hidden');
+            }
+            if (DOM.headerReplayOptimizedButton) {
+                DOM.headerReplayOptimizedButton.classList.add('hidden');
+            }
+
+            return; // Exit early
+        }
+
+        // Check if this is a conversation_with_tools profile (LangChain agent)
+        if (turnData && turnData.profile_type === 'conversation_with_tools') {
+            DOM.statusWindowContent.innerHTML = '';
+
+            // Render skill events at the top (pre-processing, before main execution)
+            _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
+
+            // Render context window snapshot early (matches live execution order)
+            _renderContextWindowSnapshotForReload(turnData);
+
+            // If we have detailed conversation_agent_events, replay them for full UI experience
+            const agentEvents = turnData.conversation_agent_events || [];
+
+            // Also check for knowledge retrieval event (renders first)
+            if (turnData.knowledge_retrieval_event) {
+                // Use knowledge_retrieval_complete type to show duration if available
+                const eventType = turnData.knowledge_retrieval_event.duration_ms ? 'knowledge_retrieval_complete' : 'knowledge_retrieval';
+                const knowledgeEventData = {
+                    step: _getConversationAgentStepTitle(eventType, turnData.knowledge_retrieval_event),
+                    details: turnData.knowledge_retrieval_event,
+                    type: eventType
+                };
+                UI.renderConversationAgentStepForReload(knowledgeEventData, DOM.statusWindowContent, false, 'knowledge');
+            }
+
+            // Render KG enrichment event if present
+            if (turnData.kg_enrichment_event) {
+                const kgEventData = {
+                    step: _getConversationAgentStepTitle('kg_enrichment', turnData.kg_enrichment_event),
+                    details: turnData.kg_enrichment_event,
+                    type: 'kg_enrichment'
+                };
+                UI.renderConversationAgentStepForReload(kgEventData, DOM.statusWindowContent, true, 'knowledge');
+            }
+
+            if (agentEvents.length > 0) {
+                // Update status title to indicate historical view
+                const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+                if (statusTitle) {
+                    const brandedName = getBrandedAgentName(turnData.profile_type || 'conversation_with_tools');
+                    statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
+                }
+
+                // Pre-process: merge tool_invoked with tool_completed pairs
+                // This prevents duplicate rows - we only show the final state for each tool call
+                console.log('[ReloadPlan] Raw agentEvents:', agentEvents.map(e => e.type));
+                const processedEvents = _mergeToolEvents(agentEvents);
+                console.log('[ReloadPlan] Processed events after merge:', processedEvents.map(e => e.type));
+
+                // Replay each event using the same renderer as live execution
+                processedEvents.forEach((event, index) => {
+                    // Completion events never show spinners (they're final by definition)
+                    const isCompletionEvent = ['conversation_tool_completed', 'conversation_agent_complete'].includes(event.type);
+                    const isFinal = isCompletionEvent || index === processedEvents.length - 1;
+                    // Check if payload is already a complete event (has 'step' field)
+                    // or if it's just details that need to be wrapped
+                    let eventData;
+                    if (event.payload && typeof event.payload === 'object' && 'step' in event.payload) {
+                        // Payload is complete event_dict (session name events)
+                        eventData = event.payload;
+                    } else {
+                        // Payload is just details (agent events) - reconstruct eventData
+                        eventData = {
+                            step: _getConversationAgentStepTitle(event.type, event.payload),
+                            details: event.payload,
+                            type: event.type
+                        };
+                    }
+                    UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal, 'agent');
+                });
+
+                // Render system events (session name generation, etc.) after agent events
+                const systemEvents = turnData.system_events || [];
+                if (systemEvents.length > 0) {
+                    systemEvents.forEach((event, index) => {
+                        // System events are always final (completed)
+                        const isFinal = true;
+
+                        // Check if payload is already a complete event (has 'step' field)
+                        let eventData;
+                        if (event.payload && typeof event.payload === 'object' && 'step' in event.payload) {
+                            // Payload is complete event_dict (session name events) - use as-is
+                            eventData = event.payload;
+                        } else {
+                            // Payload is just details - reconstruct eventData
+                            eventData = {
+                                step: _getConversationAgentStepTitle(event.type, event.payload),
+                                details: event.payload,
+                                type: event.type
+                            };
+                        }
+                        UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal, 'system');
+                    });
+                }
+
+                // Scroll to top after replaying all events
+                DOM.statusWindowContent.scrollTop = 0;
+
+                // Update token counts from historical turn data (isHistorical = true)
+                const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
+                const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+                const lastStatement = _getLastStatementTokens(turnData);
+
+                // Get turn cost from backend (preferred) or calculate from events (fallback)
+                let turnCost = 0;
+                if (turnData.turn_cost !== undefined) {
+                    turnCost = parseFloat(turnData.turn_cost);
+                    console.log(`[Reload] Using backend turn_cost: $${turnCost.toFixed(6)}`);
+                } else {
+                    turnCost = _getTurnCost(turnData);
+                    console.warn(`[Reload] Backend turn_cost missing, calculated from events: $${turnCost.toFixed(6)}`);
+                }
+
+                // Get session cost from backend (preferred)
+                let sessionCost = 0;
+                if (turnData.session_cost_usd !== undefined) {
+                    sessionCost = parseFloat(turnData.session_cost_usd);
+                    console.log(`[Reload] Using backend session_cost_usd: $${sessionCost.toFixed(6)}`);
+                } else {
+                    console.warn('[Reload] Backend session_cost_usd missing');
+                }
+
+                UI.updateTokenDisplay({
+                    statement_input: lastStatement.input,
+                    statement_output: lastStatement.output,
+                    turn_input: inputTokens,
+                    turn_output: outputTokens,
+                    total_input: turnData.session_input_tokens || 0,
+                    total_output: turnData.session_output_tokens || 0,
+                    turn_cost: turnCost,           // NEW - authoritative turn cost
+                    session_cost_usd: sessionCost  // NEW - authoritative session cost
+                }, true);
+            } else {
+                // Fallback: Show simple summary if no detailed events available
+                const agentInfoEl = document.createElement('div');
+                agentInfoEl.className = 'p-4 status-step info';
+
+                const toolsUsed = turnData.tools_used || [];
+                const toolCount = toolsUsed.length;
+                const success = turnData.status !== 'failed';
+                const brandedName = getBrandedAgentName(turnData.profile_type || 'conversation_with_tools');
+
+                agentInfoEl.innerHTML = `
+                    <h4 class="font-bold text-sm text-white mb-2">${brandedName}</h4>
+                    <p class="text-xs text-gray-300 mb-2">${success ? 'Agent execution completed successfully.' : 'Agent execution encountered errors.'}</p>
+                    <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
+                        <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
+                        <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
+                        <p class="text-xs text-gray-400"><strong>Tools Used:</strong> ${toolCount}</p>
+                        ${toolsUsed.length > 0 ? `<p class="text-xs text-gray-400"><strong>Tools:</strong> ${toolsUsed.join(', ')}</p>` : ''}
+                        ${turnData.knowledge_accessed ? `<p class="text-xs text-gray-400"><strong>Knowledge:</strong> ${turnData.knowledge_accessed.length} collection(s) accessed</p>` : ''}
+                        <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> Detailed event history not available for this turn.</p>
+                    </div>
+                `;
+                DOM.statusWindowContent.appendChild(agentInfoEl);
+            }
+
+            // Render extension events if present
+            _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
+
+            // Hide replay buttons for conversation_with_tools (no plan to replay)
+            if (DOM.headerReplayPlannedButton) {
+                DOM.headerReplayPlannedButton.classList.add('hidden');
+            }
+            if (DOM.headerReplayOptimizedButton) {
+                DOM.headerReplayOptimizedButton.classList.add('hidden');
+            }
+
+            return; // Exit early
+        }
+
+        // Check if this is an llm_only or rag_focused profile (non-tool profiles)
+        if (turnData && (turnData.profile_type === 'llm_only' || turnData.profile_type === 'rag_focused')) {
+            DOM.statusWindowContent.innerHTML = '';
+
+            // Render skill events at the top (pre-processing, before main execution)
+            _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
+
+            // Render context window snapshot early (matches live execution order)
+            _renderContextWindowSnapshotForReload(turnData);
+
+            const isRagFocused = turnData.profile_type === 'rag_focused';
+
+            // Check for detailed knowledge events (similar to genie_events and conversation_agent_events)
+            const knowledgeEvents = turnData.knowledge_events || [];
+
+            if (knowledgeEvents.length > 0) {
+                // Update status title to indicate historical view
+                const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+                if (statusTitle) {
+                    const brandedName = getBrandedAgentName(turnData.profile_type || 'rag_focused');
+                    statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
+                }
+
+                // Replay each event using the same renderer as live execution
+                knowledgeEvents.forEach((event, index) => {
+                    const isFinal = index === knowledgeEvents.length - 1;
+                    // Build eventData in the format expected by _renderConversationAgentStep
+                    const eventData = {
+                        step: _getConversationAgentStepTitle(event.type, event.payload),
+                        details: event.payload,
+                        type: event.type
+                    };
+                    UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal, 'knowledge');
+                });
+
+                // Render system events (session name generation, etc.) after knowledge events
+                const systemEvents = turnData.system_events || [];
+                if (systemEvents.length > 0) {
+                    systemEvents.forEach((event, index) => {
+                        const isFinal = index === systemEvents.length - 1;
+                        // Check if payload is already a complete event (has 'step' field)
+                        // or if it's just details that need to be wrapped
+                        let eventData;
+                        if (event.payload && typeof event.payload === 'object' && 'step' in event.payload) {
+                            // Payload is complete event_dict (session name events)
+                            eventData = event.payload;
+                        } else {
+                            // Payload is just details - reconstruct eventData
+                            eventData = {
+                                step: _getConversationAgentStepTitle(event.type, event.payload),
+                                details: event.payload,
+                                type: event.type
+                            };
+                        }
+                        UI.renderConversationAgentStepForReload(eventData, DOM.statusWindowContent, isFinal, 'system');
+                    });
+                }
+
+                // Scroll to top after replaying all events
+                DOM.statusWindowContent.scrollTop = 0;
+
+                // NOTE: Removed redundant "RAG Focused Profile" info card - this info is already
+                // shown in "Knowledge Focused Started" and "Knowledge Focused Complete" events
+            } else if (turnData.knowledge_retrieval_event && (turnData.knowledge_chunks_ui || turnData.knowledge_retrieval_event.chunks)) {
+                // Fallback: Use old rendering method if no detailed events
+                // Get chunks from new location (knowledge_chunks_ui) or fall back to old location for backwards compatibility
+                const chunks = turnData.knowledge_chunks_ui || turnData.knowledge_retrieval_event.chunks || [];
+                const knowledgeEventWithChunks = {
+                    ...turnData.knowledge_retrieval_event,
+                    chunks: chunks  // Add chunks from appropriate source
+                };
+
+                // Use the standard renderHistoricalTrace function to show detailed knowledge retrieval
+                UI.renderHistoricalTrace(
+                    [], // No plan for non-tool profiles
+                    [], // No execution trace for non-tool profiles
+                    turnId,
+                    turnData.user_query || 'N/A',
+                    knowledgeEventWithChunks, // Pass the knowledge event with chunks
+                    turnData.kg_enrichment_event || null,
+                    {  // Pass turn tokens for display
+                        turn_input_tokens: turnData.turn_input_tokens || 0,
+                        turn_output_tokens: turnData.turn_output_tokens || 0
+                    }
+                );
+                // NOTE: Removed redundant "RAG Focused Profile" info card - this info is already
+                // shown in the knowledge events rendered above
+            } else {
+                // Fallback: Show simple summary if no detailed knowledge data
+                // Removed emoji icons - using clean SVG icons instead
+                const title = isRagFocused ? 'RAG Focused Profile' : 'Conversation Profile';
+                const message = isRagFocused
+                    ? 'This turn used a RAG focused profile with mandatory knowledge retrieval.'
+                    : 'This turn used a conversation profile (LLM-only).';
+                const note = isRagFocused
+                    ? 'RAG focused profiles retrieve documents from knowledge repositories and synthesize answers from those sources only.'
+                    : 'Conversation profiles bypass the planner and execute directly via LLM without tool calls.';
+
+                DOM.statusWindowContent.innerHTML = `
+                    <div class="p-4 status-step info">
+                        <h4 class="font-bold text-sm text-white mb-2">${title}</h4>
+                        <p class="text-xs text-gray-300 mb-2">${turnData.message || message}</p>
+                        <div class="mt-3 p-3 bg-gray-800/30 rounded border border-white/10">
+                            <p class="text-xs text-gray-400"><strong>Provider:</strong> ${turnData.provider || 'N/A'}</p>
+                            <p class="text-xs text-gray-400"><strong>Model:</strong> ${turnData.model || 'N/A'}</p>
+                            ${isRagFocused && turnData.knowledge_retrieval_event ? `
+                                <p class="text-xs text-gray-400"><strong>Documents Retrieved:</strong> ${turnData.knowledge_retrieval_event.document_count || 0}</p>
+                                <p class="text-xs text-gray-400"><strong>Collections:</strong> ${turnData.knowledge_retrieval_event.collections?.join(', ') || 'N/A'}</p>
+                            ` : ''}
+                            <p class="text-xs text-gray-400 mt-2"><strong>Note:</strong> ${note}</p>
+                        </div>
+                    </div>`;
+            }
+
+            // Update token counts from historical turn data (isHistorical = true)
+            const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
+            const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+            const lastStatement = _getLastStatementTokens(turnData);
+
+            // Get turn cost from backend (preferred) or calculate from events (fallback)
+            let turnCost = 0;
+            if (turnData.turn_cost !== undefined) {
+                turnCost = parseFloat(turnData.turn_cost);
+                console.log(`[Reload] Using backend turn_cost: $${turnCost.toFixed(6)}`);
+            } else {
+                turnCost = _getTurnCost(turnData);
+                console.warn(`[Reload] Backend turn_cost missing, calculated from events: $${turnCost.toFixed(6)}`);
+            }
+
+            // Get session cost from backend (preferred)
+            let sessionCost = 0;
+            if (turnData.session_cost_usd !== undefined) {
+                sessionCost = parseFloat(turnData.session_cost_usd);
+                console.log(`[Reload] Using backend session_cost_usd: $${sessionCost.toFixed(6)}`);
+            } else {
+                console.warn('[Reload] Backend session_cost_usd missing');
+            }
+
+            UI.updateTokenDisplay({
+                statement_input: lastStatement.input,
+                statement_output: lastStatement.output,
+                turn_input: inputTokens,
+                turn_output: outputTokens,
+                total_input: turnData.session_input_tokens || 0,
+                total_output: turnData.session_output_tokens || 0,
+                turn_cost: turnCost,           // NEW - authoritative turn cost
+                session_cost_usd: sessionCost  // NEW - authoritative session cost
+            }, true);
+
+            // Render extension events if present
+            _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
+
+            // Hide replay buttons for non-tool profiles (no plan to replay)
+            if (DOM.headerReplayPlannedButton) {
+                DOM.headerReplayPlannedButton.classList.add('hidden');
+            }
+            if (DOM.headerReplayOptimizedButton) {
+                DOM.headerReplayOptimizedButton.classList.add('hidden');
+            }
+
+            return; // Exit early
+        }
+
+        // === Unified tool_enabled reload (handles both modern sessions with
+        //     tool_enabled_events and legacy sessions without them) ===
+
+        // Update status title with branded agent name
+        const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+        if (statusTitle) {
+            const brandedName = getBrandedAgentName('tool_enabled');
+            statusTitle.textContent = `${brandedName} - Turn ${turnId}`;
+        }
+
+        // Validate: need at least plan, trace, or lifecycle events
+        if (!turnData || (!turnData.original_plan && !turnData.execution_trace
+            && (!turnData.tool_enabled_events || turnData.tool_enabled_events.length === 0))) {
+            throw new Error("Received empty or invalid turn details from the server.");
+        }
+
+        // Pre-render context window snapshots for correct positioning
+        const snapshotEvent = turnData?.context_window_snapshot_event;
+        const snapshotHtml = snapshotEvent ? renderContextWindowSnapshot(snapshotEvent) : null;
+        const strategicSnapshotEvent = turnData?.strategic_context_snapshot_event;
+        const strategicSnapshotHtml = strategicSnapshotEvent ? renderContextWindowSnapshot(strategicSnapshotEvent) : null;
+
+        // Render historical trace with all available data
+        // renderHistoricalTrace renders execution_start at top and execution_complete
+        // at bottom when tool_enabled_events are provided
+        UI.renderHistoricalTrace(
+            turnData.original_plan || [],
+            turnData.execution_trace || [],
+            turnId,
+            turnData.user_query,
+            turnData.knowledge_retrieval_event || null,
+            turnData.kg_enrichment_event || null,
+            {
+                turn_input_tokens: turnData.turn_input_tokens || 0,
+                turn_output_tokens: turnData.turn_output_tokens || 0
+            },
+            turnData.system_events || [],
+            turnData.duration_ms || 0,
+            turnData.tool_enabled_events || [],
+            snapshotHtml,
+            strategicSnapshotHtml
+        );
+
+        // Update task ID display
+        const taskIdToDisplay = turnData.task_id || turnId;
+        UI.updateTaskIdDisplay(taskIdToDisplay);
+
+        // Update model display to reflect the turn's actual model
+        if (turnData.provider && turnData.model) {
+            UI.updateStatusPromptName(turnData.provider, turnData.model, true, turnData.dual_model_info);
+        }
+
+        // Update token display with dual-model breakdown for cost tooltips
+        const inputTokens = turnData.turn_input_tokens || turnData.input_tokens || 0;
+        const outputTokens = turnData.turn_output_tokens || turnData.output_tokens || 0;
+        const lastStatement = _getLastStatementTokens(turnData);
+
+        // Get turn cost from backend (preferred) or calculate from events (fallback)
+        let turnCost = 0;
+        if (turnData.turn_cost !== undefined) {
+            turnCost = parseFloat(turnData.turn_cost);
+            console.log(`[Reload] Using backend turn_cost: $${turnCost.toFixed(6)}`);
+        } else {
+            turnCost = _getTurnCost(turnData);
+            console.warn(`[Reload] Backend turn_cost missing, calculated from events: $${turnCost.toFixed(6)}`);
+        }
+
+        // Get session cost from backend (preferred)
+        let sessionCost = 0;
+        if (turnData.session_cost_usd !== undefined) {
+            sessionCost = parseFloat(turnData.session_cost_usd);
+            console.log(`[Reload] Using backend session_cost_usd: $${sessionCost.toFixed(6)}`);
+        } else {
+            console.warn('[Reload] Backend session_cost_usd missing');
+        }
+
+        const perModelBreakdown = _getPerModelBreakdown(turnData);
+        UI.updateTokenDisplay({
+            statement_input: lastStatement.input,
+            statement_output: lastStatement.output,
+            turn_input: inputTokens,
+            turn_output: outputTokens,
+            total_input: turnData.session_input_tokens || 0,
+            total_output: turnData.session_output_tokens || 0,
+            turn_cost: turnCost,           // NEW - authoritative turn cost
+            session_cost_usd: sessionCost, // NEW - authoritative session cost
+            planning_phase: turnData.planning_phase,
+            perModelBreakdown: perModelBreakdown
+        }, true);
+
+        // Render skill events if present (pre-processing, before extensions)
+        _renderSkillEventsForReload(turnData, DOM.statusWindowContent);
+
+        // Render extension events if present
+        _renderExtensionEventsForReload(turnData, DOM.statusWindowContent);
+
+        // Show replay buttons
+        if (DOM.headerReplayPlannedButton) {
+            DOM.headerReplayPlannedButton.classList.remove('hidden');
+            DOM.headerReplayPlannedButton.disabled = false;
+            DOM.headerReplayPlannedButton.dataset.turnId = turnId;
+        }
+        if (DOM.headerReplayOptimizedButton) {
+            DOM.headerReplayOptimizedButton.classList.remove('hidden');
+            DOM.headerReplayOptimizedButton.disabled = false;
+            DOM.headerReplayOptimizedButton.dataset.turnId = turnId;
+        }
+
+    } catch (error) {
+        console.error(`Error loading details for turn ${turnId}:`, error);
+        DOM.statusWindowContent.innerHTML = `<div class="p-4 status-step error"><h4 class="font-bold text-sm text-white mb-2">Error Loading Details</h4><p class="text-xs">${error.message}</p></div>`;
+    } finally {
+        // Apply event filter state to newly rendered historical events
+        UI.applyEventFilterToDOM();
+        // Reset flag after historical viewing completes
+        state.isViewingHistoricalTurn = false;
+    }
+}
+
+/**
+ * Handles clicks on the "Replay Original Query" button. Fetches the original query
+ * text for that turn and re-submits it, triggering a NEW PLAN.
+ * @param {HTMLButtonElement} buttonEl - The button element that was clicked.
+ */
+export async function handleReplayQueryClick(buttonEl) {
+    const turnId = buttonEl.dataset.turnId;
+    const sessionId = state.currentSessionId;
+    if (!turnId || !sessionId) {
+        console.error("Missing turnId or sessionId for replaying query.");
+        return;
+    }
+
+    try {
+        // 1. Fetch ONLY the original query text
+        const queryData = await API.fetchTurnQuery(sessionId, turnId);
+        const originalQuery = queryData.query;
+
+        if (!originalQuery) {
+            throw new Error("Could not retrieve the original query for this turn.");
+        }
+
+        // Determine the current active profile override from the UI
+        let profileOverrideId = null;
+        if (window.activeTagPrefix) {
+            const tag = window.activeTagPrefix.replace('@', '').trim().toUpperCase();
+            const overrideProfile = window.configState?.profiles?.find(p => p.tag === tag);
+            if (overrideProfile) {
+                profileOverrideId = overrideProfile.id;
+            }
+        }
+
+        const displayMessage = `Replaying **query** from Turn ${turnId}: ${originalQuery}`;
+        // Add a message indicating a *query* replay
+        UI.addMessage('user', displayMessage, null, true, 'text');
+
+        // 2. Re-submit using handleStreamRequest, *without* a plan
+        handleStreamRequest('/ask_stream', {
+            message: originalQuery,      // Used for original_user_input on backend
+            display_message: displayMessage, // The message to be saved in history
+            session_id: sessionId,
+            source: 'text',
+            is_replay: true,             // Ensures logging and disables history for planning
+            plan_to_execute: null,       // Explicitly null. This forces a new plan.
+            profile_override_id: profileOverrideId // Use current UI profile, not original
+        });
+
+    } catch (error) {
+        console.error(`Error replaying query for turn ${turnId}:`, error);
+        UI.addMessage('assistant', `Sorry, could not replay the query from Turn ${turnId}. Error: ${error.message}`);
+    }
+}
+
+/**
+ * Handles clicks on the "Replay Planned Query" button. Fetches the original query *and*
+ * the original plan for that turn, then re-submits *the plan* for execution.
+ * @param {HTMLButtonElement} buttonEl - The button element that was clicked.
+ */
+async function handleReplayPlanClick(buttonEl) {
+    const turnId = buttonEl.dataset.turnId;
+    const sessionId = state.currentSessionId;
+    if (!turnId || !sessionId) {
+        console.error("Missing turnId or sessionId for replaying plan.");
+        return;
+    }
+
+    try {
+        // 1. Fetch BOTH the original query (for context) and the original plan
+        const [queryData, planData] = await Promise.all([
+            API.fetchTurnQuery(sessionId, turnId),
+            API.fetchTurnPlan(sessionId, turnId)
+        ]);
+
+        const originalQuery = queryData.query;
+        const originalPlan = planData.plan;
+
+        if (!originalQuery) {
+            throw new Error("Could not retrieve the original query for this turn.");
+        }
+        if (!originalPlan) {
+            throw new Error("Could not retrieve the original plan for this turn.");
+        }
+
+        // Determine the current active profile override from the UI
+        let profileOverrideId = null;
+        if (window.activeTagPrefix) {
+            const tag = window.activeTagPrefix.replace('@', '').trim().toUpperCase();
+            const overrideProfile = window.configState?.profiles?.find(p => p.tag === tag);
+            if (overrideProfile) {
+                profileOverrideId = overrideProfile.id;
+            }
+        }
+
+        const displayMessage = `Replaying **plan** from Turn ${turnId}: ${originalQuery}`;
+        // Add a message indicating a *plan* replay
+        UI.addMessage('user', displayMessage, null, true, 'text');
+
+        // 2. Re-submit using handleStreamRequest, passing the plan_to_execute
+        handleStreamRequest('/ask_stream', {
+            message: originalQuery,      // Used for original_user_input on backend
+            display_message: displayMessage, // The message to be saved in history
+            session_id: sessionId,
+            source: 'text',
+            is_replay: true,             // Ensures logging and disables history for planning (which is skipped anyway)
+            plan_to_execute: originalPlan, // This tells the backend to skip planning and execute this plan
+            profile_override_id: profileOverrideId // Use current UI profile, not original
+        });
+
+    } catch (error) {
+        console.error(`Error replaying plan for turn ${turnId}:`, error);
+        UI.addMessage('assistant', `Sorry, could not replay the plan from Turn ${turnId}. Error: ${error.message}`);
+    }
+}
+
+/**
+ * Handles clicks on the "Context" status dot to purge agent memory.
+ */
+async function handleContextPurgeClick() {
+    if (!state.currentSessionId) {
+        return;
+    }
+
+    // Use the existing UI.showConfirmation
+    UI.showConfirmation(
+        'Purge Agent Memory?',
+        "Are you sure you want to archive the context of all past turns? This will force the agent to re-evaluate the next query from scratch. Your chat log and replay ability will be preserved.",
+        async () => {
+            try {
+                // Call the new API endpoint
+                await API.purgeSessionMemory(state.currentSessionId);
+                // Blink the dot on success
+                UI.blinkContextDot();
+                
+                // --- START NEW LOGIC ---
+                // Visually invalidate all existing turns in the DOM
+                const allBadges = DOM.chatLog.querySelectorAll('.turn-badge');
+                allBadges.forEach(badge => {
+                    badge.classList.add('context-invalid');
+                });
+        
+                // Update avatar titles to reflect archived state
+                const allClickableAvatars = DOM.chatLog.querySelectorAll('.clickable-avatar');
+                allClickableAvatars.forEach(avatar => {
+                    // Remove old title text if present and add the new one
+                    avatar.title = avatar.title.replace(' (Archived Context)', '') + ' (Archived Context)';
+                });
+                
+                // --- END NEW LOGIC ---
+
+            } catch (error) {
+                console.error(`Failed to purge agent memory:`, error);
+                // Optionally show an error to the user
+                if (window.showAppBanner) {
+                    window.showAppBanner(`Error: Could not purge agent memory. ${error.message}`, 'error');
+                }
+            }
+        }
+    );
+}
+
+
+export async function handleLoadResources(type) {
+    const tabButton = document.querySelector(`.resource-tab[data-type="${type}"]`);
+    const categoriesContainer = document.getElementById(`${type}-categories`);
+    const panelsContainer = document.getElementById(`${type}-panels-container`);
+    const typeCapitalized = type.charAt(0).toUpperCase() + type.slice(1);
+
+    try {
+        let data = await API.loadResources(type);
+
+        // Handle new response format with profile metadata for special profiles
+        // Backend returns { tools: {}, profile_type: 'rag_focused', ... } for rag_focused/genie profiles
+        if (data && data.profile_type) {
+            const profileType = data.profile_type;
+
+            if (profileType === 'rag_focused') {
+                state.activeRagProfile = {
+                    tag: data.profile_tag,
+                    knowledgeCollections: data.knowledge_collections || []
+                };
+                state.activeGenieProfile = null;
+                console.log(`📚 Default profile is RAG-focused: @${data.profile_tag}`);
+            } else if (profileType === 'genie') {
+                state.activeGenieProfile = {
+                    tag: data.profile_tag,
+                    slaveProfiles: data.slave_profiles || []
+                };
+                state.activeRagProfile = null;
+                console.log(`🧞 Default profile is Genie coordinator: @${data.profile_tag}`);
+            }
+
+            // Extract the actual tools/prompts from the wrapper
+            data = data[type] || {};
+        }
+
+        if (!data || Object.keys(data).length === 0) {
+            if(tabButton) {
+                tabButton.style.display = 'none';
+            }
+            // Still render the panel for special profiles to show the message
+            if (state.activeRagProfile || state.activeGenieProfile) {
+                if (window.capabilitiesModule) {
+                    window.capabilitiesModule.renderResourcePanel(type);
+                }
+            }
+            return;
+        }
+
+        tabButton.style.display = 'inline-block';
+        state.resourceData[type] = data;
+
+        if (type === 'prompts') {
+            UI.updatePromptsTabCounter();
+        } else if (type === 'tools') {
+            UI.updateToolsTabCounter();
+        } else {
+            const totalCount = Object.values(data).reduce((acc, items) => acc + items.length, 0);
+            tabButton.textContent = `${typeCapitalized} (${totalCount})`;
+        }
+
+        categoriesContainer.innerHTML = '';
+        panelsContainer.innerHTML = '';
+
+        Object.keys(data).forEach(category => {
+            const categoryTab = document.createElement('button');
+            categoryTab.className = 'category-tab px-4 py-2 rounded-md font-semibold text-sm transition-colors hover:bg-[#D9501A]';
+            categoryTab.textContent = category;
+            categoryTab.dataset.category = category;
+            categoryTab.dataset.type = type;
+            categoriesContainer.appendChild(categoryTab);
+
+            const panel = document.createElement('div');
+            panel.id = `panel-${type}-${category}`;
+            panel.className = 'category-panel px-4 space-y-2';
+            panel.dataset.category = category;
+
+            data[category].forEach(resource => {
+                const itemEl = UI.createResourceItem(resource, type);
+                panel.appendChild(itemEl);
+            });
+            panelsContainer.appendChild(panel);
+        });
+
+        document.querySelectorAll(`#${type}-categories .category-tab`).forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll(`#${type}-categories .category-tab`).forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                document.querySelectorAll(`#${type}-panels-container .category-panel`).forEach(p => {
+                    p.classList.toggle('open', p.dataset.category === tab.dataset.category);
+                });
+            });
+        });
+
+        if (categoriesContainer.querySelector('.category-tab')) {
+            categoriesContainer.querySelector('.category-tab').click();
+        }
+
+    } catch (error) {
+        console.error(`Failed to load ${type}: ${error.message}`);
+        if(tabButton) {
+            tabButton.textContent = `${typeCapitalized} (Error)`;
+            tabButton.style.display = 'inline-block';
+        }
+        categoriesContainer.innerHTML = '';
+        panelsContainer.innerHTML = `<div class="p-4 text-center text-red-400">Failed to load ${type}.</div>`;
+    }
+}
+
+
+function handleResourceTabClick(e) {
+    if (e.target.classList.contains('resource-tab')) {
+        const type = e.target.dataset.type;
+        document.querySelectorAll('.resource-tab').forEach(tab => tab.classList.remove('active'));
+        e.target.classList.add('active');
+
+        document.querySelectorAll('.resource-panel').forEach(panel => {
+            panel.style.display = panel.id === `${type}-panel` ? 'flex' : 'none';
+        });
+
+        // Lazy-load Knowledge Graphs panel on first click (or refresh on subsequent)
+        if (type === 'knowledge-graphs') {
+            loadKnowledgeGraphsPanel();
+        }
+
+        // Lazy-load Context panel on first click
+        if (type === 'context') {
+            loadContextPanel();
+        }
+
+        // Lazy-load Skills panel on first click (or refresh on subsequent)
+        if (type === 'skills') {
+            loadSkillsPanel();
+        }
+
+        // Lazy-load Extensions panel on first click (or refresh on subsequent)
+        if (type === 'extensions') {
+            loadExtensionsPanel();
+        }
+    }
+}
+
+function openPromptModal(prompt) {
+    DOM.promptModalOverlay.classList.remove('hidden', 'opacity-0');
+    DOM.promptModalContent.classList.remove('scale-95', 'opacity-0');
+    DOM.promptModalTitle.textContent = prompt.name;
+    DOM.promptModalForm.dataset.promptName = prompt.name;
+    DOM.promptModalInputs.innerHTML = '';
+    DOM.promptModalForm.querySelector('button[type="submit"]').textContent = 'Run Prompt';
+
+    if (prompt.arguments && prompt.arguments.length > 0) {
+        prompt.arguments.forEach(arg => {
+            const inputGroup = document.createElement('div');
+            const label = document.createElement('label');
+            label.htmlFor = `prompt-arg-${arg.name}`;
+            label.className = 'block text-sm font-medium text-gray-300 mb-1';
+            label.textContent = arg.name + (arg.required ? ' *' : '');
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.id = `prompt-arg-${arg.name}`;
+            input.name = arg.name;
+            input.className = 'w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none';
+            input.placeholder = arg.description || `Enter value for ${arg.name}`;
+            if (arg.required) input.required = true;
+
+            inputGroup.appendChild(label);
+            inputGroup.appendChild(input);
+            DOM.promptModalInputs.appendChild(inputGroup);
+        });
+    } else {
+        DOM.promptModalInputs.innerHTML = '<p class="text-gray-400">This prompt requires no arguments.</p>';
+    }
+
+    DOM.promptModalForm.onsubmit = (e) => {
+        e.preventDefault();
+        const promptName = e.target.dataset.promptName;
+        const formData = new FormData(e.target);
+        const arugments = Object.fromEntries(formData.entries());
+
+        UI.closePromptModal();
+        // Priority: typed @TAG > resource panel profile > undefined
+        const profileId = window.activeProfileOverrideId || state.currentResourcePanelProfileId || undefined;
+        console.log(`🎯 [Prompt Invocation] Using profile_override_id: ${profileId}`);
+        handleStreamRequest('/invoke_prompt_stream', {
+            session_id: state.currentSessionId,
+            prompt_name: promptName,
+            arguments: arugments,
+            profile_override_id: profileId
+        });
+    };
+}
+
+function openCorrectionModal(data) {
+    DOM.promptModalOverlay.classList.remove('hidden', 'opacity-0');
+    DOM.promptModalContent.classList.remove('scale-95', 'opacity-0');
+
+    const spec = data.specification;
+    DOM.promptModalTitle.textContent = `Correction for: ${spec.name}`;
+    DOM.promptModalForm.dataset.toolName = spec.name;
+    DOM.promptModalInputs.innerHTML = '';
+    DOM.promptModalForm.querySelector('button[type="submit"]').textContent = 'Run Correction';
+
+    const messageEl = document.createElement('p');
+    messageEl.className = 'text-yellow-300 text-sm mb-4 p-3 bg-yellow-500/10 rounded-lg';
+    messageEl.textContent = data.message;
+    DOM.promptModalInputs.appendChild(messageEl);
+
+    spec.arguments.forEach(arg => {
+        const inputGroup = document.createElement('div');
+        const label = document.createElement('label');
+        label.htmlFor = `correction-arg-${arg.name}`;
+        label.className = 'block text-sm font-medium text-gray-300 mb-1';
+        label.textContent = arg.name + (arg.required ? ' *' : '');
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = `correction-arg-${arg.name}`;
+        input.name = arg.name;
+        input.className = 'w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none';
+        input.placeholder = arg.description || `Enter value for ${arg.name}`;
+        if (arg.required) input.required = true;
+
+        inputGroup.appendChild(label);
+        inputGroup.appendChild(input);
+        DOM.promptModalInputs.appendChild(inputGroup);
+    });
+
+    DOM.promptModalForm.onsubmit = (e) => {
+        e.preventDefault();
+        const toolName = e.target.dataset.toolName;
+        const formData = new FormData(e.target);
+        const userArgs = Object.fromEntries(formData.entries());
+
+        const correctedPrompt = `Please run the tool '${toolName}' with the following corrected parameters: ${JSON.stringify(userArgs)}`;
+
+        UI.closePromptModal();
+
+        handleStreamRequest('/ask_stream', { message: correctedPrompt, session_id: state.currentSessionId });
+    };
+}
+
+async function openViewPromptModal(promptName) {
+    DOM.viewPromptModalOverlay.classList.remove('hidden', 'opacity-0');
+    DOM.viewPromptModalContent.classList.remove('scale-95', 'opacity-0');
+    DOM.viewPromptModalTitle.textContent = `Viewing Prompt: ${promptName}`;
+    DOM.viewPromptModalText.textContent = 'Loading...';
+
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const res = await fetch(`/prompt/${promptName}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        const data = await res.json();
+        if (res.ok) {
+            DOM.viewPromptModalText.textContent = data.content;
+        } else {
+            if (data.error === 'dynamic_prompt_error') {
+                DOM.viewPromptModalText.textContent = `Info: ${data.message}`;
+            } else {
+                throw new Error(data.error || 'Failed to fetch prompt content.');
+            }
+        }
+    } catch (error) {
+        DOM.viewPromptModalText.textContent = `Error: ${error.message}`;
+    }
+}
+
+// --- FUNCTIONS MOVED TO handlers/configManagement.js ---
+// getCurrentCoreConfig
+// handleCloseConfigModalRequest
+// handleConfigActionButtonClick
+// finalizeConfiguration
+// handleConfigFormSubmit
+// loadCredentialsAndModels
+// handleProviderChange
+// handleModelChange
+// handleRefreshModelsClick
+// openPromptEditor
+// forceClosePromptEditor
+// closePromptEditor
+// saveSystemPromptChanges
+// resetSystemPrompt
+// ---
+
+function openChatModal() {
+    DOM.chatModalOverlay.classList.remove('hidden', 'opacity-0');
+    DOM.chatModalContent.classList.remove('scale-95', 'opacity-0');
+    DOM.chatModalInput.focus();
+}
+
+async function handleChatModalSubmit(e) {
+    e.preventDefault();
+    const message = DOM.chatModalInput.value.trim();
+    if (!message) return;
+
+    UI.addMessageToModal('user', message);
+    state.simpleChatHistory.push({ role: 'user', content: message });
+    DOM.chatModalInput.value = '';
+    DOM.chatModalInput.disabled = true;
+
+    try {
+        const res = await fetch('/simple_chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: message,
+                history: state.simpleChatHistory
+            })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+            UI.addMessageToModal('assistant', data.response);
+            state.simpleChatHistory.push({ role: 'assistant', content: data.response });
+        } else {
+            throw new Error(data.error || 'An unknown error occurred.');
+        }
+
+    } catch (error) {
+        UI.addMessageToModal('assistant', `Error: ${error.message}`);
+    } finally {
+        DOM.chatModalInput.disabled = false;
+        DOM.chatModalInput.focus();
+    }
+}
+
+function handleKeyDown(e) {
+    // Cancel TTS playback on Escape (takes priority when TTS is active)
+    if (e.key === 'Escape' && (state.currentTTSAudio || state.ttsState !== 'IDLE')) {
+        e.preventDefault();
+        cancelTTS();
+        return;
+    }
+
+    if (e.key === 'Control' && !e.repeat) {
+        if (e.shiftKey) {
+            state.isVoiceModeLocked = !state.isVoiceModeLocked;
+            if (state.isVoiceModeLocked) {
+                startRecognition();
+            } else {
+                stopRecognition();
+            }
+        } else {
+            state.isTempVoiceMode = true;
+            startRecognition();
+        }
+        UI.updateVoiceModeUI();
+        e.preventDefault();
+        return;
+    }
+
+    if (e.key === 'Alt' && !e.repeat) {
+        if (e.shiftKey) {
+            state.isLastTurnModeLocked = !state.isLastTurnModeLocked;
+        } else {
+            state.isTempLastTurnMode = true;
+        }
+        UI.updateHintAndIndicatorState();
+        e.preventDefault();
+    }
+}
+
+function handleKeyUp(e) {
+    if (e.key === 'Control') {
+        if (state.isTempVoiceMode) {
+            state.isTempVoiceMode = false;
+            stopRecognition();
+            UI.updateVoiceModeUI();
+        }
+        e.preventDefault();
+    }
+
+    if (e.key === 'Alt') {
+        if (state.isTempLastTurnMode) {
+            state.isTempLastTurnMode = false;
+            UI.updateHintAndIndicatorState();
+        }
+        e.preventDefault();
+    }
+}
+
+function handleKeyObservationsToggleClick() {
+    switch (state.keyObservationsMode) {
+        case 'autoplay-off':
+            state.keyObservationsMode = 'autoplay-on';
+            break;
+        case 'autoplay-on':
+            state.keyObservationsMode = 'off';
+            break;
+        case 'off':
+        default:
+            state.keyObservationsMode = 'autoplay-off';
+            break;
+    }
+    localStorage.setItem('keyObservationsMode', state.keyObservationsMode);
+    UI.updateKeyObservationsModeUI();
+
+    let announcementText = '';
+    switch (state.keyObservationsMode) {
+        case 'autoplay-off':
+            announcementText = 'Key Observations Autoplay Off';
+            break;
+        case 'autoplay-on':
+            announcementText = 'Key Observations Autoplay On';
+            break;
+        case 'off':
+            announcementText = 'Key Observations Off';
+            break;
+    }
+
+    if (announcementText) {
+        (async () => {
+            try {
+                const audioBlob = await API.synthesizeText(announcementText);
+                if (audioBlob) {
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    audio.play();
+                }
+            } catch (error) {
+                console.error("Failed to play state change announcement:", error);
+            }
+        })();
+    }
+}
+
+function getSystemPromptSummaryHTML() {
+    let devFlagHtml = '';
+//    if (state.appConfig.allow_synthesis_from_history) {
+//        devFlagHtml = `
+//             <div class="p-3 bg-yellow-900/50 rounded-lg mt-4">
+//                <p class="font-semibold text-yellow-300">Developer Mode Enabled</p>
+//                <p class="text-xs text-yellow-400 mt-1">The 'Answer from History' feature is active. The agent may answer questions by synthesizing from previous turns without re-running tools.</p>
+//           </div>
+//        `;
+//    }
+
+    return `
+        <div class="space-y-4 text-gray-300 text-sm p-2">
+            <h4 class="font-bold text-lg text-white">Agent Operating Principles</h4>
+            <p>The agent's primary goal is to answer your requests by using its available capabilities:</p>
+            <ul class="list-disc list-outside space-y-2 pl-5">
+                <li><strong>Prompts:</strong> For pre-defined analyses, descriptions, or summaries.</li>
+                <li><strong>Tools:</strong> For direct actions like "list tables" or "count users".</li>
+            </ul>
+            <div class="p-3 bg-gray-900/50 rounded-lg">
+                <p class="font-semibold text-white">Decision-Making Process:</p>
+                <p class="text-xs text-gray-400 mt-1">The agent follows a strict hierarchy. It will <strong class="text-white">always prioritize using a pre-defined prompt</strong> if it matches your request for an analysis. Otherwise, it will use the most appropriate tool to perform a direct action.</p>
+            </div>
+            ${devFlagHtml}
+            <div class="border-t border-white/10 pt-4 mt-4">
+                <h4 class="text-md font-bold text-yellow-300 mb-2">New features available</h4>
+                <p class="text-xs text-gray-400 mb-3">Latest enhancements and updates to the Uderia Platform.</p>
+                <div class="whats-new-container">
+                    <ul class="list-disc list-inside text-xs text-gray-300 space-y-1">
+                       <li><strong>06-Nov-2025:</strong> UI Real-Time Monitoring of Rest Requests</li>
+                       <li><strong>31-Oct-2025:</strong> Fully configurable Context Management (Turn & Session)</li>
+                       <li><strong>28-Oct-2025:</strong> Turn Replay & Turn Reload Plan</li>
+                       <li><strong>24-Oct-2025:</strong> Stop Button Added - Ability to immediately Stop Workflows</li>
+                       <li><strong>23-Oct-2025:</strong> Robust Multi-Tool Phase Handling</li>
+                       <li><strong>11-Oct-2025:</strong> Friendly.AI Integration</li>
+                       <li><strong>10-Oct-2025:</strong> Context Aware Rendering of the Collateral Report</li>
+                       <li><strong>19-SEP-2025:</strong> Microsoft Azure Integration</li>
+                       <li><strong>18-SEP-2025:</strong> REST Interface for Engine Configuration, Execution & Monitoring </li>
+                       <li><strong>12-SEP-2025:</strong> Significant Formatting Upgrade (Canonical Baseline Model for LLM Provider Rendering)</li>
+                       <li><strong>05-SEP-2025:</strong> Conversation Mode (Google Cloud Credentials required)</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-white/10 pt-4 mt-4">
+                 <h4 class="text-md font-bold text-yellow-300 mb-2">Model Price/Performance Leadership Board</h4>
+                 <p class="text-xs text-gray-400 mb-3">External link to the latest LLM benchmarks.</p>
+                 <a href="https://gorilla.cs.berkeley.edu/leaderboard.html" target="_blank" class="text-teradata-orange hover:underline text-sm">https://gorilla.cs.berkeley.edu/leaderboard.html</a>
+            </div>
+            <div id="disabled-capabilities-container-splash">
+                <!-- Disabled capabilities will be injected here -->
+            </div>
+        </div>
+    `;
+}
+
+function buildDisabledCapabilitiesListHTML() {
+    const disabledTools = [];
+    if (state.resourceData.tools) {
+        Object.values(state.resourceData.tools).flat().forEach(tool => {
+            if (tool.disabled) disabledTools.push(tool.name);
+        });
+    }
+
+    const disabledPrompts = [];
+    if (state.resourceData.prompts) {
+        Object.values(state.resourceData.prompts).flat().forEach(prompt => {
+            if (prompt.disabled) disabledPrompts.push(prompt.name);
+        });
+    }
+
+    if (disabledTools.length === 0 && disabledPrompts.length === 0) {
+        return '';
+    }
+
+    let html = `
+        <div class="border-t border-white/10 pt-4 mt-4">
+            <h4 class="text-md font-bold text-yellow-300 mb-2">Reactive Capabilities</h4>
+            <p class="text-xs text-gray-400 mb-3">The following capabilities are not actively participating in user queries. You can enable and/or actively execute them in the 'Capabilities' panel.</p>
+            <div class="flex gap-x-8">
+    `;
+
+    if (disabledTools.length > 0) {
+        html += '<div><h5 class="font-semibold text-sm text-white mb-1">Tools</h5><ul class="list-disc list-inside text-xs text-gray-300 space-y-1">';
+        disabledTools.forEach(name => {
+            html += `<li><code class="text-teradata-orange text-xs">${name}</code></li>`;
+        });
+        html += '</ul></div>';
+    }
+
+    if (disabledPrompts.length > 0) {
+        html += '<div><h5 class="font-semibold text-sm text-white mb-1">Prompts</h5><ul class="list-disc list-inside text-xs text-gray-300 space-y-1">';
+        disabledPrompts.forEach(name => {
+            html += `<li><code class="text-teradata-orange text-xs">${name}</code></li>`;
+        });
+        html += '</ul></div>';
+    }
+
+    html += '</div></div>';
+    return html;
+}
+
+async function handleTogglePrompt(promptName, isDisabled, buttonEl) {
+    try {
+        await API.togglePromptApi(promptName, isDisabled);
+
+        for (const category in state.resourceData.prompts) {
+            const prompt = state.resourceData.prompts[category].find(p => p.name === promptName);
+            if (prompt) {
+                prompt.disabled = isDisabled;
+                break;
+            }
+        }
+
+        const promptItem = document.getElementById(`resource-prompts-${promptName}`);
+        const runButton = promptItem.querySelector('.run-prompt-button');
+
+        promptItem.classList.toggle('opacity-60', isDisabled);
+        promptItem.title = isDisabled ? 'This prompt is disabled and will not be used by the agent.' : '';
+        runButton.disabled = isDisabled;
+        runButton.title = isDisabled ? 'This prompt is disabled.' : 'Run this prompt.';
+
+        buttonEl.innerHTML = isDisabled ?
+            `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074L3.707 2.293zM10 12a2 2 0 110-4 2 2 0 010 4z" clip-rule="evenodd" /><path d="M2 10s3.939 4 8 4 8-4 8-4-3.939-4-8-4-8 4-8 4zm13.707 4.293a1 1 0 00-1.414-1.414L12.586 14.6A8.007 8.007 0 0110 16c-4.478 0-8.268-2.943-9.542-7 .946-2.317 2.83-4.224 5.166-5.447L2.293 1.293A1 1 0 00.879 2.707l14 14a1 1 0 001.414 0z" /></svg>` :
+            `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" /></svg>`;
+
+        UI.updatePromptsTabCounter();
+
+    } catch (error) {
+        console.error(`Failed to toggle prompt ${promptName}:`, error);
+    }
+}
+
+async function handleToggleTool(toolName, isDisabled, buttonEl) {
+    try {
+        await API.toggleToolApi(toolName, isDisabled);
+
+        for (const category in state.resourceData.tools) {
+            const tool = state.resourceData.tools[category].find(t => t.name === toolName);
+            if (tool) {
+                tool.disabled = isDisabled;
+                break;
+            }
+        }
+
+        const toolItem = document.getElementById(`resource-tools-${toolName}`);
+        toolItem.classList.toggle('opacity-60', isDisabled);
+        toolItem.title = isDisabled ? 'This tool is disabled and will not be used by the agent.' : '';
+
+        buttonEl.innerHTML = isDisabled ?
+            `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074L3.707 2.293zM10 12a2 2 0 110-4 2 2 0 010 4z" clip-rule="evenodd" /><path d="M2 10s3.939 4 8 4 8-4 8-4-3.939-4-8-4-8 4-8 4zm13.707 4.293a1 1 0 00-1.414-1.414L12.586 14.6A8.007 8.007 0 0110 16c-4.478 0-8.268-2.943-9.542-7 .946-2.317 2.83-4.224 5.166-5.447L2.293 1.293A1 1 0 00.879 2.707l14 14a1 1 0 001.414 0z" /></svg>` :
+            `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" /></svg>`;
+
+        UI.updateToolsTabCounter();
+
+    } catch (error) {
+        console.error(`Failed to toggle tool ${toolName}:`, error);
+    }
+}
+
+/**
+ * Handles the save action when editing a session name (Enter or Blur).
+ * @param {Event} e - The event object (blur or keydown).
+ */
+export async function handleSessionRenameSave(e) {
+    const inputElement = e.target;
+    const sessionItem = inputElement.closest('.session-item');
+    if (!sessionItem) return;
+
+    const sessionId = sessionItem.dataset.sessionId;
+    const newName = inputElement.value.trim();
+    const originalName = inputElement.dataset.originalName;
+
+    if (!newName || newName === originalName) {
+        UI.exitSessionEditMode(inputElement, originalName);
+        return;
+    }
+
+    inputElement.disabled = true;
+    inputElement.style.opacity = '0.7';
+
+    try {
+        await renameSession(sessionId, newName);
+        UI.exitSessionEditMode(inputElement, newName);
+        UI.moveSessionToTop(sessionId);
+    } catch (error) {
+        console.error(`Failed to rename session ${sessionId}:`, error);
+        inputElement.style.borderColor = 'red';
+        inputElement.disabled = false;
+        // Revert to original name and exit edit mode on API error
+        UI.exitSessionEditMode(inputElement, originalName);
+    }
+}
+
+/**
+ * Handles the cancel action when editing a session name (Escape).
+ * @param {Event} e - The event object (keydown).
+ */
+export function handleSessionRenameCancel(e) {
+    const inputElement = e.target;
+    const originalName = inputElement.dataset.originalName;
+    UI.exitSessionEditMode(inputElement, originalName);
+}
+
+async function handleToggleTurnValidity(badgeEl) {
+    const turnId = badgeEl.dataset.turnId;
+    const sessionId = state.currentSessionId;
+    if (!turnId || !sessionId) {
+        console.error("Missing turnId or sessionId for toggling validity.");
+        return;
+    }
+
+    try {
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        
+        // Add authentication token if available
+        const authToken = localStorage.getItem('tda_auth_token');
+        if (authToken) {
+            headers['Authorization'] = `Bearer ${authToken}`;
+        }
+        
+        const response = await fetch(`/api/session/${sessionId}/turn/${turnId}/toggle_validity`, {
+            method: 'POST',
+            headers: headers
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Failed to toggle turn validity.');
+        }
+
+        // On success, toggle the UI
+        const allBadgesForTurn = document.querySelectorAll(`.turn-badge[data-turn-id="${turnId}"]`);
+        allBadgesForTurn.forEach(badge => {
+            badge.classList.toggle('context-invalid');
+        });
+
+    } catch (error) {
+        console.error(`Error toggling validity for turn ${turnId}:`, error);
+        if (window.showAppBanner) {
+            window.showAppBanner(`Error: Could not update turn status. ${error.message}`, 'error');
+        }
+    }
+}
+
+/**
+ * Apply active/inactive styling to the canvas split mode toggle button.
+ */
+function applyCanvasToggleStyle(btn, isOn) {
+    btn.classList.toggle('canvas-toggle-active', isOn);
+    btn.title = isOn ? 'Canvas Split Mode (On)' : 'Canvas Split Mode (Off)';
+}
+
+// --- Initializer ---
+
+export function initializeEventListeners() {
+    DOM.chatForm.addEventListener('submit', handleChatSubmit);
+    DOM.newChatButton.addEventListener('click', handleStartNewSession);
+    DOM.resourceTabs.addEventListener('click', handleResourceTabClick);
+
+    // Delegated click handler for Knowledge Graphs panel actions (export, delete)
+    const kgPanelContent = document.getElementById('knowledge-graphs-content');
+    if (kgPanelContent) {
+        kgPanelContent.addEventListener('click', handleKnowledgeGraphPanelClick);
+    }
+
+    DOM.keyObservationsToggleButton.addEventListener('click', handleKeyObservationsToggleClick);
+
+    // Voice button click toggles locked voice mode (same as Shift+Ctrl)
+    if (DOM.voiceInputButton) {
+        DOM.voiceInputButton.addEventListener('click', () => {
+            state.isVoiceModeLocked = !state.isVoiceModeLocked;
+            if (state.isVoiceModeLocked) {
+                startRecognition();
+            } else {
+                stopRecognition();
+            }
+            UI.updateVoiceModeUI();
+        });
+    }
+
+    // Delegated event listener for copy buttons and NEW reload/replay buttons
+    DOM.chatLog.addEventListener('click', (e) => {
+        const copyButton = e.target.closest('.copy-button');
+        const clickableAvatar = e.target.closest('.clickable-avatar[data-turn-id]');
+        const clickableBadge = e.target.closest('.clickable-badge[data-turn-id]');
+
+        if (clickableBadge) {
+            e.stopPropagation();
+            handleToggleTurnValidity(clickableBadge);
+        } else if (copyButton) {
+            const copyType = copyButton.dataset.copyType;
+            if (copyType === 'code') {
+                copyToClipboard(copyButton);
+            } else if (copyType === 'table') {
+                copyTableToClipboard(copyButton);
+            }
+        } else if (clickableAvatar) {
+            handleReloadPlanClick(clickableAvatar);
+        }
+    });
+
+    if (DOM.stopExecutionButton) {
+        DOM.stopExecutionButton.addEventListener('click', handleStopExecutionClick);
+    } else {
+        console.error("Stop execution button not found in DOM elements.");
+    }
+
+    if (DOM.headerReplayPlannedButton) {
+        DOM.headerReplayPlannedButton.addEventListener('click', (e) => {
+            // --- MODIFICATION: Wire to the new handleReplayPlanClick ---
+            handleReplayPlanClick(e.currentTarget);
+        });
+    }
+    if (DOM.headerReplayOptimizedButton) {
+        DOM.headerReplayOptimizedButton.addEventListener('click', (e) => {
+             if (window.showAppBanner) {
+                window.showAppBanner('Replay Optimized Query - Not Implemented Yet.', 'info');
+            }
+            // Placeholder: handleReplayOptimizedClick(e.currentTarget);
+        });
+    }
+
+    // Context Window Analytics button in Live Status header
+    if (DOM.cwAnalyticsButton) {
+        DOM.cwAnalyticsButton.addEventListener('click', () => {
+            if (!state.currentSessionId) return;
+            const sessionName = DOM.activeSessionTitle?.textContent || 'Current Session';
+            openContextAnalyticsModal(state.currentSessionId, sessionName);
+        });
+    }
+
+
+    DOM.mainContent.addEventListener('click', (e) => {
+        const runButton = e.target.closest('.run-prompt-button');
+        const viewButton = e.target.closest('.view-prompt-button');
+        const promptToggleButton = e.target.closest('.prompt-toggle-button');
+        const toolToggleButton = e.target.closest('.tool-toggle-button');
+
+        if (runButton && !runButton.disabled) {
+            const resourceItem = runButton.closest('.resource-item');
+            const promptName = resourceItem.id.replace('resource-prompts-', '');
+            let promptData = null;
+            for (const category in state.resourceData.prompts) {
+                const found = state.resourceData.prompts[category].find(p => p.name === promptName);
+                if (found) {
+                    promptData = found;
+                    break;
+                }
+            }
+            if (promptData) openPromptModal(promptData);
+            return;
+        }
+
+        if (viewButton) {
+            const resourceItem = viewButton.closest('.resource-item');
+            const promptName = resourceItem.id.replace('resource-prompts-', '');
+            openViewPromptModal(promptName);
+            return;
+        }
+
+        if (promptToggleButton) {
+            const resourceItem = promptToggleButton.closest('.resource-item');
+            const promptName = resourceItem.id.replace('resource-prompts-', '');
+            let promptData = null;
+            for (const category in state.resourceData.prompts) {
+                const found = state.resourceData.prompts[category].find(p => p.name === promptName);
+                if (found) {
+                    promptData = found;
+                    break;
+                }
+            }
+            if (promptData) handleTogglePrompt(promptName, !promptData.disabled, promptToggleButton);
+            return;
+        }
+
+        if (toolToggleButton) {
+            const resourceItem = toolToggleButton.closest('.resource-item');
+            const toolName = resourceItem.id.replace('resource-tools-', '');
+             let toolData = null;
+            for (const category in state.resourceData.tools) {
+                const found = state.resourceData.tools[category].find(t => t.name === toolName);
+                if (found) {
+                    toolData = found;
+                    break;
+                }
+            }
+            if (toolData) handleToggleTool(toolName, !toolData.disabled, toolToggleButton);
+            return;
+        }
+    });
+
+    // Delegated event listener for session list (Phase 3: Event Delegation)
+    // Single listener handles all session item interactions (edit, delete, copy, load)
+    DOM.sessionList.addEventListener('click', (e) => {
+        const sessionItem = e.target.closest('.session-item');
+        if (!sessionItem) return;
+
+        const editButton = e.target.closest('.session-edit-button');
+        const deleteButton = e.target.closest('.session-delete-button');
+        const copyButton = e.target.closest('.session-copy-button');
+        const analyticsButton = e.target.closest('.session-analytics-button');
+
+        if (deleteButton) {
+            handleDeleteSessionClick(deleteButton);
+        } else if (editButton) {
+            UI.enterSessionEditMode(editButton);
+        } else if (copyButton) {
+            // Handle copy session ID to clipboard
+            e.stopPropagation();
+            const sessionId = sessionItem.dataset.sessionId;
+            navigator.clipboard.writeText(sessionId).then(() => {
+                // Visual feedback: change icon to checkmark
+                const originalHTML = copyButton.innerHTML;
+                copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                setTimeout(() => {
+                    copyButton.innerHTML = originalHTML;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy session ID: ', err);
+            });
+        } else if (analyticsButton) {
+            e.stopPropagation();
+            const sessionId = sessionItem.dataset.sessionId;
+            const sessionName = sessionItem.querySelector('.session-name-span')?.textContent || 'Session';
+            openContextAnalyticsModal(sessionId, sessionName);
+        } else if (!sessionItem.querySelector('.session-edit-input')) {
+            handleLoadSession(sessionItem.dataset.sessionId);
+        }
+    });
+
+    // --- NEW: Active session title click to edit ---
+    if (DOM.activeSessionTitle) {
+        DOM.activeSessionTitle.addEventListener('click', () => {
+            UI.enterActiveSessionTitleEdit();
+        });
+    }
+
+    // --- NEW: Listen for custom rename event dispatched by UI.saveActiveSessionTitleEdit ---
+    document.addEventListener('activeSessionTitleRenamed', (e) => {
+        const { newName } = e.detail || {};
+        if (newName) {
+            renameActiveSession(newName);
+        }
+    });
+
+    // All modal listeners
+    DOM.promptModalClose.addEventListener('click', UI.closePromptModal);
+    DOM.promptModalOverlay.addEventListener('click', (e) => {
+        if (e.target === DOM.promptModalOverlay) UI.closePromptModal();
+    });
+    DOM.viewPromptModalClose.addEventListener('click', UI.closeViewPromptModal);
+    DOM.viewPromptModalOverlay.addEventListener('click', (e) => {
+        if (e.target === DOM.viewPromptModalOverlay) UI.closeViewPromptModal();
+    });
+    
+    // Info Modal (now accessed from user dropdown)
+    DOM.infoModalClose.addEventListener('click', () => {
+        DOM.infoModalOverlay.classList.add('opacity-0');
+        DOM.infoModalContent.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => DOM.infoModalOverlay.classList.add('hidden'), 300);
+    });
+    DOM.infoModalOverlay.addEventListener('click', (e) => {
+        if (e.target === DOM.infoModalOverlay) {
+            DOM.infoModalClose.click();
+        }
+    });
+
+    // Config modal listeners
+    // DOM.configMenuButton.addEventListener('click', () => {
+    //     DOM.configModalOverlay.classList.remove('hidden', 'opacity-0');
+    //     DOM.configModalContent.classList.remove('scale-95', 'opacity-0');
+    //     // --- MODIFICATION: Use function from config handler ---
+    //     // This function will need to be created/moved
+    //     // For now, we'll assume getCurrentCoreConfig is still here
+    //     // state.pristineConfig = getCurrentCoreConfig();
+    //     // UI.updateConfigButtonState();
+    //     // ---
+    //     // Let's find getCurrentCoreConfig. It's not exported.
+    //     // It's in the configManagement.js file but not exported.
+    //     // I will assume for now that it is correctly handled by the config form's input listener.
+    // });
+    // DOM.configModalClose.addEventListener('click', handleCloseConfigModalRequest);
+    // DOM.configActionButton.addEventListener('click', handleConfigActionButtonClick);
+    
+    // Old config form event listeners - wrapped in null checks since form was removed
+    if (DOM.configForm) {
+        DOM.configForm.addEventListener('submit', handleConfigFormSubmit);
+        DOM.configForm.addEventListener('input', UI.updateConfigButtonState);
+    }
+
+    // LLM config listeners - wrapped in null checks
+    if (DOM.llmProviderSelect) {
+        DOM.llmProviderSelect.addEventListener('change', handleProviderChange);
+    }
+    // AWS credentials are now stored in encrypted database only (no localStorage)
+    // API keys are now stored in encrypted database only (no localStorage)
+    // Ollama host is now stored in encrypted database only (no localStorage)
+    if (DOM.refreshModelsButton) {
+        DOM.refreshModelsButton.addEventListener('click', handleRefreshModelsClick);
+    }
+    if (DOM.llmModelSelect) {
+        DOM.llmModelSelect.addEventListener('change', handleModelChange);
+    }
+
+
+    // Prompt editor listeners (button may not exist if removed from UI)
+    if (DOM.promptEditorButton) {
+        DOM.promptEditorButton.addEventListener('click', openPromptEditor);
+    }
+    if (DOM.promptEditorClose) {
+        DOM.promptEditorClose.addEventListener('click', closePromptEditor);
+    }
+    if (DOM.promptEditorSave) {
+        DOM.promptEditorSave.addEventListener('click', saveSystemPromptChanges);
+    }
+    if (DOM.promptEditorReset) {
+        DOM.promptEditorReset.addEventListener('click', () => resetSystemPrompt(false));
+    }
+    if (DOM.promptEditorTextarea) {
+        DOM.promptEditorTextarea.addEventListener('input', UI.updatePromptEditorState);
+    }
+
+    // Simple chat modal listeners (button may not exist if removed from UI)
+    if (DOM.chatModalButton) {
+        DOM.chatModalButton.addEventListener('click', openChatModal);
+    }
+    if (DOM.chatModalClose) {
+        DOM.chatModalClose.addEventListener('click', UI.closeChatModal);
+    }
+    if (DOM.chatModalOverlay) {
+        DOM.chatModalOverlay.addEventListener('click', (e) => {
+            if (e.target === DOM.chatModalOverlay) UI.closeChatModal();
+        });
+    }
+    if (DOM.chatModalForm) {
+        DOM.chatModalForm.addEventListener('submit', handleChatModalSubmit);
+    }
+
+    // Global listeners
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+    DOM.statusWindowContent.addEventListener('mouseenter', () => { state.isMouseOverStatus = true; });
+    DOM.statusWindowContent.addEventListener('mouseleave', () => { state.isMouseOverStatus = false; });
+
+    DOM.windowMenuButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        DOM.windowDropdownMenu.classList.toggle('open');
+    });
+    document.addEventListener('click', (e) => {
+        if (!DOM.windowDropdownMenu.contains(e.target) && e.target !== DOM.windowMenuButton) {
+            DOM.windowDropdownMenu.classList.remove('open');
+        }
+        // Settings dropdown removed - now using user dropdown for Info
+    });
+
+    DOM.contextStatusDot.addEventListener('click', handleContextPurgeClick);
+
+    DOM.ccrStatusDot.addEventListener('click', () => {
+        if (state.lastRagCaseData) {
+            UI.showRagCaseModal(state.lastRagCaseData);
+        } else {
+        }
+    });
+
+    DOM.ragCaseModalClose.addEventListener('click', UI.closeRagCaseModal);
+    DOM.ragCaseModalCloseBottom.addEventListener('click', UI.closeRagCaseModal);
+    DOM.ragCaseModalOverlay.addEventListener('click', (e) => {
+        if (e.target === DOM.ragCaseModalOverlay) UI.closeRagCaseModal();
+    });
+    DOM.ragCaseModalCopy.addEventListener('click', () => {
+        if (state.lastRagCaseData) {
+            navigator.clipboard.writeText(JSON.stringify(state.lastRagCaseData.full_case_data, null, 2)).then(() => {
+                // Provide visual feedback
+                const originalText = DOM.ragCaseModalCopy.textContent;
+                DOM.ragCaseModalCopy.textContent = 'Copied!';
+                setTimeout(() => {
+                    DOM.ragCaseModalCopy.textContent = originalText;
+                }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy RAG case data: ', err);
+            });
+        }
+    });
+
+    const toggleTooltipsCheckbox = document.getElementById('toggle-tooltips-checkbox');
+    if (toggleTooltipsCheckbox) {
+        // Set initial state from localStorage
+        const savedTooltipPref = localStorage.getItem('showTooltips');
+        state.showTooltips = savedTooltipPref === null ? true : savedTooltipPref === 'true';
+        toggleTooltipsCheckbox.checked = state.showTooltips;
+
+        toggleTooltipsCheckbox.addEventListener('change', (e) => {
+            state.showTooltips = e.target.checked;
+            localStorage.setItem('showTooltips', state.showTooltips);
+        });
+    }
+
+    // --- Canvas Split Mode Toggle ---
+    if (DOM.canvasModeToggle) {
+        const savedCanvasMode = localStorage.getItem('canvasSplitMode');
+        setCanvasSplitMode(savedCanvasMode === 'on');
+        applyCanvasToggleStyle(DOM.canvasModeToggle, state.canvasSplitMode);
+
+        DOM.canvasModeToggle.addEventListener('click', async () => {
+            setCanvasSplitMode(!state.canvasSplitMode);
+            localStorage.setItem('canvasSplitMode', state.canvasSplitMode ? 'on' : 'off');
+            applyCanvasToggleStyle(DOM.canvasModeToggle, state.canvasSplitMode);
+
+            // When turning OFF, close the split panel if open
+            if (!state.canvasSplitMode) {
+                try {
+                    const { closeSplitPanel } = await import('/api/v1/components/canvas/renderer');
+                    closeSplitPanel();
+                } catch (e) {
+                    console.warn('[Canvas] Could not close split panel:', e);
+                }
+            }
+        });
+
+        // Listen for split mode activation from inline compact card clicks (renderer.js)
+        window.addEventListener('canvas-split-mode-changed', (e) => {
+            if (e.detail?.on !== undefined) {
+                setCanvasSplitMode(e.detail.on);
+                applyCanvasToggleStyle(DOM.canvasModeToggle, state.canvasSplitMode);
+            }
+        });
+    }
+
+    const welcomeScreenCheckbox = document.getElementById('toggle-welcome-screen-checkbox');
+    const welcomeScreenPopupCheckbox = document.getElementById('welcome-screen-show-at-startup-checkbox');
+
+    const handleWelcomeScreenToggle = (e) => {
+        const isChecked = e.target.checked;
+        state.showWelcomeScreenAtStartup = isChecked;
+        // Note: localStorage is now only updated on page load/unload, not on every toggle
+        // This prevents race conditions with other configuration saves
+        if (welcomeScreenCheckbox) welcomeScreenCheckbox.checked = isChecked;
+        if (welcomeScreenPopupCheckbox) welcomeScreenPopupCheckbox.checked = isChecked;
+    };
+
+    if (welcomeScreenCheckbox) {
+        welcomeScreenCheckbox.addEventListener('change', handleWelcomeScreenToggle);
+    }
+    if (welcomeScreenPopupCheckbox) {
+        welcomeScreenPopupCheckbox.addEventListener('change', handleWelcomeScreenToggle);
+    }
+    
+    if (DOM.appMenuToggle) {
+        DOM.appMenuToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleSideNav();
+        });
+    }
+
+    if (DOM.viewSwitchButtons) {
+        DOM.viewSwitchButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                // Find the closest ancestor which is a link
+                const link = e.target.closest('.view-switch-button');
+                const viewId = link.dataset.view;
+                if (viewId) {
+                    handleViewSwitch(viewId);
+                }
+            });
+        });
+    }
+    
+    // --- MODIFICATION START: Add delegated event listener for case feedback buttons ---
+    document.addEventListener('click', async (e) => {
+        const caseFeedbackBtn = e.target.closest('.case-feedback-btn');
+        if (caseFeedbackBtn) {
+            e.preventDefault();
+            const sessionId = caseFeedbackBtn.dataset.sessionId;
+            const turnId = parseInt(caseFeedbackBtn.dataset.turnId);
+            const caseId = caseFeedbackBtn.dataset.caseId;
+            const vote = caseFeedbackBtn.dataset.vote;
+            
+            // Require either (sessionId + turnId) OR caseId
+            if ((!sessionId || isNaN(turnId)) && !caseId) {
+                console.error('Missing required data on feedback button (need either session+turn or case ID)');
+                return;
+            }
+            
+            try {
+                // Import the API functions
+                const { updateTurnFeedback, updateRAGCaseFeedback } = await import('./api.js');
+                
+                // Get current state from button classes
+                const isActive = caseFeedbackBtn.classList.contains('text-[#F15F22]');
+                const newVote = isActive ? null : vote;
+                
+                // Update backend using appropriate endpoint
+                if (caseId) {
+                    // Direct RAG case feedback (doesn't require session)
+                    const result = await updateRAGCaseFeedback(caseId, newVote);
+                    console.log('[CaseFeedback] Result:', result);
+                    
+                    // Calculate new feedback score for immediate UI update
+                    const newScore = newVote === 'up' ? 1 : newVote === 'down' ? -1 : 0;
+                    
+                    // Immediately update table row feedback badge (before server refresh)
+                    const { updateTableRowFeedback } = await import('./ui.js?v=1.5');
+                    updateTableRowFeedback(caseId, newScore);
+                    console.log('[CaseFeedback] Updated table row feedback immediately for', caseId);
+                    
+                    // Display warning if session doesn't exist
+                    if (result.warning) {
+                        console.log('[CaseFeedback] Warning detected, showing banner:', result.warning);
+                        if (window.showAppBanner) {
+                            window.showAppBanner(result.warning, 'warning');
+                        } else {
+                            console.warn('[CaseFeedback] showAppBanner not available');
+                        }
+                    } else {
+                        // Show success message even without warning
+                        if (window.showAppBanner) {
+                            const action = newVote === 'up' ? 'marked helpful' : newVote === 'down' ? 'marked unhelpful' : 'cleared';
+                            window.showAppBanner(`RAG case ${action}`, 'success');
+                        }
+                    }
+                    
+                    // Update the case details panel to show updated feedback score
+                    // (Don't refresh entire table - we already updated the row immediately above)
+                    console.log('[CaseFeedback] Refreshing case details panel for case', caseId);
+                    const { selectCaseRow } = await import('./ui.js?v=1.5');
+                    await selectCaseRow(caseId);
+                } else if (sessionId && !isNaN(turnId)) {
+                    // Session-based feedback
+                    await updateTurnFeedback(sessionId, turnId, newVote);
+                } else {
+                    throw new Error('Invalid feedback data');
+                }
+                
+                // Update UI: find both buttons in this container
+                const container = caseFeedbackBtn.closest('.inline-flex');
+                const upBtn = container.querySelector('[data-vote="up"]');
+                const downBtn = container.querySelector('[data-vote="down"]');
+                
+                // Reset both buttons
+                upBtn.classList.remove('text-[#F15F22]', 'bg-gray-800/60');
+                upBtn.classList.add('text-gray-300');
+                downBtn.classList.remove('text-[#F15F22]', 'bg-gray-800/60');
+                downBtn.classList.add('text-gray-300');
+                
+                // Apply active state to clicked button if not clearing
+                if (newVote) {
+                    caseFeedbackBtn.classList.remove('text-gray-300');
+                    caseFeedbackBtn.classList.add('text-[#F15F22]', 'bg-gray-800/60');
+                }
+                
+            } catch (error) {
+                console.error('Failed to update case feedback:', error);
+                if (window.showAppBanner) {
+                    window.showAppBanner(`Error updating feedback: ${error.message}`, 'error');
+                }
+            }
+        }
+    });
+    // --- MODIFICATION END ---
+
+    // Add event listener for the copy session ID button
+    document.addEventListener('DOMContentLoaded', () => {
+        const copyButton = document.getElementById('copy-session-id');
+        if (copyButton) {
+            copyButton.addEventListener('click', () => {
+                const sessionId = state.activeSessionId; // Assuming activeSessionId holds the current session ID
+                if (sessionId) {
+                    UI.copySessionIdToClipboard(sessionId);
+                } else {
+                    console.error('No active session ID found.');
+                }
+            });
+        }
+    });
+
+    // --- Event Filter Chip Handlers ---
+    if (DOM.eventFilterRow) {
+        DOM.eventFilterRow.addEventListener('click', (e) => {
+            const chip = e.target.closest('.event-filter-chip');
+            if (!chip) return;
+            const category = chip.dataset.filter;
+            if (category) {
+                UI.toggleEventFilter(category);
+            }
+        });
+        // Sync chip UI with persisted state on load
+        UI.syncFilterChipsWithState();
+    }
+}
+// --- Repository Tab Switching ---
+// DEPRECATED: Tab switching now handled by initializeRepositoryTabs() in ragCollectionManagement.js
+// which supports all 3 tabs (Planner, Knowledge, Knowledge Graphs) via .active class.
+export function wireRepositoryTabs() {
+    // No-op — kept for backward compatibility with existing import in main.js
+}
+
+// --- Export harmonization functions for use in event reload ---
+// These functions are used by ui.js during historical event rendering
+// to regenerate harmonized titles from stored event payloads
+window.EventHandlers = {
+    getToolEnabledTitle,
+    getLlmOnlyTitle,
+    getRagFocusedTitle,
+    getGenieTitle,
+    getLifecycleTitle
+};

@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Uderia Platform</title>
+    <!-- Tailwind CSS - built with PostCSS (development mode) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- TODO: For production, build Tailwind with PostCSS -->
+    <link rel="stylesheet" href="/static/css/main.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        html {
+            font-size: 13px;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(241, 95, 34, 0.15) 0%, transparent 70%);
+            border-radius: 50%;
+            animation: pulse 8s ease-in-out infinite;
+        }
+        
+        body::after {
+            content: '';
+            position: absolute;
+            bottom: -30%;
+            left: -10%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+            animation: pulse 10s ease-in-out infinite reverse;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1) translate(0, 0); opacity: 1; }
+            50% { transform: scale(1.1) translate(20px, -20px); opacity: 0.8; }
+        }
+        
+        .login-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #F15F22 0%, #D9501A 100%);
+            box-shadow: 0 10px 25px -5px rgba(241, 95, 34, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px -5px rgba(241, 95, 34, 0.4);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .input-field {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .input-field:focus {
+            background: rgba(15, 23, 42, 0.8);
+            border-color: #F15F22;
+            box-shadow: 0 0 0 3px rgba(241, 95, 34, 0.1);
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4 md:p-8">
+    <div class="max-w-7xl w-full mx-auto relative z-10">
+        <div class="grid md:grid-cols-2 gap-8 lg:gap-12 items-center">
+            
+            <!-- Left Side - Branding -->
+            <div class="hidden md:flex flex-col items-center justify-center space-y-8">
+                <!-- Logo & Brand -->
+                <div class="text-center">
+                    <div class="flex flex-col items-center justify-center gap-6 mb-8">
+                        <div class="w-32 h-32 flex items-center justify-center" style="filter: drop-shadow(0 20px 50px rgba(241, 95, 34, 0.5));">
+                            <img src="/static/images/Uderia_Logo_Light.svg" alt="Uderia Platform" class="w-full h-full">
+                        </div>
+                        <div class="text-center">
+                            <div class="text-5xl font-bold text-white tracking-wide" style="letter-spacing: 0.02em; line-height: 0.9;">UDERIA</div>
+                            <div class="text-sm font-light text-gray-400 tracking-widest mt-3" style="letter-spacing: 0.25em; text-transform: uppercase; white-space: nowrap;">AUTONOMOUS • ENTERPRISE</div>
+                            <div class="text-xs font-light text-gray-400 tracking-widest mt-1" style="letter-spacing: 0.2em; text-transform: uppercase;">PLATFORM</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Decorative Separator -->
+                <div class="w-full flex justify-center my-12">
+                    <div class="relative">
+                        <div class="w-48 h-px bg-gradient-to-r from-transparent via-[#F15F22] to-transparent opacity-60"></div>
+                        <div class="absolute inset-0 w-48 h-px bg-gradient-to-r from-transparent via-[#F15F22] to-transparent blur-sm"></div>
+                    </div>
+                </div>
+
+                <!-- Hero Tagline -->
+                <div class="w-full flex justify-center">
+                    <h2 class="text-3xl font-light text-white leading-tight text-center" style="letter-spacing: -0.02em;">
+                        Cloud-Level Reasoning.<br>
+                        <span class="font-bold bg-gradient-to-r from-[#F15F22] via-[#FF8C50] to-[#F15F22] bg-clip-text text-transparent" style="filter: drop-shadow(0 0 20px rgba(241, 95, 34, 0.3));">Zero-Trust Privacy.</span>
+                    </h2>
+                </div>
+            </div>
+            
+            <!-- Right Side - Login Form -->
+            <div class="w-full">
+                <!-- Mobile Header (only visible on small screens) -->
+                <div class="md:hidden text-center mb-8">
+                    <div class="flex items-center justify-center gap-6 mb-6">
+                        <div class="w-20 h-20" style="filter: drop-shadow(0 10px 30px rgba(241, 95, 34, 0.5));">
+                            <img src="/static/images/Uderia_Logo_Light.svg" alt="Uderia Platform" class="w-full h-full">
+                        </div>
+                        <div>
+                            <div class="text-4xl font-bold text-white tracking-wide">UDERIA</div>
+                            <div class="text-xs font-light text-gray-400 tracking-widest mt-2" style="letter-spacing: 0.25em; white-space: nowrap;">AUTONOMOUS • ENTERPRISE</div>
+                            <div class="text-[10px] font-light text-gray-400 tracking-widest mt-1" style="letter-spacing: 0.2em;">PLATFORM</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Login Card -->
+                <div class="login-card rounded-2xl shadow-2xl p-8">
+            <h2 class="text-3xl font-semibold text-white mb-3 text-center">Welcome Back</h2>
+            <p class="text-slate-400 text-lg text-center mb-6">Sign in to continue to your workspace</p>
+            
+            <!-- Email Verification Info Box -->
+            <div id="email-verification-info" class="mb-6 p-4 rounded-lg bg-blue-500/10 border border-blue-500/50 flex items-start gap-3">
+                <svg class="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2zm-11-1a1 1 0 11-2 0 1 1 0 012 0zM8 7a1 1 0 000 2h6a1 1 0 000-2H8zm6 5a1 1 0 110 2H8a1 1 0 110-2h6z" clip-rule="evenodd"></path>
+                </svg>
+                <div class="text-sm text-blue-300">
+                    <strong>New here?</strong> After registration, you'll receive an email with a verification link. You must verify your email before you can log in.
+                </div>
+            </div>
+            
+            <!-- Alert Messages -->
+            <div id="alert-container" class="mb-4 hidden">
+                <div id="alert-message" class="p-4 rounded-lg text-sm"></div>
+            </div>
+
+            <!-- Login Form -->
+            <form id="login-form" class="space-y-6">
+                <!-- Username -->
+                <div>
+                    <label for="username" class="block text-sm font-semibold text-slate-200 mb-2">
+                        Username
+                    </label>
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        required
+                        autocomplete="username"
+                        class="input-field w-full px-4 py-3 rounded-lg text-white placeholder-slate-500 focus:outline-none"
+                        placeholder="Enter your username"
+                    >
+                </div>
+
+                <!-- Password -->
+                <div>
+                    <label for="password" class="block text-sm font-semibold text-slate-200 mb-2">
+                        Password
+                    </label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        required
+                        autocomplete="current-password"
+                        class="input-field w-full px-4 py-3 rounded-lg text-white placeholder-slate-500 focus:outline-none"
+                        placeholder="Enter your password"
+                    >
+                </div>
+
+                <!-- Remember Me & Forgot Password -->
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center cursor-pointer group">
+                        <input
+                            id="remember-me"
+                            name="remember-me"
+                            type="checkbox"
+                            class="w-4 h-4 text-[#F15F22] bg-slate-700 border-slate-600 rounded focus:ring-[#F15F22] focus:ring-2"
+                        >
+                        <span class="ml-2 text-sm text-slate-300 group-hover:text-white transition-colors">Remember me</span>
+                    </label>
+                    <a href="#" onclick="openForgotPasswordModal(); return false;" class="text-sm text-[#F15F22] hover:text-[#D9501A] font-medium transition-colors">
+                        Forgot password?
+                    </a>
+                </div>
+
+                <!-- Submit Button -->
+                <button
+                    type="submit"
+                    id="login-button"
+                    class="btn-primary w-full text-white font-semibold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-2 focus:ring-offset-slate-900"
+                >
+                    <span id="login-button-text">Sign In</span>
+                    <span id="login-button-spinner" class="hidden">
+                        <svg class="animate-spin h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </span>
+                </button>
+
+                <!-- OAuth Divider -->
+                <div class="relative my-6">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-slate-600"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-2 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 text-slate-400">Or sign in with</span>
+                    </div>
+                </div>
+
+                <!-- OAuth Buttons -->
+                <div id="oauth-buttons-container" class="grid grid-cols-2 gap-3">
+                    <!-- OAuth buttons will be loaded here by JavaScript -->
+                </div>
+            </form>
+
+            <!-- Sign Up Link -->
+            <div class="mt-8 text-center">
+                <p class="text-slate-400 text-sm">
+                    Don't have an account?
+                    <a href="/register" class="text-[#F15F22] hover:text-[#D9501A] font-semibold transition-colors">
+                        Create one now
+                    </a>
+                </p>
+            </div>
+        </div>
+            </div>
+        </div>
+
+        <!-- Resend Verification Email Modal -->
+        <div id="resend-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+            <div class="login-card rounded-2xl shadow-2xl p-8 max-w-md w-full">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-semibold text-white">Resend Verification Email</h3>
+                    <button onclick="closeResendModal()" class="text-slate-400 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <p class="text-slate-400 text-sm mb-6">
+                    Enter the email address you used to register. We'll send you a new verification link.
+                </p>
+
+                <div id="resend-alert" class="mb-4 hidden">
+                    <div id="resend-alert-message" class="p-4 rounded-lg text-sm"></div>
+                </div>
+
+                <form id="resend-form" class="space-y-4">
+                    <div>
+                        <label for="resend-email" class="block text-sm font-semibold text-slate-200 mb-2">
+                            Email Address
+                        </label>
+                        <input
+                            type="email"
+                            id="resend-email"
+                            name="email"
+                            required
+                            class="input-field w-full px-4 py-3 rounded-lg text-white placeholder-slate-500 focus:outline-none"
+                            placeholder="Enter your email address"
+                        >
+                    </div>
+
+                    <button
+                        type="submit"
+                        id="resend-button"
+                        class="btn-primary w-full text-white font-semibold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-2 focus:ring-offset-slate-900"
+                    >
+                        <span id="resend-button-text">Send Verification Email</span>
+                        <span id="resend-button-spinner" class="hidden">
+                            <svg class="animate-spin h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Forgot Password Modal -->
+        <div id="forgot-password-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+            <div class="login-card rounded-2xl shadow-2xl p-8 max-w-md w-full">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-semibold text-white">Forgot Password</h3>
+                    <button onclick="closeForgotPasswordModal()" class="text-slate-400 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <p class="text-slate-400 text-sm mb-6">
+                    Enter the email address associated with your account. We'll send you a link to reset your password.
+                </p>
+
+                <div id="forgot-password-alert" class="mb-4 hidden">
+                    <div id="forgot-password-alert-message" class="p-4 rounded-lg text-sm"></div>
+                </div>
+
+                <form id="forgot-password-form" class="space-y-4">
+                    <div>
+                        <label for="forgot-email" class="block text-sm font-semibold text-slate-200 mb-2">
+                            Email Address
+                        </label>
+                        <input
+                            type="email"
+                            id="forgot-email"
+                            name="email"
+                            required
+                            class="input-field w-full px-4 py-3 rounded-lg text-white placeholder-slate-500 focus:outline-none"
+                            placeholder="Enter your email address"
+                        >
+                    </div>
+
+                    <button
+                        type="submit"
+                        id="forgot-password-button"
+                        class="btn-primary w-full text-white font-semibold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15F22] focus:ring-offset-2 focus:ring-offset-slate-900"
+                    >
+                        <span id="forgot-password-button-text">Send Reset Link</span>
+                        <span id="forgot-password-button-spinner" class="hidden">
+                            <svg class="animate-spin h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </span>
+                    </button>
+                </form>
+
+                <div class="mt-4 text-center">
+                    <button onclick="closeForgotPasswordModal()" class="text-sm text-slate-400 hover:text-white transition-colors">
+                        Back to Login
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-8 text-center">
+            <p class="text-slate-500 text-xs">
+                © 2026 Uderia. All rights reserved.
+            </p>
+        </div>
+    </div>
+
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/oauth.js"></script>
+    <script>
+        const auth = new AuthClient();
+        const oauth = new OAuthClient();
+        const REMEMBER_ME_KEY = 'tda_remember_username';
+
+        if (auth.isAuthenticated()) {
+            window.location.href = '/';
+        }
+
+        // Load OAuth providers and populate buttons
+        async function loadOAuthProviders() {
+            try {
+                const providers = await oauth.getAvailableProviders();
+                const container = document.getElementById('oauth-buttons-container');
+                
+                // Clear container
+                container.innerHTML = '';
+                
+                if (!providers || providers.length === 0) {
+                    container.innerHTML = '<p class="col-span-2 text-center text-slate-500 text-sm">No OAuth providers configured</p>';
+                    return;
+                }
+                
+                providers.forEach(provider => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-slate-600 hover:border-slate-500 hover:bg-slate-700/50 transition-all text-white font-medium text-sm';
+                    button.innerHTML = getOAuthButtonContent(provider);
+                    button.onclick = () => initiateOAuthFlow(provider);
+                    container.appendChild(button);
+                });
+            } catch (error) {
+                console.error('Error loading OAuth providers:', error);
+            }
+        }
+
+        function getOAuthButtonContent(provider) {
+            const providerName = typeof provider === 'string' ? provider : provider.name;
+            const displayNames = {
+                'google': 'Google',
+                'github': 'GitHub',
+                // Add other providers as needed
+            };
+            const icons = {
+                'google': '/static/images/google_icon.svg',
+                'github': '/static/images/github_icon.svg',
+                // Add other providers as needed
+            };
+
+            const name = displayNames[providerName] || provider.display_name || providerName.charAt(0).toUpperCase() + providerName.slice(1);
+            const iconUrl = icons[providerName];
+
+            if (iconUrl) {
+                return `<img src="${iconUrl}" alt="${name}" class="w-5 h-5"><span>${name}</span>`;
+            }
+            // Fallback to emoji or initial
+            return `<span>${providerName.charAt(0).toUpperCase()}</span><span>${name}</span>`;
+        }
+
+        function initiateOAuthFlow(provider) {
+            // Handle both string and object provider formats to prevent [object Object] in URL
+            const providerName = typeof provider === 'string' ? provider : provider.name;
+            // Initiate OAuth login flow
+            window.location.href = `/api/v1/auth/oauth/${providerName}`;
+        }
+
+        // Check for OAuth token in URL (after callback redirect)
+        function handleOAuthCallback() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            const error = urlParams.get('error');
+            const errorDescription = urlParams.get('error_description');
+            
+            if (error || token) {
+                document.getElementById('email-verification-info').style.display = 'none';
+            }
+
+            if (errorDescription) {
+                showAlert(decodeURIComponent(errorDescription), 'error');
+                window.history.replaceState({}, document.title, '/login');
+                return;
+            }
+
+            if (error) {
+                showAlert(`OAuth error: ${decodeURIComponent(error)}`, 'error');
+                // Clean up URL
+                window.history.replaceState({}, document.title, '/login');
+                return;
+            }
+            
+            if (token) {
+                try {
+                    // Store the token
+                    auth.setToken(token);
+                    showAlert('OAuth login successful! Redirecting...', 'success');
+                    
+                    // Redirect to home page
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 500);
+                } catch (error) {
+                    console.error('Error processing OAuth token:', error);
+                    showAlert('Error processing login. Please try again.', 'error');
+                }
+            }
+        }
+
+        // Load saved username if "remember me" was checked
+        window.addEventListener('DOMContentLoaded', () => {
+            // Handle OAuth callback first
+            handleOAuthCallback();
+            
+            const savedUsername = localStorage.getItem(REMEMBER_ME_KEY);
+            if (savedUsername) {
+                document.getElementById('username').value = savedUsername;
+                document.getElementById('remember-me').checked = true;
+                // Focus on password field for convenience
+                document.getElementById('password').focus();
+            }
+            
+            // Load OAuth providers
+            loadOAuthProviders();
+        });
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const rememberMe = document.getElementById('remember-me').checked;
+            const loginButton = document.getElementById('login-button');
+            const buttonText = document.getElementById('login-button-text');
+            const buttonSpinner = document.getElementById('login-button-spinner');
+            
+            loginButton.disabled = true;
+            buttonText.classList.add('hidden');
+            buttonSpinner.classList.remove('hidden');
+            
+            try {
+                const result = await auth.login(username, password);
+                
+                if (result.success) {
+                    // Handle "remember me" - save username if checked, remove if not
+                    if (rememberMe) {
+                        localStorage.setItem(REMEMBER_ME_KEY, username);
+                    } else {
+                        localStorage.removeItem(REMEMBER_ME_KEY);
+                    }
+                    
+                    // Check if user is admin to show default password warning
+                    if (result.user && result.user.username === 'admin') {
+                        localStorage.setItem('tda_show_admin_password_warning', 'true');
+                    }
+                    
+                    showAlert('Login successful! Redirecting...', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 1000);
+                } else {
+                    // Check if the error is due to email verification requirement
+                    if (result.requires_email_verification) {
+                        showAlert(
+                            `${result.message}<br><br>` +
+                            `<strong>Don't see the email?</strong> Check your spam folder or ` +
+                            `<a href="#" onclick="openResendModal(); return false;" style="text-decoration: underline; color: #fbbf24;">resend verification email</a>`,
+                            'error',
+                            true  // Allow HTML
+                        );
+                    } else {
+                        showAlert(result.message || 'Login failed. Please try again.', 'error');
+                    }
+                    loginButton.disabled = false;
+                    buttonText.classList.remove('hidden');
+                    buttonSpinner.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showAlert('An unexpected error occurred. Please try again.', 'error');
+                loginButton.disabled = false;
+                buttonText.classList.remove('hidden');
+                buttonSpinner.classList.add('hidden');
+            }
+        });
+
+        function showAlert(message, type, allowHtml = false) {
+            const container = document.getElementById('alert-container');
+            const alertMessage = document.getElementById('alert-message');
+            
+            container.classList.remove('hidden');
+            
+            if (allowHtml) {
+                alertMessage.innerHTML = message;
+            } else {
+                alertMessage.textContent = message;
+            }
+            
+            if (type === 'success') {
+                alertMessage.className = 'p-4 rounded-lg text-sm bg-green-500/10 border border-green-500/50 text-green-300 backdrop-blur-sm';
+            } else if (type === 'error') {
+                alertMessage.className = 'p-4 rounded-lg text-sm bg-red-500/10 border border-red-500/50 text-red-300 backdrop-blur-sm';
+            }
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    container.classList.add('hidden');
+                }, 3000);
+            }
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('registered') === 'true') {
+            showAlert(
+                '<strong>Registration successful!</strong><br>' +
+                'Please check your email for a verification link. ' +
+                'You must verify your email address before you can log in.',
+                'success',
+                true  // Allow HTML
+            );
+        }
+
+        // Resend verification email modal functions
+        function openResendModal() {
+            const modal = document.getElementById('resend-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.getElementById('resend-email').focus();
+        }
+
+        function closeResendModal() {
+            const modal = document.getElementById('resend-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            // Reset form and alerts
+            document.getElementById('resend-form').reset();
+            document.getElementById('resend-alert').classList.add('hidden');
+        }
+
+        // Close modal on backdrop click
+        document.getElementById('resend-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeResendModal();
+            }
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeResendModal();
+            }
+        });
+
+        function showResendAlert(message, type) {
+            const container = document.getElementById('resend-alert');
+            const alertMessage = document.getElementById('resend-alert-message');
+
+            container.classList.remove('hidden');
+            alertMessage.textContent = message;
+
+            if (type === 'success') {
+                alertMessage.className = 'p-4 rounded-lg text-sm bg-green-500/10 border border-green-500/50 text-green-300 backdrop-blur-sm';
+            } else if (type === 'error') {
+                alertMessage.className = 'p-4 rounded-lg text-sm bg-red-500/10 border border-red-500/50 text-red-300 backdrop-blur-sm';
+            }
+        }
+
+        // Resend form submission
+        document.getElementById('resend-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('resend-email').value.trim();
+            const resendButton = document.getElementById('resend-button');
+            const buttonText = document.getElementById('resend-button-text');
+            const buttonSpinner = document.getElementById('resend-button-spinner');
+
+            if (!email) {
+                showResendAlert('Please enter your email address.', 'error');
+                return;
+            }
+
+            resendButton.disabled = true;
+            buttonText.classList.add('hidden');
+            buttonSpinner.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/v1/auth/resend-verification-email', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showResendAlert('Verification email sent! Please check your inbox.', 'success');
+                    // Disable form for a bit to prevent spam
+                    setTimeout(() => {
+                        closeResendModal();
+                        showAlert('Verification email sent to ' + email + '. Please check your inbox and spam folder.', 'success');
+                    }, 2000);
+                } else {
+                    if (response.status === 429) {
+                        showResendAlert('Too many requests. Please wait a moment before trying again.', 'error');
+                    } else {
+                        showResendAlert(result.message || 'Failed to send verification email.', 'error');
+                    }
+                    resendButton.disabled = false;
+                    buttonText.classList.remove('hidden');
+                    buttonSpinner.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Resend error:', error);
+                showResendAlert('An unexpected error occurred. Please try again.', 'error');
+                resendButton.disabled = false;
+                buttonText.classList.remove('hidden');
+                buttonSpinner.classList.add('hidden');
+            }
+        });
+
+        // Check for resend parameter in URL (from verify_email.html redirect)
+        if (urlParams.get('resend') === 'true') {
+            const emailParam = urlParams.get('email');
+            openResendModal();
+            if (emailParam) {
+                document.getElementById('resend-email').value = decodeURIComponent(emailParam);
+            }
+            // Clean up URL
+            window.history.replaceState({}, document.title, '/login');
+        }
+
+        // Forgot password modal functions
+        function openForgotPasswordModal() {
+            const modal = document.getElementById('forgot-password-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.getElementById('forgot-email').focus();
+        }
+
+        function closeForgotPasswordModal() {
+            const modal = document.getElementById('forgot-password-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            // Reset form and alerts
+            document.getElementById('forgot-password-form').reset();
+            document.getElementById('forgot-password-alert').classList.add('hidden');
+            // Reset button state
+            const btn = document.getElementById('forgot-password-button');
+            btn.disabled = false;
+            document.getElementById('forgot-password-button-text').classList.remove('hidden');
+            document.getElementById('forgot-password-button-text').textContent = 'Send Reset Link';
+            document.getElementById('forgot-password-button-spinner').classList.add('hidden');
+        }
+
+        // Close forgot password modal on backdrop click
+        document.getElementById('forgot-password-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeForgotPasswordModal();
+            }
+        });
+
+        function showForgotPasswordAlert(message, type) {
+            const container = document.getElementById('forgot-password-alert');
+            const alertMessage = document.getElementById('forgot-password-alert-message');
+
+            container.classList.remove('hidden');
+            alertMessage.textContent = message;
+
+            if (type === 'success') {
+                alertMessage.className = 'p-4 rounded-lg text-sm bg-green-500/10 border border-green-500/50 text-green-300 backdrop-blur-sm';
+            } else if (type === 'error') {
+                alertMessage.className = 'p-4 rounded-lg text-sm bg-red-500/10 border border-red-500/50 text-red-300 backdrop-blur-sm';
+            }
+        }
+
+        // Forgot password form submission
+        document.getElementById('forgot-password-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('forgot-email').value.trim();
+            const forgotButton = document.getElementById('forgot-password-button');
+            const buttonText = document.getElementById('forgot-password-button-text');
+            const buttonSpinner = document.getElementById('forgot-password-button-spinner');
+
+            if (!email) {
+                showForgotPasswordAlert('Please enter your email address.', 'error');
+                return;
+            }
+
+            forgotButton.disabled = true;
+            buttonText.classList.add('hidden');
+            buttonSpinner.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/v1/auth/forgot-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showForgotPasswordAlert(result.message, 'success');
+                    buttonText.classList.remove('hidden');
+                    buttonSpinner.classList.add('hidden');
+                    buttonText.textContent = 'Email Sent!';
+                    // Keep button disabled to prevent spam
+                } else {
+                    if (response.status === 429) {
+                        showForgotPasswordAlert('Too many requests. Please wait a moment before trying again.', 'error');
+                    } else {
+                        showForgotPasswordAlert(result.message || 'Failed to send reset email.', 'error');
+                    }
+                    forgotButton.disabled = false;
+                    buttonText.classList.remove('hidden');
+                    buttonSpinner.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Forgot password error:', error);
+                showForgotPasswordAlert('An unexpected error occurred. Please try again.', 'error');
+                forgotButton.disabled = false;
+                buttonText.classList.remove('hidden');
+                buttonSpinner.classList.add('hidden');
+            }
+        });
+
+        // Check for password_reset parameter in URL (after successful password reset)
+        if (urlParams.get('password_reset') === 'true') {
+            showAlert('Password reset successful! You can now log in with your new password.', 'success');
+            // Clean up URL
+            window.history.replaceState({}, document.title, '/login');
+        }
+    </script>
+</body>
+</html>

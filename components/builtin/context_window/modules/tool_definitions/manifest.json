@@ -1,0 +1,30 @@
+{
+  "module_id": "tool_definitions",
+  "display_name": "Tool Definitions",
+  "version": "1.0.0",
+  "description": "MCP tool schemas with automatic condensation (full descriptions → names-only)",
+  "category": "tools",
+
+  "capabilities": {
+    "condensable": true,
+    "purgeable": false,
+    "has_cache": false
+  },
+
+  "applicability": {
+    "profile_types": ["tool_enabled", "genie"],
+    "required": false
+  },
+
+  "defaults": {
+    "priority": 85,
+    "target_pct": 22,
+    "min_pct": 0,
+    "max_pct": 40
+  },
+
+  "handler": {
+    "file": "handler.py",
+    "class": "ToolDefinitionsModule"
+  }
+}

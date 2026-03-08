@@ -1,0 +1,74 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T13:14:41.306786",
+    "server_url": "http://192.168.0.46:5050",
+    "fixtures_file": "mcp_tool_fixtures.json",
+    "filter": "dba_resusageSummary",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 12112,
+    "total_duration_ms": 8140,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 12112.0,
+    "avg_duration_ms": 8140.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_resusageSummary",
+      "prompt_name": "dba_resusageSummary",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-8f68c37a-403a-4d4a-9d8f-63e0e18ab1ea",
+      "session_id": "d2c3ad1e-efe0-4605-97dd-aa208febb32f",
+      "duration_ms": 8140,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 11503,
+        "output": 609,
+        "total": 12112
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "dba_resusageSummary",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

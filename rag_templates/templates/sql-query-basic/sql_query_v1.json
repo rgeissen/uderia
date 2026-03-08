@@ -1,0 +1,195 @@
+{
+  "template_id": "sql_query_v1",
+  "template_name": "SQL Query Constructor - Database Context",
+  "template_version": "1.0.0",
+  "template_type": "sql_query",
+  "description": "Two-phase strategy: Execute SQL statement and generate final report",
+  "status": "active",
+  "created_at": "2025-11-20T00:00:00Z",
+  "updated_at": "2025-11-20T00:00:00Z",
+  "icon": {
+    "type": "database",
+    "color": "blue"
+  },
+  "input_variables": {
+    "user_query": {
+      "type": "string",
+      "required": true,
+      "description": "The user's natural language question",
+      "placeholder": "Show me all users older than 25",
+      "validation": {
+        "min_length": 5,
+        "max_length": 500
+      }
+    },
+    "sql_statement": {
+      "type": "string",
+      "required": true,
+      "description": "The SQL statement to execute",
+      "placeholder": "SELECT * FROM users WHERE age > 25",
+      "validation": {
+        "min_length": 10,
+        "max_length": 5000
+      }
+    },
+    "database_name": {
+      "type": "string",
+      "required": false,
+      "description": "Target database name (added to phase 1 arguments)",
+      "placeholder": "production_db"
+    },
+    "table_names": {
+      "type": "array",
+      "required": false,
+      "description": "List of tables involved in the query",
+      "placeholder": ["users", "orders"]
+    },
+    "mcp_tool_name": {
+      "type": "string",
+      "required": false,
+      "description": "MCP tool to use for SQL execution",
+      "placeholder": "base_readQuery",
+      "default": "base_readQuery"
+    },
+    "mcp_context_prompt": {
+      "type": "string",
+      "required": false,
+      "description": "MCP prompt to use for gathering database context during auto-generation",
+      "placeholder": "base_databaseBusinessDesc",
+      "default": "base_databaseBusinessDesc"
+    },
+    "target_database": {
+      "type": "string",
+      "required": false,
+      "description": "Target database system for SQL syntax (e.g., Teradata, PostgreSQL, MySQL)",
+      "placeholder": "Teradata",
+      "default": "Teradata"
+    }
+  },
+  "output_configuration": {
+    "session_id": {
+      "type": "constant",
+      "value": "00000000-0000-0000-0000-000000000000",
+      "description": "All template-generated cases share this session ID"
+    },
+    "turn_id": {
+      "type": "constant",
+      "value": 1,
+      "description": "Turn number for template cases"
+    },
+    "is_success": {
+      "type": "constant",
+      "value": true,
+      "description": "Template cases are always successful"
+    },
+    "is_most_efficient": {
+      "type": "boolean",
+      "value": true,
+      "editable": true,
+      "description": "Template cases start as champions by default"
+    },
+    "estimated_tokens": {
+      "input_tokens": {
+        "type": "number",
+        "value": 150,
+        "editable": true,
+        "description": "Approximate tokens for planning phase"
+      },
+      "output_tokens": {
+        "type": "number",
+        "value": 180,
+        "editable": true,
+        "description": "Approximate tokens for response"
+      }
+    },
+    "llm_config": {
+      "provider": {
+        "type": "constant",
+        "value": "Template"
+      },
+      "model": {
+        "type": "constant",
+        "value": "sql_template_v1"
+      }
+    },
+    "user_feedback_score": {
+      "type": "constant",
+      "value": 0,
+      "description": "Neutral feedback by default"
+    },
+    "template_generated": {
+      "type": "constant",
+      "value": true,
+      "description": "Marker to identify template-generated cases"
+    },
+    "template_type": {
+      "type": "constant",
+      "value": "sql_query",
+      "description": "Template type identifier"
+    }
+  },
+  "strategy_template": {
+    "phase_count": 2,
+    "phases": [
+      {
+        "phase": 1,
+        "goal_template": "Execute SQL query{database_context}: {sql_preview}",
+        "goal_variables": {
+          "database_context": {
+            "condition": "if database_name",
+            "format": " on {database_name}"
+          },
+          "sql_preview": {
+            "source": "sql_statement",
+            "transform": "truncate",
+            "max_length": 500
+          }
+        },
+        "relevant_tools_source": "mcp_tool_name",
+        "arguments": {
+          "sql": {
+            "source": "sql_statement",
+            "description": "The SQL query to execute (includes database name)"
+          }
+        }
+      },
+      {
+        "phase": 2,
+        "goal": "Generate the final report based on the query results.",
+        "relevant_tools": ["TDA_FinalReport"],
+        "arguments": {}
+      }
+    ]
+  },
+  "metadata_mapping": {
+    "database_name": {
+      "source": "database_name",
+      "condition": "if database_name"
+    },
+    "table_names": {
+      "source": "table_names",
+      "condition": "if table_names"
+    }
+  },
+  "validation_rules": {
+    "sql_statement": {
+      "not_empty": true,
+      "sql_keywords": ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER"]
+    }
+  },
+  "usage_examples": [
+    {
+      "name": "Simple SELECT query",
+      "user_query": "Show me all active users",
+      "sql_statement": "SELECT * FROM users WHERE status = 'active'",
+      "database_name": "app_db"
+    },
+    {
+      "name": "JOIN query with aggregation",
+      "user_query": "Count orders per customer",
+      "sql_statement": "SELECT c.name, COUNT(o.id) as order_count FROM customers c JOIN orders o ON c.id = o.customer_id GROUP BY c.id",
+      "database_name": "sales_db",
+      "table_names": ["customers", "orders"]
+    }
+  ]
+}

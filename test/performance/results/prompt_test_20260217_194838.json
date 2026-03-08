@@ -1,0 +1,430 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T19:48:38.140056",
+    "server_url": "http://192.168.0.46:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": null,
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 8,
+    "passed": 7,
+    "failed": 1,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 853676,
+    "total_duration_ms": 204149,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 106709.5,
+    "avg_duration_ms": 25518.625
+  },
+  "results": [
+    {
+      "fixture_id": "base_tableBusinessDesc_example",
+      "prompt_name": "base_tableBusinessDesc",
+      "verdict": "FAIL",
+      "verdict_reasons": [
+        "Execution error (llm_error): Failed to generate a valid meta-plan from the LLM. Response: . Error: LLM returned an empty or invalid response: ''. The model may be overloaded or th [phases_completed=0, partial_tokens=0]"
+      ],
+      "status": "complete",
+      "task_id": "task-345b1b82-49ad-4cc4-be0a-219f42ea2681",
+      "session_id": "a3673c6f-678c-4143-9520-2ba67bfa3151",
+      "duration_ms": 2036,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "total": 0
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": [
+        {
+          "error_message": "Failed to generate a valid meta-plan from the LLM. Response: . Error: LLM returned an empty or invalid response: ''. The model may be overloaded or the query may not be suitable for planning.",
+          "error_type": "llm_error",
+          "phases_completed": 0,
+          "partial_input_tokens": 0,
+          "partial_output_tokens": 0
+        }
+      ]
+    },
+    {
+      "fixture_id": "base_databaseBusinessDesc_fitness",
+      "prompt_name": "base_databaseBusinessDesc",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-03081fe7-e86f-461c-8e58-99f1b1dc0489",
+      "session_id": "7c0360fe-af37-4f0e-a48e-472a8c356d69",
+      "duration_ms": 14205,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 23233,
+        "output": 1193,
+        "total": 24426
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableList",
+          "base_tableDDL",
+          "TDA_LLMTask",
+          "TDA_ComplexPromptReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "qlty_databaseQuality_fitness",
+      "prompt_name": "qlty_databaseQuality",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-a1dc38de-a5b9-437b-9611-68cd74a05ff3",
+      "session_id": "de0a0e52-261a-4690-a16f-84a3a8b70883",
+      "duration_ms": 63528,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 70941,
+        "output": 6044,
+        "total": 76985
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableList",
+          "base_tableDDL",
+          "qlty_columnSummary",
+          "qlty_univariateStatistics",
+          "qlty_rowsWithMissingValues",
+          "TDA_ComplexPromptReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "dba_databaseHealthAssessment_system",
+      "prompt_name": "dba_databaseHealthAssessment",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-b155c752-bca2-4825-b538-af757c9a0334",
+      "session_id": "dd788be9-10e9-456f-9ddb-d72a0dc9454d",
+      "duration_ms": 53323,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 88421,
+        "output": 6919,
+        "total": 95340
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "base_databaseList",
+          "dba_databaseSpace",
+          "dba_tableSpace",
+          "dba_resusageSummary",
+          "dba_flowControl",
+          "base_readQuery",
+          "dba_userDelay",
+          "base_tableList",
+          "base_tableUsage",
+          "handle_base_tableUsage",
+          "TDA_ComplexPromptReport"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_scope": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "dba_tableDropImpact_products",
+      "prompt_name": "dba_tableDropImpact",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-e27190d3-1c6d-468f-b08a-a26f065a04f4",
+      "session_id": "01f26ce0-8247-42ed-91d8-7aa5af02b029",
+      "duration_ms": 16458,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 119863,
+        "output": 1189,
+        "total": 121052
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_tableSqlList",
+          "TDA_LLMTask",
+          "TDA_ComplexPromptReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true,
+          "number_days": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "dba_tableArchive_system",
+      "prompt_name": "dba_tableArchive",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-65b0e897-d92a-47e4-8016-b17fc3858175",
+      "session_id": "91cd0c74-aff8-422c-a219-785caaffb4b1",
+      "duration_ms": 12210,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 12044,
+        "output": 925,
+        "total": 12969
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_tableSpace",
+          "base_tableDDL",
+          "TDA_ComplexPromptReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "dba_databaseLineage_fitness",
+      "prompt_name": "dba_databaseLineage",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-a1085e65-ec20-425b-b36b-a9f76c193990",
+      "session_id": "d308212e-0037-4823-a184-996d2b588231",
+      "duration_ms": 22968,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 469211,
+        "output": 1502,
+        "total": 470713
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableList",
+          "dba_tableSqlList",
+          "TDA_LLMTask",
+          "TDA_ComplexPromptReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "number_days": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    },
+    {
+      "fixture_id": "dba_userActivityAnalysis_system",
+      "prompt_name": "dba_userActivityAnalysis",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-953e3287-3636-4cc0-bcd4-bd17ba5312d8",
+      "session_id": "1c489e15-ed57-4b02-9c32-d3088d1393c2",
+      "duration_ms": 19421,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 49746,
+        "output": 2445,
+        "total": 52191
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_resusageSummary",
+          "dba_userSqlList",
+          "TDA_ComplexPromptReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    }
+  ]
+}

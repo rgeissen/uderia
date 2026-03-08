@@ -1,0 +1,15 @@
+{
+    "provider": "Amazon",
+    "model": "titan-text-express-v1",
+    "credentials": {
+        "aws_access_key_id": "<YOUR_AWS_ACCESS_KEY_ID>",
+        "aws_secret_access_key": "<YOUR_AWS_SECRET_ACCESS_KEY>"
+    },
+    "aws_region": "us-east-1",
+    "mcp_server": {
+        "name": "Default MCP Server",
+        "host": "localhost",
+        "port": "8080",
+        "path": "/mcp"
+    }
+}

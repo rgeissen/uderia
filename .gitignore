@@ -1,0 +1,107 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+!test/performance/lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ChromaDB Cache (exclude - will be rebuilt)
+.chromadb_rag_cache/
+
+# Logs
+logs/
+*.log
+
+# Sensitive data
+*.env
+!.env.example
+tda_auth.db
+tda_auth.db-*
+
+# Keys and certificates
+# Note: jwt_secret.key is distributed with the application
+# Users should regenerate it using: python maintenance/regenerate_jwt_secret.py
+
+# License directory (not distributed)
+trusted-data-agent-license/
+
+# Custom prompt overrides (not distributed)
+prompt_overrides/
+
+# TDA keys - only exclude jwt_secret.key (regenerated on install)
+# license.key and public_key.pem ARE included in V1 distribution
+tda_keys/jwt_secret.key
+tda_keys/provenance_key.pem
+tda_keys/provenance_key.pub
+tda_keys/test_*.pem
+
+# RAG directory (session data - excluded from distribution)
+/rag/
+
+# TDA sessions (excluded from distribution)
+tda_sessions/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+test/inference_profile_test.py
+
+# Gemini
+.gemini/
+
+# Claude Code local settings (contains session-specific tokens)
+.claude/settings.local.json
+
+# Agent packs - corpus data, import artifacts, and pipeline config (not distributed)
+agent_packs/*/corpus/
+agent_packs/*/import_output/
+agent_packs/*/pipeline_config.json

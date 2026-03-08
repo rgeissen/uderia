@@ -1,0 +1,73 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T12:37:20.092160",
+    "server_url": "http://127.0.0.1:5050",
+    "fixtures_file": "mcp_tool_fixtures.json",
+    "filter": "dba_userDelay",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 0,
+    "failed": 1,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 17211,
+    "total_duration_ms": 8043,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 17211.0,
+    "avg_duration_ms": 8043.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_userDelay",
+      "prompt_name": "dba_userDelay",
+      "verdict": "FAIL",
+      "verdict_reasons": [
+        "Expected tool 'dba_userDelay' not invoked. Got: ['TDA_CurrentDate', 'TDA_DateRange', 'TDA_FinalReport']"
+      ],
+      "status": "complete",
+      "task_id": "task-744bb9d0-550d-468a-a2e7-d522869828d0",
+      "session_id": "03e3ebe3-1741-4149-a815-4277427423b8",
+      "duration_ms": 8043,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 16577,
+        "output": 634,
+        "total": 17211
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_FinalReport"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

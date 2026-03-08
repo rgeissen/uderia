@@ -1,0 +1,77 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T10:31:24.631575",
+    "server_url": "http://192.168.0.46:5050",
+    "fixtures_file": "mcp_tool_fixtures.json",
+    "filter": "base_tableDDL",
+    "tag": null,
+    "profile_tag": "IDEAT",
+    "profile_id": "profile-default-chat",
+    "profile_type": "llm_only",
+    "execution_mode": "conversation",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 14161,
+    "total_duration_ms": 6108,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 14161.0,
+    "avg_duration_ms": 6108.0
+  },
+  "results": [
+    {
+      "fixture_id": "base_tableDDL",
+      "prompt_name": "base_tableDDL",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-33bc90e4-b96e-4cd0-a608-3050af73a41e",
+      "session_id": "a2794cbb-2321-423d-9154-cc62d975e126",
+      "duration_ms": 6108,
+      "execution_mode": "conversation",
+      "tokens": {
+        "input": 13914,
+        "output": 247,
+        "total": 14161
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "base_tableDDL"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 2,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "conversation_tools_used": [
+        "base_tableDDL"
+      ]
+    }
+  ]
+}

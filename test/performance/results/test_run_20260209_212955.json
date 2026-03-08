@@ -1,0 +1,250 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-09T21:29:55.956560",
+    "query": "what is the system utilization for the past 2 days"
+  },
+  "profile1": {
+    "profile_info": {
+      "profile_id": "profile-b31df284-d35c-4e63-b74b-ccb2ecc6f22b",
+      "profile_tag": "IDEAT",
+      "profile_type": "conversation_with_tools",
+      "provider": "Google",
+      "model": "gemini-2.0-flash"
+    },
+    "execution": {
+      "session_id": "5567faa7-fbf2-4113-a5c8-77f08c027c88",
+      "task_id": "task-5c5079af-f7aa-4329-bbf8-0c27b5c744d3",
+      "status": "complete",
+      "duration_ms": 3099,
+      "execution_path": "conversation_agent"
+    },
+    "metrics": {
+      "total_input_tokens": 5094,
+      "total_output_tokens": 53,
+      "total_tokens": 5147,
+      "llm_call_count": 1,
+      "tokens_per_llm_call": 5147.0,
+      "ms_per_token": 0.6020983096949679,
+      "tools_used": [],
+      "llm_call_durations": [
+        3093
+      ]
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    },
+    "plan_quality": {
+      "score": 10.0,
+      "query_type": "temporal",
+      "issues": [
+        {
+          "severity": "high",
+          "category": "missing_temporal_context",
+          "description": "Query references time period but didn't call TDA_CurrentDate to establish temporal context",
+          "impact": "Date range calculation may be incorrect or use system default"
+        },
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "missing_tools": [
+        "TDA_CurrentDate"
+      ]
+    },
+    "edge_cases": {
+      "loop_iterations_count": 0,
+      "loop_fast_path_count": 0,
+      "loop_slow_path_count": 0,
+      "orchestrators_used": [],
+      "orchestrated_tool_call_count": 0,
+      "strategic_llm_calls": 0,
+      "tactical_llm_calls": 0,
+      "correction_llm_calls": 0,
+      "orchestrator_llm_calls": 0,
+      "fastpath_skipped_llm_calls": 0,
+      "estimated_fastpath_token_savings": 0
+    }
+  },
+  "profile2": {
+    "profile_info": {
+      "profile_id": "profile-b31df284-d35c-4e63-b74b-ccb2ecc6f22b",
+      "profile_tag": "OPTIM",
+      "profile_type": "",
+      "provider": "Google",
+      "model": "gemini-2.0-flash"
+    },
+    "execution": {
+      "session_id": "deffe1cd-83a4-41e9-9313-a5e611f91e9d",
+      "task_id": "task-51f4a5ee-9fc5-4e18-996d-10da1ecbdc21",
+      "status": "complete",
+      "duration_ms": 7092,
+      "execution_path": "planner/executor"
+    },
+    "metrics": {
+      "total_input_tokens": 14265,
+      "total_output_tokens": 578,
+      "total_tokens": 14843,
+      "llm_call_count": 8,
+      "tokens_per_llm_call": 1855.375,
+      "ms_per_token": 0.4778009836286465,
+      "tools_used": [
+        "TDA_CurrentDate",
+        "TDA_FinalReport"
+      ],
+      "llm_call_durations": []
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": true,
+      "rag_case_count": 1,
+      "rag_case_ids": [
+        "case_242b7fcb-3588-54b7-90cb-c78ac54823de"
+      ]
+    },
+    "plan_quality": {
+      "score": 100.0,
+      "query_type": "temporal",
+      "issues": [],
+      "missing_tools": []
+    },
+    "edge_cases": {
+      "loop_iterations_count": 0,
+      "loop_fast_path_count": 0,
+      "loop_slow_path_count": 0,
+      "orchestrators_used": [],
+      "orchestrated_tool_call_count": 0,
+      "strategic_llm_calls": 0,
+      "tactical_llm_calls": 0,
+      "correction_llm_calls": 0,
+      "orchestrator_llm_calls": 0,
+      "fastpath_skipped_llm_calls": 0,
+      "estimated_fastpath_token_savings": 0
+    }
+  },
+  "comparison": {
+    "token_difference": {
+      "input": {
+        "profile1": 5094,
+        "profile2": 14265,
+        "absolute": -9171,
+        "percentage": -64.29022082018928
+      },
+      "output": {
+        "profile1": 53,
+        "profile2": 578,
+        "absolute": -525,
+        "percentage": -90.83044982698962
+      },
+      "total": {
+        "profile1": 5147,
+        "profile2": 14843,
+        "absolute": -9696,
+        "percentage": -65.32372161961868
+      }
+    },
+    "time_difference": {
+      "profile1_ms": 3099,
+      "profile2_ms": 7092,
+      "absolute_ms": -3993,
+      "percentage": -56.30287648054145,
+      "profile1_seconds": 3.099,
+      "profile2_seconds": 7.092
+    },
+    "efficiency": {
+      "profile1_tokens_per_call": 5147.0,
+      "profile2_tokens_per_call": 1855.375,
+      "profile1_ms_per_token": 0.6020983096949679,
+      "profile2_ms_per_token": 0.4778009836286465,
+      "profile1_llm_calls": 1,
+      "profile2_llm_calls": 8
+    },
+    "self_correction": {
+      "profile1_count": 0,
+      "profile2_count": 0,
+      "profile1_types": [],
+      "profile2_types": [],
+      "profile1_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile2_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile1_failed_tools": [],
+      "profile2_failed_tools": [],
+      "profile1_retry_attempts": [],
+      "profile2_retry_attempts": [],
+      "correction_overhead_percentage": {
+        "profile1": 0.0,
+        "profile2": 0.0
+      }
+    },
+    "rag_comparison": {
+      "profile1_used": false,
+      "profile2_used": true,
+      "profile1_case_count": 0,
+      "profile2_case_count": 1,
+      "profile1_case_ids": [],
+      "profile2_case_ids": [
+        "case_242b7fcb-3588-54b7-90cb-c78ac54823de"
+      ]
+    },
+    "plan_quality_comparison": {
+      "profile1_score": 10.0,
+      "profile2_score": 100.0,
+      "profile1_query_type": "temporal",
+      "profile2_query_type": "temporal",
+      "profile1_issues": [
+        {
+          "severity": "high",
+          "category": "missing_temporal_context",
+          "description": "Query references time period but didn't call TDA_CurrentDate to establish temporal context",
+          "impact": "Date range calculation may be incorrect or use system default"
+        },
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "profile2_issues": [],
+      "profile1_missing_tools": [
+        "TDA_CurrentDate"
+      ],
+      "profile2_missing_tools": []
+    },
+    "winner": {
+      "tokens": "IDEAT",
+      "time": "IDEAT",
+      "efficiency": "OPTIM"
+    }
+  }
+}

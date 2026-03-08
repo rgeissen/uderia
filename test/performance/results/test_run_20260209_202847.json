@@ -1,0 +1,242 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-09T20:28:47.513617",
+    "query": "what is the system utilization for the past 2 days"
+  },
+  "profile1": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "abc6876f-b758-41f2-831b-31e31c63bacd",
+      "task_id": "task-1a792f4a-6f47-4791-a90b-b9eee39d5a77",
+      "status": "complete",
+      "duration_ms": 1200,
+      "execution_path": "conversation_agent"
+    },
+    "metrics": {
+      "total_input_tokens": 5094,
+      "total_output_tokens": 70,
+      "total_tokens": 5164,
+      "llm_call_count": 1,
+      "tokens_per_llm_call": 5164.0,
+      "ms_per_token": 0.23237800154918667,
+      "tools_used": [],
+      "llm_call_durations": [
+        1195
+      ]
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    },
+    "plan_quality": {
+      "score": 10.0,
+      "query_type": "temporal",
+      "issues": [
+        {
+          "severity": "high",
+          "category": "missing_temporal_context",
+          "description": "Query references time period but didn't call TDA_CurrentDate to establish temporal context",
+          "impact": "Date range calculation may be incorrect or use system default"
+        },
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "missing_tools": [
+        "TDA_CurrentDate"
+      ]
+    }
+  },
+  "profile2": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "691e8a37-5c05-4a49-b667-0bb508688203",
+      "task_id": "task-023166a2-6e54-4017-a90e-fff7725824a8",
+      "status": "complete",
+      "duration_ms": 3905,
+      "execution_path": "planner/executor"
+    },
+    "metrics": {
+      "total_input_tokens": 9337,
+      "total_output_tokens": 281,
+      "total_tokens": 9618,
+      "llm_call_count": 3,
+      "tokens_per_llm_call": 3206.0,
+      "ms_per_token": 0.4060095653982117,
+      "tools_used": [
+        "dba_systemSpace",
+        "TDA_FinalReport"
+      ],
+      "llm_call_durations": []
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": true,
+      "rag_case_count": 1,
+      "rag_case_ids": [
+        "case_0388c62a-bef6-5856-8bb4-6e1f5dbfa9cb"
+      ]
+    },
+    "plan_quality": {
+      "score": 60.0,
+      "query_type": "temporal",
+      "issues": [
+        {
+          "severity": "high",
+          "category": "missing_temporal_context",
+          "description": "Query references time period but didn't call TDA_CurrentDate to establish temporal context",
+          "impact": "Date range calculation may be incorrect or use system default"
+        }
+      ],
+      "missing_tools": [
+        "TDA_CurrentDate"
+      ]
+    }
+  },
+  "comparison": {
+    "token_difference": {
+      "input": {
+        "profile1": 5094,
+        "profile2": 9337,
+        "absolute": -4243,
+        "percentage": -45.44286173289065
+      },
+      "output": {
+        "profile1": 70,
+        "profile2": 281,
+        "absolute": -211,
+        "percentage": -75.08896797153025
+      },
+      "total": {
+        "profile1": 5164,
+        "profile2": 9618,
+        "absolute": -4454,
+        "percentage": -46.30900395092535
+      }
+    },
+    "time_difference": {
+      "profile1_ms": 1200,
+      "profile2_ms": 3905,
+      "absolute_ms": -2705,
+      "percentage": -69.27016645326505,
+      "profile1_seconds": 1.2,
+      "profile2_seconds": 3.905
+    },
+    "efficiency": {
+      "profile1_tokens_per_call": 5164.0,
+      "profile2_tokens_per_call": 3206.0,
+      "profile1_ms_per_token": 0.23237800154918667,
+      "profile2_ms_per_token": 0.4060095653982117,
+      "profile1_llm_calls": 1,
+      "profile2_llm_calls": 3
+    },
+    "self_correction": {
+      "profile1_count": 0,
+      "profile2_count": 0,
+      "profile1_types": [],
+      "profile2_types": [],
+      "profile1_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile2_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile1_failed_tools": [],
+      "profile2_failed_tools": [],
+      "profile1_retry_attempts": [],
+      "profile2_retry_attempts": [],
+      "correction_overhead_percentage": {
+        "profile1": 0.0,
+        "profile2": 0.0
+      }
+    },
+    "rag_comparison": {
+      "profile1_used": false,
+      "profile2_used": true,
+      "profile1_case_count": 0,
+      "profile2_case_count": 1,
+      "profile1_case_ids": [],
+      "profile2_case_ids": [
+        "case_0388c62a-bef6-5856-8bb4-6e1f5dbfa9cb"
+      ]
+    },
+    "plan_quality_comparison": {
+      "profile1_score": 10.0,
+      "profile2_score": 60.0,
+      "profile1_query_type": "temporal",
+      "profile2_query_type": "temporal",
+      "profile1_issues": [
+        {
+          "severity": "high",
+          "category": "missing_temporal_context",
+          "description": "Query references time period but didn't call TDA_CurrentDate to establish temporal context",
+          "impact": "Date range calculation may be incorrect or use system default"
+        },
+        {
+          "severity": "high",
+          "category": "no_tools_invoked",
+          "description": "No tools were executed",
+          "impact": "Query likely failed or returned generic response"
+        }
+      ],
+      "profile2_issues": [
+        {
+          "severity": "high",
+          "category": "missing_temporal_context",
+          "description": "Query references time period but didn't call TDA_CurrentDate to establish temporal context",
+          "impact": "Date range calculation may be incorrect or use system default"
+        }
+      ],
+      "profile1_missing_tools": [
+        "TDA_CurrentDate"
+      ],
+      "profile2_missing_tools": [
+        "TDA_CurrentDate"
+      ]
+    },
+    "winner": {
+      "tokens": "",
+      "time": "",
+      "efficiency": ""
+    }
+  }
+}

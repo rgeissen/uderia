@@ -1,0 +1,170 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-09T19:55:36.899374",
+    "query": "what is the system utilization for the past 24 hours"
+  },
+  "profile1": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "cf4b3e00-cb96-453c-a849-d6f8b983a6aa",
+      "task_id": "task-d7a2aefe-17ba-454e-b96c-13aea48bda27",
+      "status": "complete",
+      "duration_ms": 15656,
+      "execution_path": "conversation_agent"
+    },
+    "metrics": {
+      "total_input_tokens": 66180,
+      "total_output_tokens": 1482,
+      "total_tokens": 67662,
+      "llm_call_count": 2,
+      "tokens_per_llm_call": 33831.0,
+      "ms_per_token": 0.23138541574295765,
+      "tools_used": [
+        "dba_resusageSummary"
+      ],
+      "llm_call_durations": [
+        4313,
+        9843
+      ]
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    }
+  },
+  "profile2": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "af6cff39-f946-4262-b7e6-5882b4c68fd4",
+      "task_id": "task-cad25724-2c16-484e-9e88-31f822801f39",
+      "status": "complete",
+      "duration_ms": 21076,
+      "execution_path": "planner/executor"
+    },
+    "metrics": {
+      "total_input_tokens": 8526,
+      "total_output_tokens": 2076,
+      "total_tokens": 10602,
+      "llm_call_count": 0,
+      "tokens_per_llm_call": 0.0,
+      "ms_per_token": 1.9879268062629694,
+      "tools_used": [
+        "TDA_FinalReport"
+      ],
+      "llm_call_durations": []
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    }
+  },
+  "comparison": {
+    "token_difference": {
+      "input": {
+        "profile1": 66180,
+        "profile2": 8526,
+        "absolute": 57654,
+        "percentage": 676.2139338494018
+      },
+      "output": {
+        "profile1": 1482,
+        "profile2": 2076,
+        "absolute": -594,
+        "percentage": -28.61271676300578
+      },
+      "total": {
+        "profile1": 67662,
+        "profile2": 10602,
+        "absolute": 57060,
+        "percentage": 538.2003395585739
+      }
+    },
+    "time_difference": {
+      "profile1_ms": 15656,
+      "profile2_ms": 21076,
+      "absolute_ms": -5420,
+      "percentage": -25.716454735243875,
+      "profile1_seconds": 15.656,
+      "profile2_seconds": 21.076
+    },
+    "efficiency": {
+      "profile1_tokens_per_call": 33831.0,
+      "profile2_tokens_per_call": 0.0,
+      "profile1_ms_per_token": 0.23138541574295765,
+      "profile2_ms_per_token": 1.9879268062629694,
+      "profile1_llm_calls": 2,
+      "profile2_llm_calls": 0
+    },
+    "self_correction": {
+      "profile1_count": 0,
+      "profile2_count": 0,
+      "profile1_types": [],
+      "profile2_types": [],
+      "profile1_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile2_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile1_failed_tools": [],
+      "profile2_failed_tools": [],
+      "profile1_retry_attempts": [],
+      "profile2_retry_attempts": [],
+      "correction_overhead_percentage": {
+        "profile1": 0.0,
+        "profile2": 0.0
+      }
+    },
+    "rag_comparison": {
+      "profile1_used": false,
+      "profile2_used": false,
+      "profile1_case_count": 0,
+      "profile2_case_count": 0,
+      "profile1_case_ids": [],
+      "profile2_case_ids": []
+    },
+    "winner": {
+      "tokens": "",
+      "time": "",
+      "efficiency": ""
+    }
+  }
+}

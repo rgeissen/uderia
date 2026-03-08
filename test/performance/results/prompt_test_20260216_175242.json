@@ -1,0 +1,70 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T17:52:42.109811",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "dba_tableDropImpact",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 0,
+    "total_duration_ms": 2013,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 0.0,
+    "avg_duration_ms": 2013.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_tableDropImpact_products",
+      "prompt_name": "dba_tableDropImpact",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-4dd7921b-7120-4514-ba49-bdb7b82abbc1",
+      "session_id": "4bfd10dd-d2a7-4d6e-9aeb-eefab43fd7f0",
+      "duration_ms": 2013,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "total": 0
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_name": true,
+          "table_name": true,
+          "number_days": true
+        },
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

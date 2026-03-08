@@ -1,0 +1,73 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T16:24:27.314465",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "dba_databaseHealthAssessment",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 66070,
+    "total_duration_ms": 22218,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 66070.0,
+    "avg_duration_ms": 22218.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_databaseHealthAssessment_system",
+      "prompt_name": "dba_databaseHealthAssessment",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-6c5cc033-a06c-4b1d-a3a4-1ae161aff72a",
+      "session_id": "33b9663f-07b9-42d6-99df-5ae7c5fb9c53",
+      "duration_ms": 22218,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 64785,
+        "output": 1285,
+        "total": 66070
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_databaseSpace",
+          "dba_resusageSummary",
+          "TDA_CurrentDate",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "module_id": "document_context",
+  "display_name": "Uploaded Documents",
+  "version": "1.0.0",
+  "description": "User-uploaded document text extraction with per-file truncation",
+  "category": "documents",
+
+  "capabilities": {
+    "condensable": true,
+    "purgeable": true,
+    "has_cache": false
+  },
+
+  "applicability": {
+    "profile_types": ["tool_enabled", "llm_only", "rag_focused"],
+    "required": false
+  },
+
+  "defaults": {
+    "priority": 60,
+    "target_pct": 5,
+    "min_pct": 0,
+    "max_pct": 15
+  },
+
+  "handler": {
+    "file": "handler.py",
+    "class": "DocumentContextModule"
+  }
+}

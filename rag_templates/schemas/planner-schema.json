@@ -1,0 +1,479 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tda.dev/schemas/planner-template-v1.json",
+  "title": "TDA Planner Template Schema",
+  "description": "JSON schema for planner repository templates (execution strategy templates)",
+  "type": "object",
+  "required": [
+    "template_id",
+    "template_name",
+    "template_type",
+    "input_variables",
+    "output_configuration",
+    "strategy_template"
+  ],
+  "properties": {
+    "template_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+_v\\d+$",
+      "description": "Unique template identifier with version suffix",
+      "examples": ["sql_query_v1", "api_request_v2"]
+    },
+    "template_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Human-readable template name"
+    },
+    "template_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of template definition"
+    },
+    "template_type": {
+      "type": "string",
+      "description": "Strategy type identifier",
+      "examples": ["sql_query", "api_request", "custom_workflow"]
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Brief description of template functionality"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "beta", "deprecated", "draft"],
+      "description": "Template lifecycle status"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Template creation timestamp"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Template last update timestamp"
+    },
+    "icon": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Icon type identifier"
+        },
+        "color": {
+          "type": "string",
+          "description": "Icon color"
+        }
+      }
+    },
+    "input_variables": {
+      "type": "object",
+      "description": "User-provided input parameters",
+      "patternProperties": {
+        "^[a-z_][a-z0-9_]*$": {
+          "type": "object",
+          "required": ["type", "required", "description"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["string", "integer", "number", "boolean", "array", "file", "text"],
+              "description": "Input variable data type"
+            },
+            "required": {
+              "type": "boolean",
+              "description": "Whether this field is mandatory"
+            },
+            "description": {
+              "type": "string",
+              "description": "Help text for the input variable"
+            },
+            "placeholder": {
+              "type": ["string", "array"],
+              "description": "Example value or placeholder text"
+            },
+            "default": {
+              "description": "Default value if not provided"
+            },
+            "validation": {
+              "type": "object",
+              "description": "Validation rules for the input",
+              "properties": {
+                "min_length": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max_length": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "min": {
+                  "type": "number"
+                },
+                "max": {
+                  "type": "number"
+                },
+                "allowed_extensions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^\\.[a-z0-9]+$"
+                  }
+                },
+                "max_size_mb": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            },
+            "upload_config": {
+              "type": "object",
+              "description": "Configuration for file upload handling",
+              "properties": {
+                "use_abstraction": {
+                  "type": "boolean"
+                },
+                "provider_aware": {
+                  "type": "boolean"
+                },
+                "fallback_to_extraction": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "output_configuration": {
+      "type": "object",
+      "description": "Generated output metadata configuration",
+      "properties": {
+        "session_id": {
+          "$ref": "#/definitions/output_field"
+        },
+        "turn_id": {
+          "$ref": "#/definitions/output_field"
+        },
+        "is_success": {
+          "$ref": "#/definitions/output_field"
+        },
+        "is_most_efficient": {
+          "$ref": "#/definitions/output_field"
+        },
+        "estimated_tokens": {
+          "type": "object",
+          "properties": {
+            "input_tokens": {
+              "$ref": "#/definitions/output_field"
+            },
+            "output_tokens": {
+              "$ref": "#/definitions/output_field"
+            }
+          }
+        },
+        "llm_config": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "$ref": "#/definitions/output_field"
+            },
+            "model": {
+              "$ref": "#/definitions/output_field"
+            },
+            "profile_tag": {
+              "$ref": "#/definitions/output_field"
+            }
+          }
+        },
+        "user_feedback_score": {
+          "$ref": "#/definitions/output_field"
+        },
+        "template_generated": {
+          "$ref": "#/definitions/output_field"
+        },
+        "template_type": {
+          "$ref": "#/definitions/output_field"
+        },
+        "default_mcp_tool": {
+          "$ref": "#/definitions/output_field"
+        },
+        "default_mcp_context_prompt": {
+          "$ref": "#/definitions/output_field"
+        },
+        "document_upload_handler": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "provider_config_lookup": {
+              "type": "boolean"
+            },
+            "description": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "strategy_template": {
+      "type": "object",
+      "required": ["phases"],
+      "description": "Execution strategy definition",
+      "properties": {
+        "phase_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of execution phases"
+        },
+        "phases": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Ordered list of execution phases",
+          "items": {
+            "$ref": "#/definitions/phase"
+          }
+        }
+      }
+    },
+    "metadata_mapping": {
+      "type": "object",
+      "description": "How input variables map to case metadata",
+      "patternProperties": {
+        "^[a-z_][a-z0-9_]*$": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "description": "Input variable name to map from"
+            },
+            "condition": {
+              "type": "string",
+              "pattern": "^if ",
+              "description": "Conditional mapping (e.g., 'if database_name')"
+            }
+          }
+        }
+      }
+    },
+    "validation_rules": {
+      "type": "object",
+      "description": "Input validation rules",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "not_empty": {
+            "type": "boolean"
+          },
+          "sql_keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "at_least_one": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "use_upload_handler": {
+            "type": "boolean"
+          },
+          "handler_class": {
+            "type": "string"
+          },
+          "handler_method": {
+            "type": "string"
+          },
+          "auto_extract_text": {
+            "type": "boolean"
+          },
+          "respect_provider_config": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "usage_examples": {
+      "type": "array",
+      "description": "Example use cases for the template",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Example name"
+          },
+          "note": {
+            "type": "string",
+            "description": "Additional notes about the example"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "document_upload_integration": {
+      "type": "object",
+      "description": "Documentation about document upload integration",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "workflow": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "configuration_source": {
+          "type": "string"
+        },
+        "admin_controls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "output_field": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["constant", "string", "number", "boolean"]
+        },
+        "value": {
+          "description": "The field value"
+        },
+        "editable": {
+          "type": "boolean",
+          "description": "Whether this value can be edited at runtime"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the output field"
+        }
+      }
+    },
+    "phase": {
+      "type": "object",
+      "required": ["phase"],
+      "properties": {
+        "phase": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Phase number (1-based)"
+        },
+        "goal": {
+          "type": "string",
+          "description": "Static phase goal description"
+        },
+        "goal_template": {
+          "type": "string",
+          "description": "Template string with variable placeholders"
+        },
+        "goal_variables": {
+          "type": "object",
+          "description": "Variables for goal template substitution",
+          "patternProperties": {
+            "^[a-z_][a-z0-9_]*$": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "description": "Input variable to source from"
+                },
+                "condition": {
+                  "type": "string",
+                  "pattern": "^if ",
+                  "description": "Conditional inclusion"
+                },
+                "format": {
+                  "type": "string",
+                  "description": "Format string for the variable"
+                },
+                "transform": {
+                  "type": "string",
+                  "enum": ["truncate"],
+                  "description": "Transformation to apply"
+                },
+                "max_length": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Maximum length for truncation"
+                },
+                "description": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "relevant_tools": {
+          "type": "array",
+          "description": "Static list of MCP tools for this phase",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "description": "Tool name must start with letter or underscore, followed by alphanumeric or underscore"
+          },
+          "minItems": 1
+        },
+        "relevant_tools_source": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_]*$",
+          "description": "Input variable name containing tool name(s). Must reference a valid input variable."
+        },
+        "arguments": {
+          "type": "object",
+          "description": "Arguments to pass to the tool",
+          "patternProperties": {
+            "^[a-z_][a-z0-9_]*$": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "description": "Input variable to source argument from"
+                },
+                "condition": {
+                  "type": "string",
+                  "pattern": "^if ",
+                  "description": "Conditional inclusion"
+                },
+                "description": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["goal"]
+        },
+        {
+          "required": ["goal_template"]
+        }
+      ]
+    }
+  }
+}

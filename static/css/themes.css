@@ -1,0 +1,5692 @@
+/**
+ * Theme System for Uderia Platform
+ * Supports multiple themes with CSS custom properties
+ */
+
+/* ============================================================================
+   DEFAULT THEME VARIABLES (applies to all themes)
+   ============================================================================ */
+:root {
+    /* Brand Colors - refined with extended palette */
+    --teradata-orange: #F15F22;
+    --teradata-orange-dark: #D9501A;
+    --teradata-orange-light: #FF7A47;
+    --teradata-orange-glow: rgba(241, 95, 34, 0.4);
+    --teradata-orange-subtle: rgba(241, 95, 34, 0.08);
+    
+    /* Typography - refined scale */
+    --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: 'Space Grotesk', 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    
+    /* Type Scale (1.250 - Major Third) */
+    --text-xs: 0.64rem;      /* 10.24px */
+    --text-sm: 0.8rem;       /* 12.8px */
+    --text-base: 1rem;       /* 16px */
+    --text-lg: 1.25rem;      /* 20px */
+    --text-xl: 1.563rem;     /* 25px */
+    --text-2xl: 1.953rem;    /* 31.25px */
+    --text-3xl: 2.441rem;    /* 39.06px */
+    --text-4xl: 3.052rem;    /* 48.83px */
+    
+    /* Spacing Scale (4px base) */
+    --space-1: 0.25rem;   /* 4px */
+    --space-2: 0.5rem;    /* 8px */
+    --space-3: 0.75rem;   /* 12px */
+    --space-4: 1rem;      /* 16px */
+    --space-5: 1.5rem;    /* 24px */
+    --space-6: 2rem;      /* 32px */
+    --space-8: 3rem;      /* 48px */
+    --space-10: 4rem;     /* 64px */
+    
+    /* Border Radius System */
+    --radius-xs: 0.25rem;   /* 4px - tight elements */
+    --radius-sm: 0.375rem;  /* 6px - buttons, inputs */
+    --radius-md: 0.5rem;    /* 8px - cards */
+    --radius-lg: 0.75rem;   /* 12px - panels */
+    --radius-xl: 1rem;      /* 16px - modals */
+    --radius-2xl: 1.5rem;   /* 24px - hero elements */
+    --radius-full: 9999px;  /* circular */
+    
+    /* Layout Dimensions */
+    --header-height: 64px;
+    --sidebar-width: 280px;
+    
+    /* Elevation System - refined shadows with color tints */
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-sm: 0 2px 4px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.12), 0 2px 4px -1px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 10px 20px -5px rgba(0, 0, 0, 0.16), 0 4px 8px -2px rgba(0, 0, 0, 0.08);
+    --shadow-xl: 0 20px 40px -10px rgba(0, 0, 0, 0.24), 0 8px 16px -4px rgba(0, 0, 0, 0.12);
+    --shadow-2xl: 0 30px 60px -15px rgba(0, 0, 0, 0.32), 0 12px 24px -6px rgba(0, 0, 0, 0.16);
+    
+    /* Glow Effects for accents */
+    --glow-orange: 0 0 20px var(--teradata-orange-glow);
+    --glow-orange-strong: 0 0 30px rgba(241, 95, 34, 0.6), 0 0 60px rgba(241, 95, 34, 0.3);
+    
+    /* Animation Timing - sophisticated easing */
+    --ease-in-out-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out-back: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    
+    /* Transition Durations */
+    --duration-instant: 100ms;
+    --duration-fast: 200ms;
+    --duration-normal: 300ms;
+    --duration-slow: 500ms;
+    --duration-slower: 700ms;
+    
+    /* Z-Index Scale */
+    --z-base: 0;
+    --z-dropdown: 1000;
+    --z-sticky: 1020;
+    --z-fixed: 1030;
+    --z-modal-backdrop: 1040;
+    --z-modal: 1050;
+    --z-popover: 1060;
+    --z-tooltip: 1070;
+    --z-notification: 1080;
+
+    /* ========================================
+       Profile Tag Design System
+       ======================================== */
+    --profile-tag-font: var(--font-mono);
+    --profile-tag-font-weight: 600;
+    --profile-tag-letter-spacing: 0.04em;
+    --profile-tag-radius: var(--radius-sm);
+    --profile-tag-text-transform: uppercase;
+
+    /* Size variants */
+    --profile-tag-padding-sm: 0.125rem 0.375rem;
+    --profile-tag-padding-md: 0.25rem 0.625rem;
+    --profile-tag-padding-lg: 0.375rem 0.875rem;
+    --profile-tag-font-size-sm: 0.625rem;
+    --profile-tag-font-size-md: 0.6875rem;
+    --profile-tag-font-size-lg: 0.75rem;
+
+    /* ========================================================================
+       PURE INDUSTRIAL SOLID COLORS - CORRECTED IFOC MAPPING
+       Genie (COORDINATE) = Orange #F15F22 (Teradata brand)
+       LLM Only (IDEATE) = Green #4ade80
+       RAG Focused (FOCUS) = Blue #3b82f6
+       Tool Enabled (OPTIMIZE) = Purple #9333ea
+
+       FLAT MONOLITHIC: Border matches background (no gradient effect)
+       ======================================================================== */
+
+    /* Genie (Orange - COORDINATE) - Teradata Brand Color */
+    --profile-tag-bg-genie: #F15F22;
+    --profile-tag-border-genie: #F15F22;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-genie: #FF7A47;
+    --profile-tag-text-genie: #FFFFFF;
+
+    /* LLM Only (Green - IDEATE) - WHITE TEXT on green */
+    --profile-tag-bg-llm: #4ade80;
+    --profile-tag-border-llm: #4ade80;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-llm: #6ee7b7;
+    --profile-tag-text-llm: #FFFFFF;  /* White text - pure industrial design */
+
+    /* RAG Focused (Blue - FOCUS) */
+    --profile-tag-bg-rag: #3b82f6;
+    --profile-tag-border-rag: #3b82f6;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-rag: #60a5fa;
+    --profile-tag-text-rag: #FFFFFF;
+
+    /* Tool Enabled (Purple - OPTIMIZE) */
+    --profile-tag-bg-tool: #9333ea;
+    --profile-tag-border-tool: #9333ea;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-tool: #a855f7;
+    --profile-tag-text-tool: #FFFFFF;
+
+    /* Default fallback (uses dynamic inline styles from JavaScript) */
+    --profile-tag-bg: #F15F22;
+    --profile-tag-border: #F15F22;  /* Same as background - flat monolithic */
+    --profile-tag-text: white;
+
+    /* Flat shadows - elevation only, NO glow */
+    --profile-tag-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    --profile-tag-shadow-hover: 0 3px 6px rgba(0, 0, 0, 0.25);
+}
+
+/* ============================================================================
+   LEGACY THEME (Current Dark Brown/Grey)
+   ============================================================================ */
+[data-theme="legacy"] {
+    /* Backgrounds */
+    --bg-primary: #262626;
+    --bg-secondary: #333333;
+    --bg-tertiary: #404040;
+    --bg-elevated: #4a4a4a;
+    --bg-overlay: rgba(38, 38, 38, 0.95);
+    
+    /* Glass/Blur Effects */
+    --glass-bg: rgba(51, 51, 51, 0.5);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    
+    /* Text Colors */
+    --text-primary: #F0F0F0;
+    --text-secondary: #CCCCCC;
+    --text-tertiary: #999999;
+    --text-muted: #666666;
+    --text-inverse: #1a1a1a;
+    
+    /* Border Colors */
+    --border-primary: rgba(255, 255, 255, 0.1);
+    --border-secondary: rgba(255, 255, 255, 0.05);
+    --border-focus: rgba(241, 95, 34, 0.5);
+    
+    /* Status Colors */
+    --status-success: #10b981;
+    --status-error: #ef4444;
+    --status-warning: #f59e0b;
+    --status-info: #3b82f6;
+    
+    /* Component Specific */
+    --header-bg: rgba(26, 26, 26, 0.95);
+    --sidebar-bg: rgba(38, 38, 38, 0.98);
+    --card-bg: rgba(51, 51, 51, 0.6);
+    --input-bg: rgba(64, 64, 64, 0.8);
+    --button-bg: rgba(74, 74, 74, 0.8);
+    --modal-bg: rgba(38, 38, 38, 0.98);
+    --modal-overlay: rgba(0, 0, 0, 0.75);
+    
+    /* Hover/Active States */
+    --hover-bg: rgba(255, 255, 255, 0.05);
+    --active-bg: rgba(255, 255, 255, 0.1);
+    --hover-border: rgba(255, 255, 255, 0.2);
+    
+    /* Scrollbar */
+    --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+    --scrollbar-track: transparent;
+    
+    /* Chat Specific */
+    --message-user-bg: rgba(241, 95, 34, 0.15);
+    --message-assistant-bg: rgba(51, 51, 51, 0.6);
+    --message-border: rgba(255, 255, 255, 0.1);
+    
+    /* Avatar */
+    --avatar-bg: #4b5563;
+    --avatar-border: rgba(255, 255, 255, 0.2);
+
+    /* Session History - Legacy Theme Specific (Keeps Gradients) */
+    --gradient-hover: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.6) 100%);
+    --gradient-selected: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(79, 70, 229, 0.1) 100%);
+    --gradient-active: linear-gradient(135deg, rgba(241, 95, 34, 0.15) 0%, rgba(241, 95, 34, 0.08) 100%);
+    --tree-line-l0: rgba(241, 95, 34, 0.8);
+    --tree-line-l1: rgba(139, 92, 246, 0.8);
+    --tree-line-l2: rgba(16, 185, 129, 0.8);
+
+    /* ========================================================================
+       PURE INDUSTRIAL SOLID COLORS - CORRECTED IFOC MAPPING (Legacy Theme)
+       Genie (COORDINATE) = Orange #F15F22 (Teradata brand)
+       LLM Only (IDEATE) = Green #4ade80
+       RAG Focused (FOCUS) = Blue #3b82f6
+       Tool Enabled (OPTIMIZE) = Purple #9333ea
+
+       FLAT MONOLITHIC: Border matches background (no gradient effect)
+       ======================================================================== */
+
+    /* Genie (Orange - COORDINATE) - Teradata Brand Color */
+    --profile-tag-bg-genie: #F15F22;
+    --profile-tag-border-genie: #F15F22;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-genie: #FF7A47;
+    --profile-tag-text-genie: #FFFFFF;
+
+    /* LLM Only (Green - IDEATE) - WHITE TEXT on green */
+    --profile-tag-bg-llm: #4ade80;
+    --profile-tag-border-llm: #4ade80;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-llm: #6ee7b7;
+    --profile-tag-text-llm: #FFFFFF;  /* White text - pure industrial design */
+
+    /* RAG Focused (Blue - FOCUS) */
+    --profile-tag-bg-rag: #3b82f6;
+    --profile-tag-border-rag: #3b82f6;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-rag: #60a5fa;
+    --profile-tag-text-rag: #FFFFFF;
+
+    /* Tool Enabled (Purple - OPTIMIZE) */
+    --profile-tag-bg-tool: #9333ea;
+    --profile-tag-border-tool: #9333ea;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-tool: #a855f7;
+    --profile-tag-text-tool: #FFFFFF;
+
+    /* Default fallback (uses dynamic inline styles from JavaScript) */
+    --profile-tag-bg: #F15F22;
+    --profile-tag-border: #F15F22;  /* Same as background - flat monolithic */
+    --profile-tag-text: white;
+
+    /* Flat shadows - elevation only, NO glow */
+    --profile-tag-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    --profile-tag-shadow-hover: 0 3px 6px rgba(0, 0, 0, 0.25);
+}
+
+/* ============================================================================
+   MODERN THEME (Login Screen Style - Deep Blue/Slate)
+   Enhanced with gradients and refined depth
+   ============================================================================ */
+[data-theme="modern"] {
+    /* Backgrounds - refined with subtle gradients */
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-elevated: #475569;
+    --bg-overlay: rgba(15, 23, 42, 0.98);
+    
+    /* Gradient Overlays for depth */
+    --gradient-primary: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    --gradient-card: linear-gradient(145deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%);
+    --gradient-elevated: linear-gradient(135deg, rgba(71, 85, 105, 0.3) 0%, transparent 100%);
+    
+    /* Glass/Frosted Effects - enhanced blur */
+    --glass-bg: rgba(30, 41, 59, 0.7);
+    --glass-bg-strong: rgba(30, 41, 59, 0.85);
+    --glass-border: rgba(148, 163, 184, 0.15);
+    --glass-border-strong: rgba(148, 163, 184, 0.25);
+    
+    /* Text Colors - refined hierarchy */
+    --text-primary: #f8fafc;
+    --text-secondary: #e2e8f0;
+    --text-tertiary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --text-subtle: #64748b;
+    --text-inverse: #0f172a;
+    
+    /* Border Colors - multi-tier system */
+    --border-primary: rgba(148, 163, 184, 0.18);
+    --border-secondary: rgba(148, 163, 184, 0.1);
+    --border-subtle: rgba(148, 163, 184, 0.05);
+    --border-focus: rgba(241, 95, 34, 0.6);
+    --border-focus-ring: rgba(241, 95, 34, 0.2);
+    
+    /* Status Colors - vibrant with depth */
+    --status-success: #10b981;
+    --status-success-bg: rgba(16, 185, 129, 0.1);
+    --status-error: #ef4444;
+    --status-error-bg: rgba(239, 68, 68, 0.1);
+    --status-warning: #f59e0b;
+    --status-warning-bg: rgba(245, 158, 11, 0.1);
+    --status-info: #3b82f6;
+    --status-info-bg: rgba(59, 130, 246, 0.1);
+    
+    /* Component Specific - refined backgrounds */
+    --header-bg: rgba(15, 23, 42, 0.98);
+    --header-border: rgba(148, 163, 184, 0.12);
+    --sidebar-bg: rgba(30, 41, 59, 0.98);
+    --sidebar-border: rgba(148, 163, 184, 0.1);
+    --card-bg: rgba(30, 41, 59, 0.85);
+    --card-bg-hover: rgba(30, 41, 59, 0.95);
+    --input-bg: rgba(15, 23, 42, 0.6);
+    --input-bg-focus: rgba(15, 23, 42, 0.8);
+    --button-bg: rgba(51, 65, 85, 0.8);
+    --button-bg-hover: rgba(71, 85, 105, 0.9);
+    --modal-bg: rgba(30, 41, 59, 0.98);
+    --modal-overlay: rgba(0, 0, 0, 0.75);
+    
+    /* Hover/Active States - refined interaction */
+    --hover-bg: rgba(148, 163, 184, 0.08);
+    --hover-bg-strong: rgba(148, 163, 184, 0.12);
+    --active-bg: rgba(148, 163, 184, 0.15);
+    --hover-border: rgba(148, 163, 184, 0.3);
+    
+    /* Scrollbar - refined appearance */
+    --scrollbar-thumb: rgba(148, 163, 184, 0.3);
+    --scrollbar-thumb-hover: rgba(148, 163, 184, 0.5);
+    --scrollbar-track: transparent;
+    
+    /* Chat Specific - enhanced contrast */
+    --message-user-bg: linear-gradient(135deg, rgba(241, 95, 34, 0.15) 0%, rgba(241, 95, 34, 0.08) 100%);
+    --message-user-border: rgba(241, 95, 34, 0.3);
+    --message-assistant-bg: rgba(30, 41, 59, 0.9);
+    --message-assistant-border: rgba(148, 163, 184, 0.15);
+    --message-border: rgba(148, 163, 184, 0.15);
+    
+    /* Avatar - refined depth */
+    --avatar-bg: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    --avatar-border: rgba(59, 130, 246, 0.4);
+    --avatar-glow: 0 0 20px rgba(59, 130, 246, 0.3);
+    
+    /* Accent Overlays */
+    --accent-overlay: rgba(241, 95, 34, 0.05);
+    --accent-overlay-hover: rgba(241, 95, 34, 0.1);
+    
+    /* Backdrop Blur Strength */
+    --blur-light: blur(8px);
+    --blur-medium: blur(16px);
+    --blur-strong: blur(24px);
+
+    /* Session History - Modern Theme Specific */
+    --gradient-hover: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.02) 100%);
+    --gradient-selected: linear-gradient(90deg, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0.05) 100%);
+    --gradient-active: linear-gradient(90deg, rgba(241, 95, 34, 0.15) 0%, rgba(241, 95, 34, 0.05) 100%);
+    --tree-line-l0: rgba(241, 95, 34, 0.8);
+    --tree-line-l1: rgba(139, 92, 246, 0.8);
+    --tree-line-l2: rgba(16, 185, 129, 0.8);
+}
+
+/* ============================================================================
+   LIGHT THEME (Clean, Professional Light Mode)
+   ============================================================================ */
+[data-theme="light"] {
+    /* Backgrounds */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-tertiary: #f1f5f9;
+    --bg-elevated: #e2e8f0;
+    --bg-overlay: rgba(255, 255, 255, 0.98);
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+    --gradient-card: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.98) 100%);
+    --gradient-elevated: linear-gradient(135deg, rgba(226, 232, 240, 0.3) 0%, transparent 100%);
+
+    /* Glass Effects */
+    --glass-bg: rgba(255, 255, 255, 0.85);
+    --glass-bg-strong: rgba(255, 255, 255, 0.95);
+    --glass-border: rgba(148, 163, 184, 0.2);
+    --glass-border-strong: rgba(148, 163, 184, 0.35);
+
+    /* Text Colors */
+    --text-primary: #0f172a;
+    --text-secondary: #334155;
+    --text-tertiary: #475569;
+    --text-muted: #64748b;
+    --text-subtle: #94a3b8;
+    --text-inverse: #f8fafc;
+
+    /* Borders */
+    --border-primary: rgba(148, 163, 184, 0.35);
+    --border-secondary: rgba(148, 163, 184, 0.2);
+    --border-subtle: rgba(148, 163, 184, 0.1);
+    --border-focus: rgba(241, 95, 34, 0.6);
+    --border-focus-ring: rgba(241, 95, 34, 0.15);
+
+    /* Status Colors */
+    --status-success: #059669;
+    --status-success-bg: rgba(16, 185, 129, 0.1);
+    --status-error: #dc2626;
+    --status-error-bg: rgba(239, 68, 68, 0.1);
+    --status-warning: #d97706;
+    --status-warning-bg: rgba(245, 158, 11, 0.1);
+    --status-info: #2563eb;
+    --status-info-bg: rgba(59, 130, 246, 0.1);
+
+    /* Components */
+    --header-bg: rgba(255, 255, 255, 0.98);
+    --header-border: rgba(148, 163, 184, 0.2);
+    --sidebar-bg: rgba(248, 250, 252, 0.98);
+    --sidebar-border: rgba(148, 163, 184, 0.15);
+    --card-bg: rgba(255, 255, 255, 0.95);
+    --card-bg-hover: rgba(248, 250, 252, 0.98);
+    --input-bg: rgba(241, 245, 249, 0.8);
+    --input-bg-focus: rgba(255, 255, 255, 1);
+    --button-bg: rgba(226, 232, 240, 0.8);
+    --button-bg-hover: rgba(203, 213, 225, 0.9);
+    --modal-bg: rgba(255, 255, 255, 0.98);
+    --modal-overlay: rgba(15, 23, 42, 0.5);
+
+    /* Hover States */
+    --hover-bg: rgba(148, 163, 184, 0.1);
+    --hover-bg-strong: rgba(148, 163, 184, 0.15);
+    --active-bg: rgba(148, 163, 184, 0.2);
+    --hover-border: rgba(148, 163, 184, 0.4);
+
+    /* Scrollbar */
+    --scrollbar-thumb: rgba(148, 163, 184, 0.4);
+    --scrollbar-thumb-hover: rgba(148, 163, 184, 0.6);
+    --scrollbar-track: rgba(241, 245, 249, 0.5);
+
+    /* Chat Messages */
+    --message-user-bg: linear-gradient(135deg, rgba(241, 95, 34, 0.08) 0%, rgba(241, 95, 34, 0.04) 100%);
+    --message-user-border: rgba(241, 95, 34, 0.25);
+    --message-assistant-bg: rgba(248, 250, 252, 0.95);
+    --message-assistant-border: rgba(148, 163, 184, 0.2);
+    --message-border: rgba(148, 163, 184, 0.2);
+
+    /* Avatar */
+    --avatar-bg: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    --avatar-border: rgba(59, 130, 246, 0.4);
+    --avatar-glow: 0 0 20px rgba(59, 130, 246, 0.2);
+
+    /* Code blocks - keep dark for contrast */
+    --code-bg: #1e293b;
+    --code-border: rgba(148, 163, 184, 0.2);
+
+    /* Accent Overlays */
+    --accent-overlay: rgba(241, 95, 34, 0.03);
+    --accent-overlay-hover: rgba(241, 95, 34, 0.06);
+
+    /* Blur */
+    --blur-light: blur(8px);
+    --blur-medium: blur(12px);
+    --blur-strong: blur(16px);
+
+    /* Profile Tag - Light Theme Defaults (PURE INDUSTRIAL SOLID) */
+    --profile-tag-text: #FFFFFF;  /* White text on all themes */
+    --profile-tag-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    --profile-tag-shadow-hover: 0 2px 5px rgba(0, 0, 0, 0.2);
+    --profile-tag-bg: #F15F22;  /* Solid orange */
+    --profile-tag-bg-hover: #FF7A47;  /* Lighter orange */
+    --profile-tag-border: #F15F22;  /* Flat monolithic */
+    --profile-tag-border-hover: #FF7A47;
+
+    /* Session History - Light Theme Specific */
+    --gradient-hover: linear-gradient(90deg, rgba(148, 163, 184, 0.06) 0%, transparent 100%);
+    --gradient-selected: linear-gradient(90deg, rgba(99, 102, 241, 0.10) 0%, rgba(99, 102, 241, 0.05) 100%);
+    --gradient-active: linear-gradient(90deg, rgba(241, 95, 34, 0.10) 0%, rgba(241, 95, 34, 0.05) 100%);
+    --tree-line-l0: rgba(241, 95, 34, 0.6);
+    --tree-line-l1: rgba(139, 92, 246, 0.6);
+    --tree-line-l2: rgba(16, 185, 129, 0.6);
+}
+
+/* CRITICAL FIX: Ensure all profile tag spans inherit text color from parent */
+.profile-tag span,
+.profile-tag__label,
+#header-default-profile-tag,
+#header-override-profile-tag,
+#active-profile-tag span {
+    color: inherit;  /* Inherit from parent .profile-tag which uses --profile-tag-text CSS variable */
+}
+
+/* Keep black text only for primer tags (non-profile elements) */
+[data-theme="light"] .primer-tag {
+    color: #000000 !important;
+}
+
+/* Light Theme - PURE INDUSTRIAL SOLID COLORS (100% opacity, WHITE text) */
+[data-theme="light"] {
+    /* Genie (Orange - COORDINATE) - Teradata Brand Color */
+    --profile-tag-bg-genie: #F15F22;
+    --profile-tag-border-genie: #F15F22;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-genie: #FF7A47;
+    --profile-tag-text-genie: #FFFFFF;
+
+    /* LLM Only (Green - IDEATE) - WHITE TEXT on green */
+    --profile-tag-bg-llm: #4ade80;
+    --profile-tag-border-llm: #4ade80;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-llm: #6ee7b7;
+    --profile-tag-text-llm: #FFFFFF;  /* White text - pure industrial design */
+
+    /* RAG Focused (Blue - FOCUS) */
+    --profile-tag-bg-rag: #3b82f6;
+    --profile-tag-border-rag: #3b82f6;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-rag: #60a5fa;
+    --profile-tag-text-rag: #FFFFFF;
+
+    /* Tool Enabled (Purple - OPTIMIZE) */
+    --profile-tag-bg-tool: #9333ea;
+    --profile-tag-border-tool: #9333ea;  /* Same as background - flat monolithic */
+    --profile-tag-bg-hover-tool: #a855f7;
+    --profile-tag-text-tool: #FFFFFF;
+
+    /* Flat shadows - slightly more subtle for light theme */
+    --profile-tag-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    --profile-tag-shadow-hover: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Light theme code block overrides - keep dark background */
+[data-theme="light"] .message-bubble pre {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    color: #e2e8f0;
+}
+
+[data-theme="light"] .message-bubble code:not(pre code) {
+    background: rgba(15, 23, 42, 0.08);
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #0f172a;
+}
+
+/* Light theme overrides for hardcoded Tailwind classes */
+[data-theme="light"] .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Exception: Avatar letters in message bubbles should stay white (on colored backgrounds) */
+[data-theme="light"] .message-bubble .avatar,
+[data-theme="light"] .message-bubble .bg-gray-700,
+[data-theme="light"] .message-bubble .bg-\[\#F15F22\],
+[data-theme="light"] .assistant-avatar,
+[data-theme="light"] .user-avatar {
+    color: white !important;
+}
+
+/* Exception: Marketplace buttons on colored backgrounds should stay white */
+[data-theme="light"] .unpublish-btn {
+    color: white !important;
+}
+
+/* Exception: App banner notifications with solid Tailwind bg colors should stay white */
+[data-theme="light"] #header-status-message[class*="bg-red-"],
+[data-theme="light"] #header-status-message[class*="bg-green-"],
+[data-theme="light"] #header-status-message[class*="bg-yellow-"],
+[data-theme="light"] #header-status-message[class*="bg-blue-"] {
+    color: white !important;
+}
+
+/* Panel Toggle Buttons — subtle transparent style */
+.panel-toggle-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    opacity: 0.5;
+    cursor: pointer;
+}
+.panel-toggle-btn svg {
+    stroke: var(--text-muted);
+}
+.panel-toggle-btn:hover {
+    background: var(--hover-bg);
+    border-color: var(--border-primary);
+    color: var(--text-secondary);
+    opacity: 1;
+}
+.panel-toggle-btn:hover svg {
+    stroke: var(--text-secondary);
+}
+
+[data-theme="light"] .text-gray-100,
+[data-theme="light"] .text-gray-200,
+[data-theme="light"] .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .text-gray-400,
+[data-theme="light"] .text-gray-500 {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="light"] .border-white\/10,
+[data-theme="light"] .border-white\/20 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .bg-white\/10,
+[data-theme="light"] .bg-white\/5 {
+    background-color: var(--hover-bg) !important;
+}
+
+/* Light theme - Welcome screen and cards */
+[data-theme="light"] .welcome-timeline-item {
+    background: var(--card-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .glass-panel {
+    background: var(--glass-bg) !important;
+    border-color: var(--glass-border) !important;
+}
+
+/* Light theme - Header and sidebar */
+[data-theme="light"] .header-title {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Conversation header (session title bar) */
+[data-theme="light"] #conversation-header {
+    background: transparent !important;
+    border-bottom: 1px solid var(--border-secondary) !important;
+}
+
+/* Light theme - Header dividers and profile badges */
+[data-theme="light"] #conversation-header .bg-white\/20 {
+    background-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #conversation-header .border-white\/20 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Light mode: Session header profile tags - removed black text override */
+/* Now using JavaScript inline styles + CSS custom properties for dynamic white text */
+/* This allows --profile-tag-text: #FFFFFF to work correctly */
+
+[data-theme="light"] #sidebar,
+[data-theme="light"] .sidebar {
+    background: var(--sidebar-bg) !important;
+    border-color: var(--sidebar-border) !important;
+}
+
+/* Light mode: Muted orange palette for reduced visual intensity */
+[data-theme="light"] {
+    --teradata-orange-light-mode: #D9501A;      /* Primary (20% darker than #F15F22) */
+    --teradata-orange-light-hover: #C2410C;     /* Hover/accent */
+    --teradata-orange-light-focus: rgba(217, 80, 26, 0.4);  /* Focus rings */
+    --teradata-orange-light-border: #D9501A;    /* Tab borders */
+}
+
+/* Light theme — Custom tooltips (body-appended) */
+[data-theme="light"] .custom-tooltip {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: var(--border-primary);
+    color: var(--text-primary);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12),
+                0 2px 8px rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .custom-tooltip.tooltip-below::before {
+    border-bottom-color: rgba(255, 255, 255, 0.95);
+}
+[data-theme="light"] .custom-tooltip.tooltip-above::before {
+    border-top-color: rgba(255, 255, 255, 0.95);
+}
+
+/* Legacy theme — Custom tooltips (body-appended) */
+[data-theme="legacy"] .custom-tooltip {
+    background: rgba(38, 38, 38, 0.95);
+    border-color: var(--border-primary);
+    color: var(--text-primary);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
+                0 2px 8px rgba(0, 0, 0, 0.3);
+}
+[data-theme="legacy"] .custom-tooltip.tooltip-below::before {
+    border-bottom-color: rgba(38, 38, 38, 0.95);
+}
+[data-theme="legacy"] .custom-tooltip.tooltip-above::before {
+    border-top-color: rgba(38, 38, 38, 0.95);
+}
+
+/* Light theme - Top navigation bar */
+[data-theme="light"] body > nav,
+[data-theme="light"] nav.bg-black\/30 {
+    background: rgba(255, 255, 255, 0.95) !important;
+    border-bottom-color: var(--border-primary) !important;
+    backdrop-filter: blur(12px) !important;
+}
+
+[data-theme="light"] body > nav .text-white,
+[data-theme="light"] body > nav .text-gray-300,
+[data-theme="light"] body > nav .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] body > nav .hover\:text-white:hover {
+    color: var(--teradata-orange) !important;
+}
+
+/* Light theme - Left sidebar navigation */
+[data-theme="light"] #app-side-nav {
+    background: rgba(248, 250, 252, 0.98) !important;
+    border-right-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #app-side-nav .text-gray-200,
+[data-theme="light"] #app-side-nav .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #app-side-nav svg {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #app-side-nav .view-switch-button:hover {
+    background: var(--hover-bg) !important;
+}
+
+[data-theme="light"] #app-side-nav .view-switch-button:hover svg,
+[data-theme="light"] #app-side-nav .view-switch-button:hover .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #app-side-nav .view-switch-button.active {
+    background: rgba(241, 95, 34, 0.1) !important;
+}
+
+[data-theme="light"] #app-side-nav .view-switch-button.active svg {
+    color: var(--teradata-orange) !important;
+}
+
+/* Light theme - Status bar (MCP, LLM, CTX, etc.) */
+[data-theme="light"] .status-bar-section {
+    background: linear-gradient(90deg,
+                                rgba(148, 163, 184, 0.1) 0%,
+                                rgba(148, 163, 184, 0.15) 50%,
+                                rgba(148, 163, 184, 0.1) 100%) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05),
+                0 1px 0 rgba(255, 255, 255, 0.8) inset !important;
+}
+
+[data-theme="light"] .status-label {
+    color: var(--text-secondary) !important;
+    text-shadow: none !important;
+}
+
+[data-theme="light"] .status-item:hover .status-label {
+    color: var(--text-primary) !important;
+    text-shadow: none !important;
+}
+
+/* Light theme - Industrial avatar */
+[data-theme="light"] .ind-avatar {
+    --avatar-color: 29, 78, 216;
+    background: rgba(var(--avatar-color), 0.12);
+    border-color: rgba(var(--avatar-color), 0.35);
+}
+[data-theme="light"] .ind-user-trigger:hover .ind-avatar {
+    background: rgba(var(--avatar-color), 0.2);
+    border-color: rgba(var(--avatar-color), 0.55);
+}
+[data-theme="light"] .ind-user-trigger:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+[data-theme="light"] .ind-username {
+    color: var(--text-secondary);
+}
+[data-theme="light"] .ind-user-trigger:hover .ind-username {
+    color: var(--text-primary);
+}
+
+/* Light theme - Status bar remove shimmer/glow effects */
+[data-theme="light"] .status-bar-section {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+}
+
+[data-theme="light"] .status-label {
+    text-shadow: none !important;
+}
+
+[data-theme="light"] .status-item:hover .status-label {
+    text-shadow: none !important;
+    letter-spacing: normal !important;
+}
+
+/* Light theme - Status bar divider visibility */
+[data-theme="light"] .status-divider {
+    background: linear-gradient(to bottom, transparent, rgba(100, 116, 139, 0.4), transparent) !important;
+}
+
+/* Light theme - Connection dots remove glow/shimmer */
+[data-theme="light"] .connection-dot {
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .connection-dot::before {
+    border-color: currentColor !important;
+    opacity: 0.3 !important;
+}
+
+[data-theme="light"] .connection-dot:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] .connection-dot.disconnected {
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important;
+}
+
+[data-theme="light"] .connection-dot.connected {
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2) !important;
+}
+
+[data-theme="light"] .connection-dot.connecting {
+    box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.2) !important;
+}
+
+/* Light theme - Avatar initial uses avatar color variable */
+[data-theme="light"] #user-avatar-initial {
+    color: rgb(var(--avatar-color));
+}
+
+/* Light theme - User dropdown menu */
+[data-theme="light"] #user-dropdown-menu {
+    background: var(--modal-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #user-dropdown-menu .text-white,
+[data-theme="light"] #user-menu-name {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #user-dropdown-menu .text-gray-200,
+[data-theme="light"] #user-dropdown-menu .text-gray-400,
+[data-theme="light"] #user-menu-email {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #user-dropdown-menu button.text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Logout button */
+[data-theme="light"] #user-logout-button,
+[data-theme="light"] #user-dropdown-menu .text-red-400 {
+    color: #dc2626 !important;
+}
+
+[data-theme="light"] #user-logout-button:hover {
+    background-color: rgba(220, 38, 38, 0.1) !important;
+    color: #b91c1c !important;
+}
+
+/* Theme selector buttons - base styles for all themes */
+.theme-selector {
+    color: var(--text-secondary);
+    background-color: transparent;
+    border-color: var(--border-primary);
+}
+
+.theme-selector:hover {
+    background-color: var(--hover-bg);
+    color: var(--text-primary);
+}
+
+/* Legacy theme - Theme selector buttons (inactive) */
+[data-theme="legacy"] .theme-selector {
+    color: #F0F0F0 !important;
+    background-color: #404040 !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+[data-theme="legacy"] .theme-selector:hover {
+    background-color: #4a4a4a !important;
+    color: #FFFFFF !important;
+}
+
+/* Modern theme - Theme selector buttons (inactive) */
+[data-theme="modern"] .theme-selector {
+    color: #e2e8f0 !important;
+    background-color: rgba(51, 65, 85, 0.5) !important;
+    border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+[data-theme="modern"] .theme-selector:hover {
+    background-color: rgba(51, 65, 85, 0.8) !important;
+    color: #FFFFFF !important;
+}
+
+/* Light theme - Theme selector buttons (inactive) - use IDs for higher specificity */
+[data-theme="light"] .theme-selector,
+[data-theme="light"] #theme-legacy,
+[data-theme="light"] #theme-modern {
+    color: #0f172a !important;
+    background-color: #e2e8f0 !important;
+    border-color: rgba(148, 163, 184, 0.4) !important;
+}
+
+/* Override Tailwind hover:bg-gray-200 which makes text invisible */
+[data-theme="light"] .theme-selector:hover,
+[data-theme="light"] #theme-legacy:hover,
+[data-theme="light"] #theme-modern:hover {
+    background-color: #cbd5e1 !important;
+    color: #0f172a !important;
+    border-color: rgba(148, 163, 184, 0.6) !important;
+}
+
+/* Active theme button styling */
+[data-theme="legacy"] #theme-legacy,
+[data-theme="modern"] #theme-modern,
+[data-theme="light"] #theme-light {
+    background-color: var(--teradata-orange) !important;
+    color: white !important;
+    border-color: var(--teradata-orange) !important;
+}
+
+[data-theme="legacy"] #theme-legacy:hover,
+[data-theme="modern"] #theme-modern:hover,
+[data-theme="light"] #theme-light:hover {
+    background-color: #D9501A !important;
+    color: white !important;
+}
+
+/* Light theme - System Prompt Editor */
+[data-theme="light"] #system-prompt-editor-textarea,
+[data-theme="light"] #system-prompts-tier-selector,
+[data-theme="light"] #prompt-editor-textarea {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #system-prompt-editor-textarea::placeholder,
+[data-theme="light"] #prompt-editor-textarea::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Light theme - System prompts tab content */
+[data-theme="light"] #system-prompts-tab .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #system-prompts-tab .text-gray-400,
+[data-theme="light"] #system-prompts-tab .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Exception: Buttons with colored backgrounds should keep white text */
+[data-theme="light"] #system-prompts-tab button.bg-blue-600,
+[data-theme="light"] #system-prompts-tab button.bg-red-600,
+[data-theme="light"] #system-prompts-tab button.bg-\[\#F15F22\],
+[data-theme="light"] #duplicate-prompt-btn,
+[data-theme="light"] #delete-prompt-btn,
+[data-theme="light"] #load-system-prompt-btn,
+[data-theme="light"] #save-system-prompt-btn {
+    color: white !important;
+}
+
+/* Light theme - License tier warning message (make text readable) */
+[data-theme="light"] #system-prompts-tier-notice .text-yellow-200 {
+    color: #92400e !important; /* amber-800 for better contrast */
+}
+
+[data-theme="light"] #system-prompts-tier-notice .text-yellow-300\/80 {
+    color: #a16207 !important; /* yellow-700 for better contrast */
+}
+
+/* Light theme - Input and form elements */
+[data-theme="light"] input,
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+    background-color: var(--input-bg) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Light theme - Buttons */
+[data-theme="light"] .bg-gray-700,
+[data-theme="light"] .bg-gray-800 {
+    background-color: var(--button-bg) !important;
+}
+
+[data-theme="light"] .bg-gray-700:hover,
+[data-theme="light"] .bg-gray-800:hover {
+    background-color: var(--button-bg-hover) !important;
+}
+
+/* Light theme - Gray button styling (only when button doesn't explicitly request white text) */
+[data-theme="light"] button.bg-gray-600:not(.text-white),
+[data-theme="light"] button.bg-gray-700:not(.text-white),
+[data-theme="light"] button.bg-gray-800:not(.text-white) {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .bg-gray-600 {
+    background-color: var(--button-bg) !important;
+}
+
+/* Light theme - Model Cost Configuration table */
+[data-theme="light"] #costs-table-body {
+    background-color: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] #costs-table-body tr {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #costs-table-body td {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #costs-table-body input {
+    background-color: var(--input-bg) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Table headers with dark backgrounds */
+[data-theme="light"] thead.bg-gray-700\/50,
+[data-theme="light"] th.bg-gray-700\/90 {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .divide-gray-700 > * + * {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .bg-gray-600:hover {
+    background-color: var(--button-bg-hover) !important;
+}
+
+/* Light theme - Light gray buttons (bg-gray-200, bg-gray-300, bg-gray-400) need dark text */
+[data-theme="light"] .bg-gray-200,
+[data-theme="light"] .bg-gray-300,
+[data-theme="light"] .bg-gray-400,
+[data-theme="light"] [class*="bg-gray-2"],
+[data-theme="light"] [class*="bg-gray-3"],
+[data-theme="light"] [class*="bg-gray-4"] {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Gray buttons with icons */
+[data-theme="light"] .bg-gray-200 svg,
+[data-theme="light"] .bg-gray-300 svg,
+[data-theme="light"] .bg-gray-400 svg {
+    color: var(--text-secondary) !important;
+}
+
+/* Light theme - All colored buttons should have white text */
+[data-theme="light"] .bg-teradata-orange,
+[data-theme="light"] .bg-\[\#F15F22\],
+[data-theme="light"] button[class*="bg-teradata-orange"],
+[data-theme="light"] .welcome-cta-button {
+    color: white !important;
+}
+
+/* Light theme - Orange button icons and text must be white */
+[data-theme="light"] .bg-teradata-orange svg,
+[data-theme="light"] .bg-\[\#F15F22\] svg,
+[data-theme="light"] .welcome-cta-button svg,
+[data-theme="light"] .welcome-cta-button * {
+    color: white !important;
+    stroke: white !important;
+}
+
+/* Light theme - Profile modal buttons: card-btn system handles color via --btn-color */
+
+/* Green buttons */
+[data-theme="light"] .bg-green-500,
+[data-theme="light"] .bg-green-600,
+[data-theme="light"] .bg-green-700,
+[data-theme="light"] .bg-emerald-500,
+[data-theme="light"] .bg-emerald-600,
+[data-theme="light"] [class*="bg-green-5"],
+[data-theme="light"] [class*="bg-green-6"],
+[data-theme="light"] [class*="bg-green-7"] {
+    color: white !important;
+}
+
+/* Blue buttons */
+[data-theme="light"] .bg-blue-500,
+[data-theme="light"] .bg-blue-600,
+[data-theme="light"] .bg-blue-700,
+[data-theme="light"] [class*="bg-blue-5"],
+[data-theme="light"] [class*="bg-blue-6"],
+[data-theme="light"] [class*="bg-blue-7"] {
+    color: white !important;
+}
+
+/* Blue button icons */
+[data-theme="light"] .bg-blue-500 svg,
+[data-theme="light"] .bg-blue-600 svg,
+[data-theme="light"] .bg-blue-700 svg {
+    color: white !important;
+    stroke: white !important;
+}
+
+/* Cyan/Teal buttons */
+[data-theme="light"] .bg-cyan-500,
+[data-theme="light"] .bg-cyan-600,
+[data-theme="light"] .bg-teal-500,
+[data-theme="light"] .bg-teal-600,
+[data-theme="light"] [class*="bg-cyan-5"],
+[data-theme="light"] [class*="bg-cyan-6"],
+[data-theme="light"] [class*="bg-teal-5"],
+[data-theme="light"] [class*="bg-teal-6"] {
+    color: white !important;
+}
+
+/* Red buttons */
+[data-theme="light"] .bg-red-500,
+[data-theme="light"] .bg-red-600,
+[data-theme="light"] .bg-rose-500,
+[data-theme="light"] .bg-rose-600,
+[data-theme="light"] [class*="bg-red-5"],
+[data-theme="light"] [class*="bg-red-6"] {
+    color: white !important;
+}
+
+/* Red button icons */
+[data-theme="light"] .bg-red-500 svg,
+[data-theme="light"] .bg-red-600 svg,
+[data-theme="light"] .bg-rose-500 svg,
+[data-theme="light"] .bg-rose-600 svg {
+    color: white !important;
+    stroke: white !important;
+}
+
+/* Neutral buttons - white text on dark neutral backgrounds */
+[data-theme="light"] .bg-neutral-500,
+[data-theme="light"] .bg-neutral-600,
+[data-theme="light"] .bg-neutral-700,
+[data-theme="light"] .bg-neutral-800,
+[data-theme="light"] [class*="bg-neutral-5"],
+[data-theme="light"] [class*="bg-neutral-6"],
+[data-theme="light"] [class*="bg-neutral-7"],
+[data-theme="light"] [class*="bg-neutral-8"] {
+    color: white !important;
+}
+
+/* Neutral button icons */
+[data-theme="light"] .bg-neutral-500 svg,
+[data-theme="light"] .bg-neutral-600 svg,
+[data-theme="light"] .bg-neutral-700 svg,
+[data-theme="light"] .bg-neutral-800 svg {
+    color: white !important;
+    stroke: white !important;
+}
+
+/* Yellow/Amber buttons - dark text for contrast */
+[data-theme="light"] .bg-yellow-500,
+[data-theme="light"] .bg-yellow-600,
+[data-theme="light"] .bg-amber-500,
+[data-theme="light"] .bg-amber-600,
+[data-theme="light"] [class*="bg-yellow-5"],
+[data-theme="light"] [class*="bg-yellow-6"],
+[data-theme="light"] [class*="bg-amber-5"],
+[data-theme="light"] [class*="bg-amber-6"] {
+    color: #1e293b !important;
+}
+
+/* Purple/Indigo buttons */
+[data-theme="light"] .bg-purple-500,
+[data-theme="light"] .bg-purple-600,
+[data-theme="light"] .bg-indigo-500,
+[data-theme="light"] .bg-indigo-600,
+[data-theme="light"] [class*="bg-purple-5"],
+[data-theme="light"] [class*="bg-purple-6"],
+[data-theme="light"] [class*="bg-indigo-5"],
+[data-theme="light"] [class*="bg-indigo-6"] {
+    color: white !important;
+}
+
+/* Light theme - Badges with transparent/light backgrounds need visible text */
+[data-theme="light"] .text-blue-300,
+[data-theme="light"] .text-blue-400 {
+    color: #1d4ed8 !important;
+}
+
+[data-theme="light"] .text-green-300,
+[data-theme="light"] .text-green-400,
+[data-theme="light"] .text-emerald-400 {
+    color: #059669 !important;
+}
+
+[data-theme="light"] .text-cyan-300,
+[data-theme="light"] .text-cyan-400 {
+    color: #0891b2 !important;
+}
+
+[data-theme="light"] .text-teal-300,
+[data-theme="light"] .text-teal-400 {
+    color: #0f766e !important; /* teal-700 */
+}
+
+[data-theme="light"] .text-indigo-300,
+[data-theme="light"] .text-indigo-400 {
+    color: #4338ca !important; /* indigo-700 */
+}
+
+/* Light theme - Semi-transparent badge backgrounds */
+[data-theme="light"] .bg-blue-500\/20,
+[data-theme="light"] [class*="bg-blue-500/2"] {
+    background-color: rgba(59, 130, 246, 0.15) !important;
+}
+
+[data-theme="light"] .bg-green-500\/20,
+[data-theme="light"] [class*="bg-green-500/2"] {
+    background-color: rgba(34, 197, 94, 0.15) !important;
+}
+
+[data-theme="light"] .bg-teal-500\/20,
+[data-theme="light"] [class*="bg-teal-500/2"] {
+    background-color: rgba(20, 184, 166, 0.12) !important;
+}
+
+[data-theme="light"] .bg-indigo-500\/20,
+[data-theme="light"] [class*="bg-indigo-500/2"] {
+    background-color: rgba(99, 102, 241, 0.12) !important;
+}
+
+[data-theme="light"] .bg-gray-500\/20,
+[data-theme="light"] [class*="bg-gray-500/2"] {
+    background-color: rgba(107, 114, 128, 0.12) !important;
+}
+
+/* Light theme - Badge borders */
+[data-theme="light"] .border-blue-400\/30,
+[data-theme="light"] [class*="border-blue-4"] {
+    border-color: rgba(59, 130, 246, 0.4) !important;
+}
+
+[data-theme="light"] .border-green-400\/30,
+[data-theme="light"] [class*="border-green-4"] {
+    border-color: rgba(34, 197, 94, 0.4) !important;
+}
+
+/* Light theme - Light colored badges (bg-blue-100, etc.) */
+[data-theme="light"] .bg-blue-100 {
+    background-color: rgba(59, 130, 246, 0.15) !important;
+}
+
+[data-theme="light"] .bg-green-100 {
+    background-color: rgba(34, 197, 94, 0.15) !important;
+}
+
+[data-theme="light"] .text-blue-800 {
+    color: #1e40af !important;
+}
+
+[data-theme="light"] .text-green-800 {
+    color: #166534 !important;
+}
+
+/* Light theme - Slate buttons (Save & Connect, etc.) */
+[data-theme="light"] .bg-slate-700,
+[data-theme="light"] .bg-slate-800,
+[data-theme="light"] [class*="bg-slate-7"],
+[data-theme="light"] [class*="bg-slate-8"] {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] .bg-slate-700:hover,
+[data-theme="light"] .bg-slate-800:hover {
+    background-color: var(--button-bg-hover) !important;
+}
+
+/* Light theme - Icon buttons (round toggle buttons) */
+[data-theme="light"] button.rounded-full.bg-gray-800\/50 {
+    background-color: var(--bg-elevated) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] button.rounded-full.bg-gray-800\/50 svg {
+    color: var(--text-secondary) !important;
+}
+
+/* Light theme - Session history action buttons (edit, delete, copy) */
+[data-theme="light"] .session-action-button {
+    color: var(--text-muted) !important;
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] .session-action-button:hover {
+    background: rgba(99, 102, 241, 0.12) !important;
+    color: #4f46e5 !important;
+    border-color: rgba(99, 102, 241, 0.4) !important;
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15) !important;
+}
+
+[data-theme="light"] .session-delete-button:hover {
+    background: rgba(244, 63, 94, 0.12) !important;
+    color: #e11d48 !important;
+    border-color: rgba(244, 63, 94, 0.4) !important;
+    box-shadow: 0 2px 6px rgba(244, 63, 94, 0.15) !important;
+}
+
+[data-theme="light"] .session-edit-button:hover {
+    background: rgba(99, 102, 241, 0.12) !important;
+    color: #4f46e5 !important;
+    border-color: rgba(99, 102, 241, 0.4) !important;
+    box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15) !important;
+}
+
+[data-theme="light"] .session-copy-button:hover {
+    background: rgba(16, 185, 129, 0.12) !important;
+    color: #059669 !important;
+    border-color: rgba(16, 185, 129, 0.4) !important;
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.15) !important;
+}
+
+/* Light theme - Session edit input field */
+[data-theme="light"] .session-edit-input {
+    background-color: var(--input-bg) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--teradata-orange) !important;
+}
+
+/* Form checkboxes */
+[data-theme="light"] input[type="checkbox"].bg-gray-700 {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Progress bars */
+[data-theme="light"] .bg-gray-700\/50.rounded-full {
+    background-color: var(--bg-elevated) !important;
+}
+
+/* Light theme - Table headers */
+[data-theme="light"] thead.bg-gray-800,
+[data-theme="light"] thead .bg-gray-800 {
+    background-color: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] thead th.text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Specific button fixes */
+[data-theme="light"] #reconnect-and-load-btn {
+    background-color: var(--button-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #reconnect-and-load-btn:not(:disabled):hover {
+    background-color: var(--button-bg-hover) !important;
+}
+
+/* Light theme - Category tabs (resource tabs) */
+[data-theme="light"] .category-tab {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .category-tab:hover,
+[data-theme="light"] .category-tab.active {
+    background-color: var(--teradata-orange-light-mode) !important;
+    color: white !important;
+}
+
+/* Light theme - Resource tabs */
+[data-theme="light"] .resource-tab {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .resource-tab.active {
+    color: var(--teradata-orange) !important;
+    border-color: var(--teradata-orange) !important;
+}
+
+/* Light theme - View switch buttons in sidebar */
+[data-theme="light"] .view-switch-button.text-gray-200 {
+    color: var(--text-secondary) !important;
+}
+
+/* Light theme - Connected accounts cards */
+[data-theme="light"] .bg-slate-800\/50 {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .border-slate-700 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .link-provider-btn {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Modal and overlay backgrounds */
+[data-theme="light"] .bg-gray-900,
+[data-theme="light"] .bg-gray-900\/50,
+[data-theme="light"] .bg-gray-800\/50,
+[data-theme="light"] .bg-gray-700\/50 {
+    background-color: var(--bg-tertiary) !important;
+}
+
+/* Light theme - Classification Results Modal */
+[data-theme="light"] #classification-modal .bg-gray-800\/80 {
+    background: var(--bg-secondary) !important;
+    border-bottom-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #classification-modal .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #classification-modal .bg-gray-800\/30 {
+    background: var(--hover-bg-strong) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #classification-modal .bg-gray-900\/30 {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #classification-modal .bg-gray-900\/10 {
+    background: var(--hover-bg) !important;
+}
+
+[data-theme="light"] #classification-modal .border-gray-700\/50,
+[data-theme="light"] #classification-modal .border-gray-700\/30,
+[data-theme="light"] #classification-modal .border-gray-700\/20 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #classification-modal .text-red-400 {
+    color: var(--status-error) !important;
+}
+
+[data-theme="light"] #classification-modal .opacity-50 {
+    opacity: 0.7 !important;
+}
+
+/* Light theme - Dividers and borders */
+[data-theme="light"] .divide-white\/10 > * + * {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .border-t.border-white\/10,
+[data-theme="light"] .border-b.border-white\/10 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Scrollbar in sidebar */
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb) !important;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track) !important;
+}
+
+/* Light theme - Welcome screen specific */
+[data-theme="light"] #welcome-screen {
+    color: var(--text-primary);
+}
+
+[data-theme="light"] #welcome-screen .text-white,
+[data-theme="light"] .welcome-uderia-title .text-white,
+[data-theme="light"] .welcome-tagline .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Fix welcome screen tagline - override the white gradient */
+[data-theme="light"] #welcome-screen h1 {
+    background: linear-gradient(135deg, #0f172a 0%, #334155 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+[data-theme="light"] .welcome-tagline h1 {
+    background: linear-gradient(135deg, #0f172a 0%, #334155 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+[data-theme="light"] #welcome-screen .text-gray-400,
+[data-theme="light"] #welcome-screen .text-gray-500 {
+    color: var(--text-tertiary) !important;
+}
+
+/* Welcome screen title styling for all themes */
+.welcome-title-main {
+    color: white;
+}
+
+.welcome-title-sub {
+    color: #9ca3af; /* gray-400 */
+}
+
+/* Light theme overrides */
+[data-theme="light"] .welcome-title-main {
+    color: #1e293b !important; /* slate-800 */
+}
+
+[data-theme="light"] .welcome-title-sub {
+    color: #64748b !important; /* slate-500 */
+}
+
+/* Legacy theme styling */
+[data-theme="legacy"] .welcome-title-main {
+    color: white;
+}
+
+[data-theme="legacy"] .welcome-title-sub {
+    color: #9ca3af;
+}
+
+[data-theme="light"] #welcome-screen .border-white\/10 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Session list */
+[data-theme="light"] .session-item {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(226, 232, 240, 0.8); /* slate-200 with transparency */
+    margin-bottom: 0.5rem; /* Add spacing between sessions */
+}
+
+[data-theme="light"] .session-item:hover {
+    background: var(--gradient-hover);
+    border-color: rgba(148, 163, 184, 0.4); /* slate-400 on hover */
+}
+
+[data-theme="light"] .session-item .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .session-item .text-gray-400,
+[data-theme="light"] .session-item .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .session-item.active {
+    background: var(--gradient-selected);
+    border-left: 3px solid #6b7280; /* 3px Gray-500 to exactly match Live Status lifecycle events */
+}
+
+[data-theme="light"] .session-item.active::before {
+    background: #6b7280; /* Match border-left-color for double-layer effect like Live Status */
+}
+
+/* Light theme - Industrial History header */
+[data-theme="light"] #session-history-panel .header-title {
+    color: var(--text-muted) !important;
+}
+
+/* Light theme - Session profile tags - REMOVED !important to allow inline CSS variables */
+/* Profile tags use --profile-tag-text CSS variable set via inline styles */
+[data-theme="light"] .session-models span:not(.profile-tag) {
+    color: var(--text-primary);
+}
+
+/* Keep model fallback tags visible */
+[data-theme="light"] .session-models .bg-gray-700 {
+    background: var(--bg-elevated) !important;
+    color: var(--text-secondary) !important;
+}
+
+/* Legacy theme - Session list */
+/* Override active session background to use grey instead of blue */
+[data-theme="legacy"] .session-item.active {
+    background: linear-gradient(90deg, rgba(107, 114, 128, 0.15) 0%, rgba(107, 114, 128, 0.05) 100%);
+}
+
+/* Light theme - Dropdown menus */
+[data-theme="light"] [id$="-dropdown"],
+[data-theme="light"] .dropdown-menu {
+    background: var(--modal-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Hover states for interactive elements */
+[data-theme="light"] .hover\:bg-white\/10:hover {
+    background-color: var(--hover-bg) !important;
+}
+
+[data-theme="light"] .hover\:bg-white\/20:hover {
+    background-color: var(--hover-bg-strong) !important;
+}
+
+/* Light theme - Focus rings */
+[data-theme="light"] .focus\:ring-white:focus {
+    --tw-ring-color: var(--border-focus) !important;
+}
+
+/* Legacy theme - Profile tag selector (@ dropdown) */
+[data-theme="legacy"] #profile-tag-selector,
+[data-theme="legacy"] #rag-suggestions-container {
+    background: linear-gradient(135deg,
+        rgba(51, 51, 51, 0.95) 0%,
+        rgba(38, 38, 38, 0.98) 100%) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+}
+
+[data-theme="legacy"] #profile-tag-selector::before,
+[data-theme="legacy"] #rag-suggestions-container::before {
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(241, 95, 34, 0.6) 50%,
+        transparent 100%) !important;
+}
+
+[data-theme="legacy"] .profile-tag-item {
+    border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="legacy"] .profile-tag-item .profile-tag-name {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] .profile-tag-item .profile-tag-description {
+    color: #999999 !important;
+}
+
+[data-theme="legacy"] .profile-tag-item.profile-tag-highlighted {
+    background: rgba(241, 95, 34, 0.12) !important;
+}
+
+[data-theme="legacy"] .profile-tag-item.profile-tag-highlighted .profile-tag-name {
+    color: #ffffff !important;
+}
+
+[data-theme="legacy"] .profile-tag-item:not(.profile-tag-highlighted):hover {
+    background: rgba(241, 95, 34, 0.05) !important;
+}
+
+[data-theme="legacy"] .profile-default-indicator {
+    color: #fbbf24 !important;
+}
+
+/* Light theme - Profile tag selector (@ dropdown) */
+[data-theme="light"] #profile-tag-selector,
+[data-theme="light"] #rag-suggestions-container {
+    background: linear-gradient(135deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(248, 250, 252, 0.99) 100%) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15),
+                0 0 0 1px var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-tag-selector::before,
+[data-theme="light"] #rag-suggestions-container::before {
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(241, 95, 34, 0.8) 50%,
+        transparent 100%) !important;
+}
+
+[data-theme="light"] .profile-tag-item {
+    border-bottom-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] .profile-tag-item .profile-tag-name {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .profile-tag-item .profile-tag-description {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .profile-tag-item.profile-tag-highlighted {
+    background: rgba(241, 95, 34, 0.1) !important;
+}
+
+[data-theme="light"] .profile-tag-item.profile-tag-highlighted .profile-tag-name {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .profile-tag-item:not(.profile-tag-highlighted):hover {
+    background: rgba(241, 95, 34, 0.05) !important;
+}
+
+[data-theme="light"] .profile-default-indicator {
+    color: var(--status-warning) !important;
+}
+
+/* Light theme - MCP Resource panel (Tools, Prompts, Resources) */
+[data-theme="light"] .resource-item {
+    background: rgba(248, 250, 252, 0.95) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .resource-item summary {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .resource-item summary:hover {
+    background: var(--hover-bg) !important;
+}
+
+[data-theme="light"] .resource-item .text-gray-300,
+[data-theme="light"] .resource-item p {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .resource-item .text-gray-400 {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .resource-item .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Parameter items in resource panel */
+[data-theme="light"] .resource-item li {
+    background: var(--bg-elevated) !important;
+}
+
+[data-theme="light"] .resource-item .text-cyan-400 {
+    color: #0891b2 !important;
+    background: rgba(8, 145, 178, 0.1) !important;
+}
+
+[data-theme="light"] .resource-item .text-rose-400 {
+    color: #dc2626 !important;
+}
+
+[data-theme="light"] .resource-item .text-teradata-orange,
+[data-theme="light"] .resource-item code {
+    color: #c2410c !important;
+}
+
+/* Border dividers in resource panel */
+[data-theme="light"] .resource-item .border-gray-700\/60 {
+    border-color: var(--border-secondary) !important;
+}
+
+/* Resource item buttons */
+[data-theme="light"] .resource-item .bg-gray-600 {
+    background: var(--button-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .resource-item .bg-gray-600:hover {
+    background: var(--button-bg-hover) !important;
+}
+
+/* RAG suggestion items */
+[data-theme="light"] .rag-suggestion-item {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .rag-suggestion-item.rag-suggestion-highlighted {
+    background: rgba(241, 95, 34, 0.08) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Chat footer (for sticky positioning on touch devices) */
+[data-theme="light"] #chat-footer {
+    background: transparent !important;
+    border-top: none !important;
+}
+
+/* Light theme - Message profile badges - REMOVED !important to allow inline CSS variables */
+/* Profile badges use --profile-tag-text and --profile-tag-border set via inline styles */
+
+/* Light theme - Unified profile tag status modifiers (SOLID COLORS) */
+[data-theme="light"] .profile-tag--status-pending {
+    --profile-tag-text: #FFFFFF;
+    --profile-tag-bg: #8b5cf6;          /* Solid purple */
+    --profile-tag-border: #7c3aed;
+}
+
+[data-theme="light"] .profile-tag--status-selected {
+    --profile-tag-text: #FFFFFF;
+    --profile-tag-bg: #a855f7;          /* Lighter purple */
+    --profile-tag-border: #9333ea;
+}
+
+[data-theme="light"] .profile-tag--status-completed {
+    --profile-tag-text: #FFFFFF;
+    --profile-tag-bg: #10b981;          /* Solid emerald */
+    --profile-tag-border: #059669;
+}
+
+[data-theme="light"] .profile-tag--status-error {
+    --profile-tag-text: #FFFFFF;
+    --profile-tag-bg: #ef4444;          /* Solid red */
+    --profile-tag-border: #dc2626;
+}
+
+/* Light theme - Tables in message bubbles */
+[data-theme="light"] .message-bubble table {
+    background: rgba(248, 250, 252, 0.95) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .message-bubble thead {
+    background: linear-gradient(135deg,
+        rgba(241, 95, 34, 0.15) 0%,
+        rgba(241, 95, 34, 0.08) 100%) !important;
+}
+
+[data-theme="light"] .message-bubble th {
+    color: var(--text-primary) !important;
+    border-bottom-color: var(--teradata-orange) !important;
+}
+
+[data-theme="light"] .message-bubble td {
+    color: var(--text-secondary) !important;
+    border-bottom-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] .message-bubble tbody tr:hover {
+    background: rgba(241, 95, 34, 0.05) !important;
+}
+
+/* Light theme - Response cards */
+[data-theme="light"] .response-card {
+    background: linear-gradient(135deg,
+        rgba(248, 250, 252, 0.95) 0%,
+        rgba(255, 255, 255, 0.98) 100%) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"] .response-card:hover {
+    background: linear-gradient(135deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(248, 250, 252, 0.95) 100%) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Light theme - Copy table button */
+[data-theme="light"] .copy-table-btn,
+[data-theme="light"] [class*="copy-table"],
+[data-theme="light"] button[title*="Copy"] {
+    background-color: var(--button-bg) !important;
+    color: var(--teradata-orange) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .copy-table-btn:hover,
+[data-theme="light"] [class*="copy-table"]:hover {
+    background-color: var(--button-bg-hover) !important;
+    color: var(--teradata-orange-dark) !important;
+}
+
+/* Light theme - Collateral/Details sections */
+[data-theme="light"] details,
+[data-theme="light"] .collateral-section {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] details summary,
+[data-theme="light"] .collateral-header {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - Code badges in headers */
+[data-theme="light"] .message-bubble code:not(pre code) {
+    background: rgba(15, 23, 42, 0.08) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Light theme - Feedback buttons */
+[data-theme="light"] .feedback-btn {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .feedback-btn:hover {
+    color: var(--text-primary) !important;
+    background-color: var(--hover-bg) !important;
+}
+
+/* Light theme - Message bubble assistant */
+[data-theme="light"] .message-bubble.assistant {
+    background: var(--message-assistant-bg) !important;
+    border-color: var(--message-assistant-border) !important;
+}
+
+/* Light theme - Document attachment chips (white text on dark backgrounds) */
+[data-theme="light"] .bg-gray-700\/60 {
+    color: #ffffff !important;
+}
+
+[data-theme="light"] .bg-gray-700\/60 .text-gray-500 {
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+
+[data-theme="light"] .bg-gray-700\/80 {
+    color: #ffffff !important;
+}
+
+[data-theme="light"] .bg-gray-700\/80 .text-gray-400 {
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+
+[data-theme="light"] .bg-gray-700\/60 .text-blue-400,
+[data-theme="light"] .bg-gray-700\/60 .text-green-400,
+[data-theme="light"] .bg-gray-700\/80 .text-blue-400,
+[data-theme="light"] .bg-gray-700\/80 .text-green-400 {
+    color: #ffffff !important;
+}
+
+/* Light theme - Key metrics and summary cards */
+[data-theme="light"] .key-metric,
+[data-theme="light"] .summary-value {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .key-metric-label,
+[data-theme="light"] .summary-label {
+    color: var(--text-muted) !important;
+}
+
+/* Light theme - Copy button */
+[data-theme="light"] .copy-button {
+    background-color: var(--button-bg) !important;
+    color: var(--teradata-orange) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] .copy-button:hover {
+    background-color: var(--button-bg-hover) !important;
+    color: var(--teradata-orange-dark) !important;
+}
+
+[data-theme="light"] .copy-button.copied {
+    background-color: var(--status-success) !important;
+    color: white !important;
+}
+
+/* Light theme - Table container */
+[data-theme="light"] .table-container {
+    border-color: var(--border-primary) !important;
+    background: var(--bg-secondary) !important;
+}
+
+/* Light theme - Assistant tables */
+[data-theme="light"] .assistant-table th,
+[data-theme="light"] .assistant-table td {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .assistant-table th {
+    background-color: rgba(241, 95, 34, 0.12) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .assistant-table td {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .assistant-table tr:nth-child(even) {
+    background-color: rgba(148, 163, 184, 0.08) !important;
+}
+
+[data-theme="light"] .assistant-table tr:hover {
+    background-color: rgba(241, 95, 34, 0.06) !important;
+}
+
+/* ============================================================================
+   Light theme - RAG Inspect Collection Panel
+   ============================================================================ */
+
+/* Table header */
+[data-theme="light"] #rag-collection-table-wrapper thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-wrapper th {
+    color: var(--text-primary) !important;
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-wrapper th:hover {
+    background: var(--hover-bg) !important;
+}
+
+/* Table body rows */
+[data-theme="light"] #rag-collection-table-body tr {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-body td {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-body tr:hover {
+    background: var(--hover-bg) !important;
+}
+
+/* Selected case row highlight */
+[data-theme="light"] #rag-collection-table-body tr.bg-orange-500\/30 {
+    background: rgba(241, 95, 34, 0.12) !important;
+}
+
+/* Selected Case Details section */
+[data-theme="light"] #rag-selected-case-details {
+    background: var(--card-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-details h2,
+[data-theme="light"] #rag-selected-case-details h3 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-metadata {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-metadata code {
+    color: var(--text-primary) !important;
+    background: var(--bg-elevated) !important;
+}
+
+[data-theme="light"] #rag-selected-case-metadata .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #rag-selected-case-metadata .text-gray-200,
+[data-theme="light"] #rag-selected-case-metadata .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+/* Phase cards (Successful Strategy) - dynamically generated divs with rounded-md */
+[data-theme="light"] #rag-selected-case-plan .rounded-md,
+[data-theme="light"] #rag-selected-case-plan .grid > div,
+[data-theme="light"] #rag-selected-case-plan div[class*="bg-gray"] {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-plan .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-plan .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-plan .text-sm {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-plan code {
+    color: var(--teradata-orange) !important;
+    background: rgba(241, 95, 34, 0.08) !important;
+}
+
+/* Execution Trace cards - dynamically generated divs */
+[data-theme="light"] #rag-selected-case-trace .space-y-1 > div,
+[data-theme="light"] #rag-selected-case-trace .rounded,
+[data-theme="light"] #rag-selected-case-trace div[class*="bg-gray"],
+[data-theme="light"] #rag-selected-case-trace .text-xs.p-2 {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-trace .font-mono {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-trace .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-trace .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #rag-selected-case-trace .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Execution Trace repeat badge (x5) */
+[data-theme="light"] #rag-selected-case-trace [class*="bg-blue"] {
+    background: rgba(59, 130, 246, 0.2) !important;
+    color: #1d4ed8 !important;
+}
+
+/* Global override for all Tailwind gray backgrounds in inspect panels */
+[data-theme="light"] #rag-selected-case-details [class*="bg-gray-8"],
+[data-theme="light"] #rag-selected-case-details [class*="bg-gray-9"],
+[data-theme="light"] #rag-selected-case-details [class*="rounded-md"],
+[data-theme="light"] #rag-selected-case-details [class*="rounded "] {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Specifically target the p-2 rounded divs in trace section */
+[data-theme="light"] #rag-selected-case-trace > div > div.space-y-1 > div {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Execution Trace checkboxes - removed accent-color as it forces native browser
+   checkmark rendering which ignores the custom ::after white checkmark styling.
+   These checkboxes now inherit from the universal light mode checkbox rules. */
+
+/* Loading text */
+[data-theme="light"] #rag-collection-loading {
+    color: var(--text-muted) !important;
+}
+
+/* Footer text */
+[data-theme="light"] #rag-collection-footer {
+    color: var(--text-muted) !important;
+}
+
+/* Separator line */
+[data-theme="light"] #rag-selected-case-separator {
+    border-color: var(--border-primary) !important;
+}
+
+/* Metadata info cards (used in knowledge repository too) */
+[data-theme="light"] .bg-gray-800\/50,
+[data-theme="light"] [class*="bg-gray-800\\/"] {
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-secondary) !important;
+}
+
+/* Ensure all inspect view rows have proper background */
+[data-theme="light"] #rag-collection-inspect-view tr {
+    background: transparent !important;
+}
+
+[data-theme="light"] #rag-collection-inspect-view tr:hover {
+    background: var(--hover-bg) !important;
+}
+
+/* Inspect panel header elements */
+[data-theme="light"] #rag-collection-inspect-back {
+    background: var(--button-bg) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-collection-inspect-back:hover {
+    background: var(--button-bg-hover) !important;
+}
+
+[data-theme="light"] #rag-collection-inspect-title {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-collection-search-input {
+    background: var(--input-bg) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-collection-search-input::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Knowledge Repository metadata cards */
+[data-theme="light"] #knowledge-repo-metadata .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #knowledge-repo-metadata .text-gray-400 {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #knowledge-repo-metadata .bg-gray-800\/50,
+[data-theme="light"] #knowledge-repo-metadata [class*="bg-gray"] {
+    background: var(--bg-elevated) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+/* Knowledge Repository description text */
+[data-theme="light"] #knowledge-meta-description {
+    color: var(--text-secondary) !important;
+}
+
+/* Knowledge Repository table rows */
+[data-theme="light"] #rag-collection-table-body tr[class*="border-gray"] {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-body tr:hover {
+    background: var(--hover-bg) !important;
+}
+
+[data-theme="light"] #rag-collection-table-body .text-gray-200,
+[data-theme="light"] #rag-collection-table-body .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+/* Selected row in knowledge repository */
+[data-theme="light"] #rag-collection-table-body tr[class*="bg-orange"] {
+    background: rgba(241, 95, 34, 0.12) !important;
+}
+
+/* Table row hover state */
+[data-theme="light"] #rag-collection-table-body tr[class*="hover\\:bg-gray"]:hover {
+    background: var(--hover-bg) !important;
+}
+
+/* All table cells text */
+[data-theme="light"] #rag-collection-table-body td {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #rag-collection-table-body td.text-gray-300,
+[data-theme="light"] #rag-collection-table-body td.text-gray-200,
+[data-theme="light"] #rag-collection-table-body td .text-gray-300,
+[data-theme="light"] #rag-collection-table-body td .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+/* Font mono text in table */
+[data-theme="light"] #rag-collection-table-body .font-mono {
+    color: var(--text-secondary) !important;
+}
+
+/* Light theme - Response card headers */
+[data-theme="light"] .response-card h4,
+[data-theme="light"] .response-card h5 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .response-card .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Light theme - SQL code blocks (keep dark) */
+[data-theme="light"] .sql-code-block {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+}
+
+[data-theme="light"] .sql-code-block code {
+    color: #d4d4d4 !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - STATUS PANEL / LIVE STATUS
+   ============================================================================ */
+
+/* Status step base styling */
+[data-theme="light"] .status-step {
+    background: rgba(148, 163, 184, 0.08) !important;
+}
+
+[data-theme="light"] .status-step:hover {
+    background: rgba(148, 163, 184, 0.12) !important;
+}
+
+/* Status step states */
+[data-theme="light"] .status-step.active {
+    background: linear-gradient(90deg,
+        rgba(241, 95, 34, 0.12) 0%,
+        rgba(241, 95, 34, 0.04) 100%) !important;
+}
+
+[data-theme="light"] .status-step.completed {
+    background: linear-gradient(90deg,
+        rgba(16, 185, 129, 0.08) 0%,
+        rgba(248, 250, 252, 0.5) 100%) !important;
+}
+
+/* Status step text */
+[data-theme="light"] .status-step h4,
+[data-theme="light"] .status-step .font-bold {
+    color: var(--text-primary) !important;
+}
+
+/* Status key-value pairs */
+[data-theme="light"] #status-window-content .status-kv-key,
+[data-theme="light"] .status-kv-key {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #status-window-content .status-kv-value,
+[data-theme="light"] .status-kv-value {
+    color: var(--text-secondary) !important;
+}
+
+/* Status code badges */
+[data-theme="light"] #status-window-content .status-code,
+[data-theme="light"] .status-code {
+    background-color: rgba(241, 95, 34, 0.1) !important;
+    color: var(--teradata-orange-dark) !important;
+    border: 1px solid rgba(241, 95, 34, 0.2) !important;
+}
+
+/* Status details section */
+[data-theme="light"] .status-details {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .status-details summary {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .status-details summary:hover {
+    color: var(--text-primary) !important;
+}
+
+/* Status window content area */
+[data-theme="light"] #status-window-content {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #status-window-content .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #status-window-content .text-gray-300,
+[data-theme="light"] #status-window-content .text-gray-400,
+[data-theme="light"] #status-window-content .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Full text boxes in status (like "what is the system version?") */
+[data-theme="light"] .status-step .bg-gray-800,
+[data-theme="light"] .status-step .bg-gray-900,
+[data-theme="light"] .status-step pre {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Status text blocks (Full Text content boxes) */
+[data-theme="light"] #status-window-content .status-text-block {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Status phase containers (Generated Plan steps) */
+[data-theme="light"] .status-phase-container {
+    background-color: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .status-phase-container summary {
+    color: var(--text-primary) !important;
+}
+
+/* Plan step boxes inside status */
+[data-theme="light"] .status-step .plan-step-box,
+[data-theme="light"] .status-step [class*="bg-gray-900"],
+[data-theme="light"] .status-step .bg-gray-900\/50 {
+    background: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Status phase cards (Step 1, Step 2, etc.) */
+[data-theme="light"] .status-phase-card {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+}
+
+[data-theme="light"] .status-phase-card .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+/* Phase headers (Phase 1/2, Phase 2/2 Completed, etc.) */
+[data-theme="light"] .status-phase-header {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .status-phase-header.phase-end {
+    background-color: var(--bg-elevated) !important;
+    border-top-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .status-phase-header.phase-start {
+    border-bottom-color: var(--border-primary) !important;
+}
+
+/* Phase content border */
+[data-theme="light"] .status-phase-content {
+    border-left-color: var(--border-primary) !important;
+}
+
+/* Generated plan steps */
+[data-theme="light"] .status-step details {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .status-step .space-y-3 > div {
+    background: var(--bg-tertiary) !important;
+    border-radius: var(--radius-sm);
+    padding: 0.5rem;
+}
+
+/* Phase indicators */
+[data-theme="light"] .phase-indicator {
+    color: var(--text-muted) !important;
+}
+
+/* Lifecycle events (start/complete) */
+[data-theme="light"] .status-step.lifecycle {
+    background: var(--bg-secondary) !important;
+}
+
+/* Genie status steps */
+[data-theme="light"] .genie-status-step {
+    background: rgba(147, 51, 234, 0.06) !important;
+}
+
+/* Slate color overrides for status panels (Question to @RAG, etc.) */
+[data-theme="light"] .status-step .bg-slate-900\/50,
+[data-theme="light"] .status-step [class*="bg-slate-900"] {
+    background: var(--bg-elevated) !important;
+}
+
+[data-theme="light"] .status-step .border-slate-600\/30,
+[data-theme="light"] .status-step [class*="border-slate"] {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] .status-step .text-slate-200,
+[data-theme="light"] .status-step .text-slate-300,
+[data-theme="light"] .status-step [class*="text-slate-2"],
+[data-theme="light"] .status-step [class*="text-slate-3"] {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .status-step .text-slate-400,
+[data-theme="light"] .status-step .text-slate-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Response and error boxes in Genie status */
+[data-theme="light"] .status-step .bg-emerald-900\/20,
+[data-theme="light"] .status-step [class*="bg-emerald-900"] {
+    background: rgba(16, 185, 129, 0.1) !important;
+}
+
+[data-theme="light"] .status-step .bg-rose-900\/30,
+[data-theme="light"] .status-step [class*="bg-rose-900"] {
+    background: rgba(244, 63, 94, 0.1) !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - VIEW PROMPT AND RAG CASE MODALS
+   ============================================================================ */
+
+/* View Prompt Modal - code preview area */
+[data-theme="light"] #view-prompt-modal-content .bg-gray-800\/80 {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #view-prompt-modal-content .border-gray-600 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #view-prompt-modal-text {
+    color: var(--text-primary) !important;
+}
+
+/* RAG Case Modal - code preview area */
+[data-theme="light"] #rag-case-modal-content .bg-gray-800\/80 {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-case-modal-content .border-gray-600 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #rag-case-modal-json {
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Modal close button hover in light mode */
+[data-theme="light"] #rag-case-modal-close:hover {
+    background: var(--hover-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Chat Modal - log area */
+[data-theme="light"] #chat-modal-log {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #chat-modal-input {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #chat-modal-input::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Prompt Input Modal */
+[data-theme="light"] #prompt-input-modal-input {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #prompt-input-modal-label {
+    color: var(--text-secondary) !important;
+}
+
+/* System Prompt Editor Modal */
+[data-theme="light"] #prompt-editor-textarea {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Modal buttons in light mode */
+[data-theme="light"] #prompt-input-modal-cancel,
+[data-theme="light"] #prompt-editor-close,
+[data-theme="light"] #prompt-editor-reset,
+[data-theme="light"] #rag-case-modal-copy {
+    background: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #prompt-input-modal-cancel:hover,
+[data-theme="light"] #prompt-editor-close:hover,
+[data-theme="light"] #prompt-editor-reset:hover,
+[data-theme="light"] #rag-case-modal-copy:hover {
+    background: var(--bg-tertiary) !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - WARNING/STATUS TEXT COLORS
+   ============================================================================ */
+
+/* Yellow warning text - needs darker shade for light mode contrast */
+[data-theme="light"] .text-yellow-400,
+[data-theme="light"] .text-yellow-500 {
+    color: #b45309 !important; /* amber-700 - better contrast on light backgrounds */
+}
+
+/* Orange text (like "Inherits from" badges) - needs darker shade */
+[data-theme="light"] .text-orange-300,
+[data-theme="light"] .text-orange-400 {
+    color: #c2410c !important; /* orange-700 - better contrast on light backgrounds */
+}
+
+/* Orange badge backgrounds - slightly more opaque for light mode */
+[data-theme="light"] .bg-orange-500\/20 {
+    background-color: rgba(249, 115, 22, 0.15) !important;
+}
+
+[data-theme="light"] .border-orange-400\/30 {
+    border-color: rgba(251, 146, 60, 0.5) !important;
+}
+
+/* Green info boxes (like "Share your knowledge" in marketplace) */
+[data-theme="light"] .text-green-200,
+[data-theme="light"] .text-green-300 {
+    color: #166534 !important; /* green-800 - better contrast on light backgrounds */
+}
+
+[data-theme="light"] .text-green-400 {
+    color: #15803d !important; /* green-700 - better contrast for icons */
+}
+
+[data-theme="light"] .bg-green-900\/20 {
+    background-color: rgba(22, 163, 74, 0.12) !important; /* green-600 with low opacity */
+}
+
+[data-theme="light"] .border-green-500\/30 {
+    border-color: rgba(22, 163, 74, 0.4) !important;
+}
+
+/* Import Collection modal - button description text */
+[data-theme="light"] .bg-blue-600 .text-gray-300,
+[data-theme="light"] .bg-blue-500 .text-gray-300 {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+[data-theme="light"] #import-from-path-btn {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #import-from-path-btn:hover {
+    background-color: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #import-from-path-btn .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+/* Intelligence/Performance tabs - ensure proper contrast in light mode */
+[data-theme="light"] #intel-tab-my-performance,
+[data-theme="light"] #intel-tab-system-performance,
+[data-theme="light"] #tab-my-performance,
+[data-theme="light"] #tab-system-performance {
+    color: var(--text-muted) !important;
+}
+
+/* Light mode: Tone down orange in all tab elements */
+
+/* Performance tabs (Execution + Intelligence sections) - text color */
+[data-theme="light"] #tab-my-performance.text-\[\#F15F22\],
+[data-theme="light"] #tab-system-performance.text-\[\#F15F22\],
+[data-theme="light"] #intel-tab-my-performance.text-\[\#F15F22\],
+[data-theme="light"] #intel-tab-system-performance.text-\[\#F15F22\] {
+    color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Tab borders - use muted orange instead of bright */
+[data-theme="light"] #tab-my-performance.border-\[\#F15F22\],
+[data-theme="light"] #tab-system-performance.border-\[\#F15F22\],
+[data-theme="light"] #intel-tab-my-performance.border-\[\#F15F22\],
+[data-theme="light"] #intel-tab-system-performance.border-\[\#F15F22\],
+[data-theme="light"] .border-\[\#F15F22\] {
+    border-color: var(--teradata-orange-light-border) !important;
+}
+
+/* Generic tab text/border overrides for dynamically created tabs */
+[data-theme="light"] button.text-\[\#F15F22\],
+[data-theme="light"] div.text-\[\#F15F22\] {
+    color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Light mode: Tone down orange button backgrounds */
+[data-theme="light"] .bg-\[\#F15F22\],
+[data-theme="light"] button.bg-\[\#F15F22\],
+[data-theme="light"] .bg-teradata-orange {
+    background: var(--teradata-orange-light-mode) !important;
+}
+
+/* Button hover states */
+[data-theme="light"] .bg-\[\#F15F22\]:hover,
+[data-theme="light"] button.bg-\[\#F15F22\]:hover,
+[data-theme="light"] .bg-teradata-orange:hover {
+    background: var(--teradata-orange-light-hover) !important;
+}
+
+/* Welcome CTA button gradient */
+[data-theme="light"] .welcome-cta-button {
+    background: linear-gradient(135deg, var(--teradata-orange-light-mode) 0%, var(--teradata-orange-light-hover) 100%) !important;
+}
+
+/* Light mode: Muted orange for form element focus states */
+[data-theme="light"] input:focus,
+[data-theme="light"] textarea:focus,
+[data-theme="light"] select:focus {
+    border-color: var(--teradata-orange-light-mode) !important;
+    --tw-ring-color: var(--teradata-orange-light-focus) !important;
+}
+
+/* Light mode: focus ring on input-area wrapper, not the input */
+[data-theme="light"] #chat-form #user-input:focus {
+    border-color: transparent !important;
+    --tw-ring-color: transparent !important;
+}
+
+[data-theme="light"] #input-area:focus-within {
+    border-color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Input focus classes */
+[data-theme="light"] .focus\:ring-\[\#F15F22\]:focus,
+[data-theme="light"] .focus\:border-\[\#F15F22\]:focus {
+    --tw-ring-color: var(--teradata-orange-light-focus) !important;
+    border-color: var(--teradata-orange-light-mode) !important;
+}
+
+/* ============================================
+   Light Mode Checkbox Fixes - UNIFIED STYLING
+   Forces ALL checkboxes to use consistent appearance
+   ============================================ */
+
+/* Unchecked checkbox - visible border on light background */
+[data-theme="light"] input[type="checkbox"] {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    border: 1px solid rgba(100, 116, 139, 0.5) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Checked checkbox - Teradata orange background, NO background-image */
+[data-theme="light"] input[type="checkbox"]:checked {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    background-color: #F15F22 !important; /* Teradata Orange - lighter, high contrast with white checkmark */
+    background-image: none !important;  /* Remove any SVG checkmark */
+    border-color: #EA580C !important; /* orange-600 border */
+    box-shadow: 0 1px 2px rgba(241, 95, 34, 0.3) !important; /* Minimal shadow - industrial style */
+}
+
+/* Remove the ::before gradient overlay in light mode (already handled in base) */
+[data-theme="light"] input[type="checkbox"]:checked::before {
+    display: none !important;
+}
+
+/* Hover state for unchecked */
+[data-theme="light"] input[type="checkbox"]:hover:not(:checked) {
+    border-color: rgba(100, 116, 139, 0.7) !important;
+    background-color: #f8fafc !important;
+}
+
+/* Hover state for checked */
+[data-theme="light"] input[type="checkbox"]:checked:hover {
+    background-color: #EA580C !important; /* orange-600 - slightly darker on hover */
+    border-color: #C2410C !important;     /* orange-700 */
+}
+
+/* Light mode focus ring - orange for brand consistency */
+[data-theme="light"] input[type="checkbox"]:focus {
+    outline: none !important;
+    border-color: #F15F22 !important; /* Teradata orange */
+    box-shadow: 0 0 0 3px rgba(241, 95, 34, 0.15) !important;
+}
+
+/* Light mode checkmark - white for high contrast on dark orange */
+[data-theme="light"] input[type="checkbox"]:checked::after {
+    border-color: #ffffff !important; /* White checkmark on dark orange background */
+    filter: none !important; /* Clean industrial look */
+}
+
+/* Radio buttons */
+[data-theme="light"] input[type="radio"]:checked {
+    color: var(--teradata-orange-light-mode) !important;
+    background-color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Genie badges and status indicators */
+[data-theme="light"] .genie-parent-badge,
+[data-theme="light"] .genie-child-badge,
+[data-theme="light"] .genie-slave-count {
+    background: var(--teradata-orange-light-mode) !important;
+}
+
+/* Profile type indicators */
+[data-theme="light"] .profile-type-indicator {
+    border-color: rgba(217, 80, 26, 0.5) !important;
+    color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Light mode: Tone down welcome screen orange text */
+[data-theme="light"] .welcome-content .text-\[\#F15F22\] {
+    color: var(--teradata-orange-light-mode) !important;
+}
+
+/* Tab container border in light mode */
+[data-theme="light"] #intelligence-tabs-container .border-gray-700,
+[data-theme="light"] #performance-tabs-container .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - PANE VISIBILITY CONFIGURATION TABLE
+   ============================================================================ */
+
+[data-theme="light"] #pane-config-tab .glass-panel {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-primary) !important;
+}
+
+[data-theme="light"] #pane-config-tab .text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #pane-config-tab table thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #pane-config-tab table thead .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #pane-config-tab table tbody {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] #pane-config-tab table tbody tr {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #pane-config-tab .divide-gray-700 {
+    --tw-divide-opacity: 1;
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #pane-config-tab .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #pane-config-tab .bg-gray-600 {
+    background: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #pane-config-tab .bg-gray-600:hover {
+    background: var(--bg-tertiary) !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - ALL ADMIN TABLES (comprehensive)
+   ============================================================================ */
+
+/* Generic table styling for all admin tabs */
+[data-theme="light"] .admin-tab-content table {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] .admin-tab-content table thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] .admin-tab-content table thead th {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] .admin-tab-content table tbody {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] .admin-tab-content table tbody tr {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] .admin-tab-content table tbody td {
+    color: var(--text-primary) !important;
+}
+
+/* Specific table body IDs */
+[data-theme="light"] #users-table-body,
+[data-theme="light"] #user-consumption-table-body,
+[data-theme="light"] #features-table-body,
+[data-theme="light"] #profiles-table-body,
+[data-theme="light"] #panes-table-body,
+[data-theme="light"] #parameters-table-body,
+[data-theme="light"] #versions-table-body {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] #users-table-body tr,
+[data-theme="light"] #user-consumption-table-body tr,
+[data-theme="light"] #features-table-body tr,
+[data-theme="light"] #profiles-table-body tr,
+[data-theme="light"] #panes-table-body tr,
+[data-theme="light"] #parameters-table-body tr,
+[data-theme="light"] #versions-table-body tr {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="light"] #users-table-body td,
+[data-theme="light"] #user-consumption-table-body td,
+[data-theme="light"] #features-table-body td,
+[data-theme="light"] #profiles-table-body td,
+[data-theme="light"] #panes-table-body td,
+[data-theme="light"] #parameters-table-body td,
+[data-theme="light"] #versions-table-body td {
+    color: var(--text-primary) !important;
+}
+
+/* Document Upload Config Table */
+[data-theme="light"] #document-upload-config-container {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #document-upload-config-container table thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #document-upload-config-container table tbody {
+    background: var(--bg-primary) !important;
+}
+
+/* Table headers with bg-gray-700/50 */
+[data-theme="light"] .admin-tab-content thead.bg-gray-700\/50 {
+    background: var(--bg-tertiary) !important;
+}
+
+/* Sticky headers */
+[data-theme="light"] .admin-tab-content thead.sticky {
+    background: var(--bg-tertiary) !important;
+}
+
+/* Table dividers */
+[data-theme="light"] .admin-tab-content .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--border-secondary) !important;
+}
+
+/* ============================================================================
+   THEME APPLICATION TO BODY
+   Enhanced with sophisticated gradients and depth
+   ============================================================================ */
+body {
+    background: var(--gradient-primary, var(--bg-primary)) !important;
+    background-attachment: fixed !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-primary);
+    font-size: var(--text-base);
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    transition: background var(--duration-normal) var(--ease-in-out-smooth),
+                color var(--duration-fast) var(--ease-in-out-smooth);
+}
+
+/* Enhanced Glass Panel System */
+.glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: var(--blur-medium);
+    -webkit-backdrop-filter: var(--blur-medium);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--duration-normal) var(--ease-out-expo);
+}
+
+.glass-panel:hover {
+    background: var(--glass-bg-strong, var(--glass-bg));
+    border-color: var(--glass-border-strong, var(--glass-border));
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+
+.glass-panel-strong {
+    background: var(--glass-bg-strong);
+    backdrop-filter: var(--blur-strong);
+    -webkit-backdrop-filter: var(--blur-strong);
+    border: 1px solid var(--glass-border-strong);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ============================================================================
+   REFINED COMPONENT STYLES
+   ============================================================================ */
+
+/* Enhanced Button Styles */
+button, .btn {
+    font-family: var(--font-primary);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    transition: all var(--duration-fast) var(--ease-out-expo);
+    border-radius: var(--radius-sm);
+}
+
+button:hover:not(:disabled), .btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+button:active:not(:disabled), .btn:active:not(:disabled) {
+    transform: translateY(0);
+    transition-duration: var(--duration-instant);
+}
+
+/* Orange accent button refinement */
+button[class*="orange"], .btn-primary {
+    background: linear-gradient(135deg, var(--teradata-orange) 0%, var(--teradata-orange-dark) 100%);
+    box-shadow: 0 4px 12px rgba(241, 95, 34, 0.25);
+    position: relative;
+    overflow: hidden;
+}
+
+button[class*="orange"]:hover, .btn-primary:hover {
+    box-shadow: 0 6px 20px rgba(241, 95, 34, 0.4);
+}
+
+button[class*="orange"]::before, .btn-primary::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%);
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-out-expo);
+}
+
+button[class*="orange"]:hover::before, .btn-primary:hover::before {
+    opacity: 1;
+}
+
+/* Enhanced Input Styles */
+input, textarea, select {
+    font-family: var(--font-primary);
+    letter-spacing: -0.01em;
+    transition: all var(--duration-fast) var(--ease-in-out-smooth);
+    border-radius: var(--radius-sm);
+    background: var(--input-bg);
+    border: 1px solid var(--border-secondary);
+}
+
+input:focus, textarea:focus, select:focus {
+    background: var(--input-bg-focus, var(--input-bg));
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--border-focus-ring, rgba(241, 95, 34, 0.1));
+    outline: none;
+}
+
+/* Chat input: visual box is on #input-area wrapper, not the input itself */
+#input-area {
+    border-radius: var(--radius-sm);
+    background: var(--input-bg);
+    border: 1px solid var(--border-secondary);
+    transition: all var(--duration-fast) var(--ease-in-out-smooth);
+}
+
+#input-area:focus-within {
+    background: var(--input-bg-focus, var(--input-bg));
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--border-focus-ring, rgba(241, 95, 34, 0.1));
+}
+
+#chat-form #user-input {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    border-radius: 0 !important;
+}
+
+#chat-form #user-input:focus {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* Enhanced Card Styles */
+.card, [class*="card"] {
+    background: var(--gradient-card, var(--card-bg));
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--duration-normal) var(--ease-out-expo);
+}
+
+.card:hover, [class*="card"]:hover {
+    background: var(--card-bg-hover, var(--card-bg));
+    border-color: var(--border-primary);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+/* ============================================================================
+   MICRO-INTERACTIONS
+   ============================================================================ */
+
+/* Ripple effect for clickable elements */
+@keyframes ripple {
+    0% {
+        transform: scale(0);
+        opacity: 0.5;
+    }
+    100% {
+        transform: scale(4);
+        opacity: 0;
+    }
+}
+
+.ripple-effect {
+    position: relative;
+    overflow: hidden;
+}
+
+.ripple-effect::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5);
+    width: 20px;
+    height: 20px;
+    pointer-events: none;
+    transform: scale(0);
+}
+
+.ripple-effect:active::after {
+    animation: ripple 0.6s var(--ease-out-expo);
+}
+
+/* Smooth scale on hover */
+.hover-scale {
+    transition: transform var(--duration-fast) var(--ease-out-expo);
+}
+
+.hover-scale:hover {
+    transform: scale(1.02);
+}
+
+/* Glow effect for active elements */
+.active-glow {
+    box-shadow: var(--glow-orange);
+    animation: pulse-glow 2s var(--ease-in-out-smooth) infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: var(--glow-orange);
+    }
+    50% {
+        box-shadow: var(--glow-orange-strong);
+    }
+}
+
+/* ============================================================================
+   SCROLLBAR REFINEMENTS
+   ============================================================================ */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: var(--radius-full);
+    transition: background var(--duration-fast) var(--ease-in-out-smooth);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover, var(--scrollbar-thumb));
+}
+
+/* ============================================================================
+   THEME TRANSITION SUPPORT
+   ============================================================================ */
+* {
+    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: var(--ease-in-out-smooth);
+}
+
+/* Preserve specific animations */
+button, a, input, textarea, select, [role="button"] {
+    transition-property: all;
+    transition-duration: var(--duration-fast);
+}
+
+/* Disable transitions during theme initialization */
+.no-transition,
+.no-transition * {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* ============================================================================
+   ACCESSIBILITY ENHANCEMENTS
+   ============================================================================ */
+
+/* Focus visible for keyboard navigation */
+:focus-visible {
+    outline: 2px solid var(--teradata-orange);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* ============================================================================
+   CONVERSATION AREA - ENHANCED TEXT & CONTENT DISPLAY
+   ============================================================================ */
+
+/* Refined Typography in Messages */
+.message-bubble p {
+    line-height: 1.7;
+    letter-spacing: -0.01em;
+    margin-bottom: var(--space-3);
+}
+
+.message-bubble p:last-child {
+    margin-bottom: 0;
+}
+
+.message-bubble h1,
+.message-bubble h2,
+.message-bubble h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-top: var(--space-5);
+    margin-bottom: var(--space-3);
+    color: var(--text-primary);
+}
+
+.message-bubble h1 { font-size: var(--text-2xl); }
+.message-bubble h2 { font-size: var(--text-xl); }
+.message-bubble h3 { font-size: var(--text-lg); }
+
+/* Enhanced Code Blocks */
+.message-bubble code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.15em 0.4em;
+    border-radius: var(--radius-xs);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    letter-spacing: 0;
+}
+
+.message-bubble pre {
+    background: linear-gradient(135deg, #1a1f2e 0%, #161a26 100%);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    overflow-x: auto;
+    margin: var(--space-4) 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2),
+                0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+}
+
+.message-bubble pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: #e2e8f0;
+}
+
+/* Enhanced Lists */
+.message-bubble ul,
+.message-bubble ol {
+    margin: var(--space-4) 0;
+    padding-left: var(--space-6);
+}
+
+.message-bubble li {
+    margin-bottom: var(--space-2);
+    line-height: 1.7;
+}
+
+.message-bubble li::marker {
+    color: var(--teradata-orange);
+}
+
+/* Enhanced Tables */
+.message-bubble table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: var(--space-4) 0;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-primary);
+}
+
+.message-bubble thead {
+    background: linear-gradient(135deg, 
+                                rgba(241, 95, 34, 0.2) 0%, 
+                                rgba(241, 95, 34, 0.1) 100%);
+}
+
+.message-bubble th {
+    padding: var(--space-3) var(--space-4);
+    text-align: left;
+    font-weight: 600;
+    font-size: var(--text-sm);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--teradata-orange);
+}
+
+.message-bubble td {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-secondary);
+    color: var(--text-secondary);
+}
+
+.message-bubble tbody tr {
+    transition: background var(--duration-fast) var(--ease-in-out-smooth);
+}
+
+.message-bubble tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.message-bubble tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Enhanced Blockquotes */
+.message-bubble blockquote {
+    border-left: 3px solid var(--teradata-orange);
+    padding-left: var(--space-4);
+    margin: var(--space-4) 0;
+    font-style: italic;
+    color: var(--text-tertiary);
+    background: var(--accent-overlay, rgba(241, 95, 34, 0.05));
+    padding: var(--space-4);
+    border-radius: var(--radius-sm);
+}
+
+/* Enhanced Links */
+.message-bubble a {
+    color: var(--teradata-orange-light);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: all var(--duration-fast) var(--ease-in-out-smooth);
+}
+
+.message-bubble a:hover {
+    color: var(--teradata-orange);
+    border-bottom-color: var(--teradata-orange);
+}
+
+/* Collapsible Sections Enhancement */
+details.collapsible-section {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-secondary);
+    border-radius: var(--radius-md);
+    margin: var(--space-3) 0;
+    overflow: hidden;
+    transition: all var(--duration-normal) var(--ease-out-expo);
+}
+
+details.collapsible-section:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--border-primary);
+}
+
+details.collapsible-section[open] {
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: var(--shadow-sm);
+}
+
+details.collapsible-section summary {
+    padding: var(--space-3) var(--space-4);
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    transition: all var(--duration-fast) var(--ease-in-out-smooth);
+    user-select: none;
+}
+
+details.collapsible-section summary:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--teradata-orange-light);
+}
+
+details.collapsible-section summary::marker,
+details.collapsible-section summary::-webkit-details-marker {
+    display: none;
+}
+
+details.collapsible-section summary::before {
+    content: '▶';
+    transition: transform var(--duration-fast) var(--ease-out-expo);
+    color: var(--teradata-orange);
+    font-size: 0.75em;
+}
+
+details.collapsible-section[open] summary::before {
+    transform: rotate(90deg);
+}
+
+details.collapsible-section .collapsible-content {
+    padding: 0 var(--space-4) var(--space-4) var(--space-4);
+    animation: expandContent 0.3s var(--ease-out-expo);
+}
+
+@keyframes expandContent {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ============================================================================
+   INPUT AREA ENHANCEMENTS
+   ============================================================================ */
+
+/* Enhanced Input Container */
+#chat-input-container {
+    background: var(--glass-bg-strong, rgba(30, 41, 59, 0.95));
+    backdrop-filter: var(--blur-strong, blur(24px));
+    -webkit-backdrop-filter: var(--blur-strong, blur(24px));
+    border-top: 1px solid var(--border-primary);
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15),
+                0 -1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Enhanced Textarea */
+textarea#user-input {
+    font-family: var(--font-primary);
+    font-size: var(--text-base);
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+    resize: none;
+    transition: all var(--duration-fast) var(--ease-in-out-smooth);
+}
+
+textarea#user-input:focus {
+    box-shadow: 0 0 0 3px var(--border-focus-ring, rgba(241, 95, 34, 0.15)),
+                0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Enhanced Send Button */
+button#send-button {
+    background: linear-gradient(135deg, var(--teradata-orange) 0%, var(--teradata-orange-dark) 100%);
+    box-shadow: 0 2px 8px rgba(241, 95, 34, 0.3);
+    transition: all var(--duration-fast) var(--ease-out-expo);
+}
+
+button#send-button:hover:not(:disabled) {
+    box-shadow: 0 4px 16px rgba(241, 95, 34, 0.4),
+                var(--glow-orange);
+    transform: translateY(-1px) scale(1.02);
+}
+
+button#send-button:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
+    transition-duration: var(--duration-instant);
+}
+
+/* Icon Button Enhancements */
+button[class*="icon-button"],
+button[aria-label] {
+    transition: all var(--duration-fast) var(--ease-out-expo);
+    border-radius: var(--radius-sm);
+}
+
+button[class*="icon-button"]:hover,
+button[aria-label]:hover {
+    background: var(--hover-bg-strong, rgba(148, 163, 184, 0.12));
+    transform: scale(1.1);
+}
+
+button[class*="icon-button"]:active,
+button[aria-label]:active {
+    transform: scale(0.95);
+    transition-duration: var(--duration-instant);
+}
+
+/* ============================================================================
+   LEGACY THEME OVERRIDES
+   Ensures legacy theme uses its own color palette instead of modern theme defaults
+   ============================================================================ */
+
+/* ============================================================================
+   LEGACY THEME - HARDCODED TEXT COLOR OVERRIDES
+   ============================================================================ */
+
+/* Gray text classes - use legacy text variables */
+[data-theme="legacy"] .text-gray-100,
+[data-theme="legacy"] .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] .text-gray-400,
+[data-theme="legacy"] .text-gray-500 {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="legacy"] .text-gray-600 {
+    color: var(--text-muted) !important;
+}
+
+/* Slate text classes - convert to legacy grays */
+[data-theme="legacy"] .text-slate-100,
+[data-theme="legacy"] .text-slate-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] .text-slate-300,
+[data-theme="legacy"] .text-slate-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] .text-slate-500 {
+    color: var(--text-tertiary) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - HARDCODED BACKGROUND OVERRIDES
+   ============================================================================ */
+
+[data-theme="legacy"] .bg-gray-700 {
+    background-color: var(--bg-secondary) !important;
+}
+
+[data-theme="legacy"] .bg-gray-800 {
+    background-color: var(--bg-primary) !important;
+}
+
+[data-theme="legacy"] .bg-gray-900 {
+    background-color: #1a1a1a !important;
+}
+
+[data-theme="legacy"] .bg-slate-700 {
+    background-color: var(--bg-secondary) !important;
+}
+
+[data-theme="legacy"] .bg-slate-800 {
+    background-color: var(--bg-primary) !important;
+}
+
+[data-theme="legacy"] .bg-slate-900 {
+    background-color: #1a1a1a !important;
+}
+
+/* Glass panel for legacy theme - OPAQUE backgrounds to prevent color bleeding */
+/* CRITICAL: Must be opaque (#333333) not semi-transparent (rgba) to prevent modern theme blue from showing through */
+[data-theme="legacy"] .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] .glass-panel-strong {
+    background: #404040 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - ALL TABLES (Admin, RAG, Costs, System Prompts)
+   ============================================================================ */
+
+/* CRITICAL: Override entire table element background */
+[data-theme="legacy"] table {
+    background: #333333 !important;
+}
+
+/* Table container overrides - ensure overflow wrappers don't bleed colors */
+[data-theme="legacy"] .overflow-x-auto {
+    background: transparent !important;
+}
+
+[data-theme="legacy"] .admin-tab-content .overflow-x-auto {
+    background: #333333 !important;
+}
+
+/* Table header backgrounds - override modern slate with legacy gray */
+[data-theme="legacy"] table thead,
+[data-theme="legacy"] table thead tr {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] thead.bg-gray-700\/50,
+[data-theme="legacy"] thead.bg-gray-800,
+[data-theme="legacy"] .bg-gray-700\/50,
+[data-theme="legacy"] .bg-gray-700\/90 {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] thead th.bg-gray-700\/90 {
+    background: #404040 !important;
+}
+
+/* Admin tab specific table headers with higher specificity */
+[data-theme="legacy"] .admin-tab-content table thead {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] .admin-tab-content thead.bg-gray-700\/50 {
+    background: #404040 !important;
+}
+
+/* Table header text */
+[data-theme="legacy"] table thead th {
+    color: #CCCCCC !important;
+}
+
+/* Table body backgrounds */
+[data-theme="legacy"] table tbody {
+    background: #333333 !important;
+}
+
+/* Admin tab specific table bodies with higher specificity */
+[data-theme="legacy"] .admin-tab-content table tbody {
+    background: #333333 !important;
+}
+
+/* Table row backgrounds */
+[data-theme="legacy"] table tbody tr {
+    background: #333333 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Table cell text */
+[data-theme="legacy"] table tbody td {
+    color: #F0F0F0 !important;
+}
+
+/* Sticky headers */
+[data-theme="legacy"] thead.sticky,
+[data-theme="legacy"] .sticky.top-0.bg-gray-800,
+[data-theme="legacy"] .admin-tab-content thead.sticky {
+    background: #404040 !important;
+}
+
+/* Selected case row highlight — stronger on dark legacy background (#333) */
+[data-theme="legacy"] #rag-collection-table-body tr.bg-orange-500\/30 {
+    background: rgba(241, 95, 34, 0.45) !important;
+}
+[data-theme="legacy"] #rag-collection-table-body tr.ring-orange-400\/50 {
+    --tw-ring-color: rgba(241, 95, 34, 0.7) !important;
+}
+
+/* =============== Legacy Theme — Selected Case Details =============== */
+
+/* Main container */
+[data-theme="legacy"] #rag-selected-case-details {
+    background: var(--card-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-details h2,
+[data-theme="legacy"] #rag-selected-case-details h3 {
+    color: var(--text-primary) !important;
+}
+
+/* Metadata section */
+[data-theme="legacy"] #rag-selected-case-metadata {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-metadata code {
+    color: var(--text-primary) !important;
+    background: var(--bg-elevated) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-metadata .text-gray-500 {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-metadata .text-gray-200,
+[data-theme="legacy"] #rag-selected-case-metadata .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+/* Feedback buttons container (bg-gray-900/50) */
+[data-theme="legacy"] #rag-selected-case-metadata [class*="bg-gray-9"] {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Feedback button hover & active state */
+[data-theme="legacy"] #rag-selected-case-metadata .case-feedback-btn:hover {
+    background: var(--active-bg) !important;
+}
+
+/* Feedback button divider */
+[data-theme="legacy"] #rag-selected-case-metadata .w-px[class*="bg-white"] {
+    background: var(--border-primary) !important;
+}
+
+/* Phase cards (Successful Strategy) — bg-gray-800/40 border border-white/10 */
+[data-theme="legacy"] #rag-selected-case-plan .rounded-md,
+[data-theme="legacy"] #rag-selected-case-plan .grid > div,
+[data-theme="legacy"] #rag-selected-case-plan div[class*="bg-gray"] {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-plan .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-plan .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-plan .text-sm {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-plan code {
+    color: var(--teradata-orange) !important;
+    background: rgba(241, 95, 34, 0.15) !important;
+}
+
+/* Execution Trace cards — bg-gray-900/40 border border-gray-700/40 */
+[data-theme="legacy"] #rag-selected-case-trace .space-y-1 > div,
+[data-theme="legacy"] #rag-selected-case-trace .rounded,
+[data-theme="legacy"] #rag-selected-case-trace div[class*="bg-gray"],
+[data-theme="legacy"] #rag-selected-case-trace .text-xs.p-2 {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-trace .font-mono {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-trace .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-trace .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] #rag-selected-case-trace .text-gray-500 {
+    color: var(--text-tertiary) !important;
+}
+
+/* Execution Trace repeat badge — orange instead of blue for legacy warm palette */
+[data-theme="legacy"] #rag-selected-case-trace [class*="bg-blue"] {
+    background: rgba(241, 95, 34, 0.25) !important;
+    color: #F15F22 !important;
+}
+
+/* Global override for all Tailwind gray backgrounds in case details panels */
+[data-theme="legacy"] #rag-selected-case-details [class*="bg-gray-8"],
+[data-theme="legacy"] #rag-selected-case-details [class*="bg-gray-9"],
+[data-theme="legacy"] #rag-selected-case-details [class*="rounded-md"] {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Trace card divs */
+[data-theme="legacy"] #rag-selected-case-trace > div > div.space-y-1 > div {
+    background: var(--bg-elevated) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Separator line */
+[data-theme="legacy"] #rag-selected-case-separator {
+    border-color: var(--border-primary) !important;
+}
+
+/* Loading text */
+[data-theme="legacy"] #rag-collection-loading {
+    color: var(--text-muted) !important;
+}
+
+/* Footer text */
+[data-theme="legacy"] #rag-collection-footer {
+    color: var(--text-muted) !important;
+}
+
+/* Specific table IDs for comprehensive coverage */
+[data-theme="legacy"] #rag-collection-table-wrapper {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+[data-theme="legacy"] #users-table-body,
+[data-theme="legacy"] #user-consumption-table-body,
+[data-theme="legacy"] #features-table-body,
+[data-theme="legacy"] #panes-table-body,
+[data-theme="legacy"] #profiles-table-body,
+[data-theme="legacy"] #costs-table-body,
+[data-theme="legacy"] #parameters-table-body,
+[data-theme="legacy"] #versions-table-body {
+    background: #333333 !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - BORDER OVERRIDES
+   ============================================================================ */
+
+[data-theme="legacy"] .border-gray-600,
+[data-theme="legacy"] .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] .border-gray-800 {
+    border-color: var(--border-secondary) !important;
+}
+
+[data-theme="legacy"] .border-slate-600,
+[data-theme="legacy"] .border-slate-700 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--border-primary) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - MODAL OVERRIDES
+   ============================================================================ */
+
+/* View Prompt Modal */
+[data-theme="legacy"] #view-prompt-modal-content .bg-gray-800\/80 {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #view-prompt-modal-content .border-gray-600 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #view-prompt-modal-text {
+    color: var(--text-primary) !important;
+}
+
+/* RAG Case Modal */
+[data-theme="legacy"] #rag-case-modal-content .bg-gray-800\/80 {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #rag-case-modal-content .border-gray-600 {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #rag-case-modal-json {
+    color: var(--text-primary) !important;
+}
+
+/* Chat Modal */
+[data-theme="legacy"] #chat-modal-log {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] #chat-modal-input {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #chat-modal-input::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Prompt Input Modal */
+[data-theme="legacy"] #prompt-input-modal-input {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #prompt-input-modal-label {
+    color: var(--text-secondary) !important;
+}
+
+/* System Prompt Editor Modal */
+[data-theme="legacy"] #prompt-editor-textarea {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Modal buttons */
+[data-theme="legacy"] #prompt-input-modal-cancel,
+[data-theme="legacy"] #prompt-editor-close,
+[data-theme="legacy"] #prompt-editor-reset,
+[data-theme="legacy"] #rag-case-modal-copy {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #prompt-input-modal-cancel:hover,
+[data-theme="legacy"] #prompt-editor-close:hover,
+[data-theme="legacy"] #prompt-editor-reset:hover,
+[data-theme="legacy"] #rag-case-modal-copy:hover {
+    background: var(--bg-elevated) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - IMPORT COLLECTION MODAL
+   ============================================================================ */
+
+[data-theme="legacy"] #import-from-path-btn {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] #import-from-path-btn:hover {
+    background-color: var(--bg-elevated) !important;
+}
+
+[data-theme="legacy"] #import-from-path-btn .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - WARNING/STATUS TEXT COLORS
+   ============================================================================ */
+
+/* Yellow warning text - keep visible on dark background */
+[data-theme="legacy"] .text-yellow-400,
+[data-theme="legacy"] .text-yellow-500 {
+    color: var(--status-warning) !important;
+}
+
+/* Orange text */
+[data-theme="legacy"] .text-orange-300,
+[data-theme="legacy"] .text-orange-400 {
+    color: #fb923c !important; /* orange-400 - visible on dark */
+}
+
+/* Green info text */
+[data-theme="legacy"] .text-green-200,
+[data-theme="legacy"] .text-green-300 {
+    color: #86efac !important; /* green-300 - visible on dark */
+}
+
+[data-theme="legacy"] .text-green-400 {
+    color: var(--status-success) !important;
+}
+
+/* Green info boxes */
+[data-theme="legacy"] .bg-green-900\/20 {
+    background-color: rgba(16, 185, 129, 0.15) !important;
+}
+
+[data-theme="legacy"] .border-green-500\/30 {
+    border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+/* Orange badges */
+[data-theme="legacy"] .bg-orange-500\/20 {
+    background-color: rgba(249, 115, 22, 0.2) !important;
+}
+
+[data-theme="legacy"] .border-orange-400\/30 {
+    border-color: rgba(251, 146, 60, 0.3) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - INTELLIGENCE/PERFORMANCE TABS
+   ============================================================================ */
+
+[data-theme="legacy"] #intel-tab-my-performance,
+[data-theme="legacy"] #intel-tab-system-performance,
+[data-theme="legacy"] #tab-my-performance,
+[data-theme="legacy"] #tab-system-performance {
+    color: var(--text-tertiary) !important;
+}
+
+[data-theme="legacy"] #intel-tab-my-performance.text-\[\#F15F22\],
+[data-theme="legacy"] #intel-tab-system-performance.text-\[\#F15F22\],
+[data-theme="legacy"] #tab-my-performance.text-\[\#F15F22\],
+[data-theme="legacy"] #tab-system-performance.text-\[\#F15F22\] {
+    color: var(--teradata-orange) !important;
+}
+
+[data-theme="legacy"] #intelligence-tabs-container .border-gray-700,
+[data-theme="legacy"] #performance-tabs-container .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - PANE VISIBILITY CONFIGURATION TABLE
+   ============================================================================ */
+
+[data-theme="legacy"] #pane-config-tab .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #pane-config-tab .text-white {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #pane-config-tab table thead {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] #pane-config-tab table thead .text-gray-400 {
+    color: #CCCCCC !important;
+}
+
+[data-theme="legacy"] #pane-config-tab table tbody {
+    background: #333333 !important;
+}
+
+[data-theme="legacy"] #pane-config-tab table tbody tr {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #pane-config-tab .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #pane-config-tab .bg-gray-600 {
+    background: #404040 !important;
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #pane-config-tab .bg-gray-600:hover {
+    background: #4a4a4a !important;
+}
+
+/* Toggle switch backgrounds - make track visible in legacy theme */
+/* The toggle track needs a lighter background to be visible against #333333 table background */
+[data-theme="legacy"] #pane-config-tab .bg-gray-700 {
+    background-color: #5a5a5a !important;
+}
+
+/* Toggle switch track - needs more contrast against dark background */
+[data-theme="legacy"] #panes-table-body .bg-gray-700 {
+    background-color: #5a5a5a !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+/* All toggle switches in admin panels - make tracks visible */
+[data-theme="legacy"] .admin-tab-content label .bg-gray-700 {
+    background-color: #5a5a5a !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Toggle switch track when inside a table row */
+[data-theme="legacy"] .admin-tab-content tr .bg-gray-700.rounded-full {
+    background-color: #5a5a5a !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Progress bars in tables - different styling (keep them darker) */
+[data-theme="legacy"] .admin-tab-content .bg-gray-700.h-1\.5 {
+    background-color: #404040 !important;
+    border: none !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - FEATURE CONFIGURATION TABLE
+   ============================================================================ */
+
+[data-theme="legacy"] #feature-config-tab .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #feature-config-tab .text-white {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #feature-config-tab table thead {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] #feature-config-tab table thead .text-gray-400 {
+    color: #CCCCCC !important;
+}
+
+[data-theme="legacy"] #feature-config-tab table tbody {
+    background: #333333 !important;
+}
+
+[data-theme="legacy"] #feature-config-tab table tbody tr {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #feature-config-tab .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - CONSUMPTION PROFILES TABLE
+   ============================================================================ */
+
+[data-theme="legacy"] #consumption-profiles-tab .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab .text-white {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab table thead {
+    background: #404040 !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab table thead .text-gray-400 {
+    color: #CCCCCC !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab table tbody {
+    background: #333333 !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab table tbody tr {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #consumption-profiles-tab .divide-gray-700 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - ADMIN PANEL COMPONENTS
+   ============================================================================ */
+
+/* Status filter buttons */
+[data-theme="legacy"] .user-status-filter-btn {
+    background-color: #262626 !important;
+    color: #999999 !important;
+}
+
+[data-theme="legacy"] .user-status-filter-btn:hover {
+    background-color: #333333 !important;
+}
+
+[data-theme="legacy"] .user-status-filter-btn.bg-gray-600 {
+    background-color: #404040 !important;
+    color: #F0F0F0 !important;
+}
+
+/* Admin view container - ensure correct background for legacy */
+[data-theme="legacy"] #admin-view {
+    background: #262626 !important;
+}
+
+[data-theme="legacy"] #admin-view .app-view {
+    background: #262626 !important;
+}
+
+/* Admin tab content panels - OPAQUE backgrounds */
+[data-theme="legacy"] .admin-tab-content .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] .admin-tab-content .text-white {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] .admin-tab-content .text-gray-400 {
+    color: #999999 !important;
+}
+
+/* User management specific overrides */
+[data-theme="legacy"] #user-management-tab .glass-panel,
+[data-theme="legacy"] #user-tier-subtab .glass-panel,
+[data-theme="legacy"] #user-consumption-subtab .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Consumption statistics cards */
+[data-theme="legacy"] #user-consumption-subtab .grid .glass-panel {
+    background: #333333 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* Input fields in admin panels */
+[data-theme="legacy"] .admin-tab-content input[type="text"],
+[data-theme="legacy"] .admin-tab-content input[type="email"],
+[data-theme="legacy"] .admin-tab-content input[type="password"],
+[data-theme="legacy"] .admin-tab-content select,
+[data-theme="legacy"] .admin-tab-content textarea {
+    background-color: #404040 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] .admin-tab-content input::placeholder,
+[data-theme="legacy"] .admin-tab-content textarea::placeholder {
+    color: #666666 !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - HEADER AND SIDEBAR
+   ============================================================================ */
+
+[data-theme="legacy"] .header-title {
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #conversation-header {
+    background: transparent !important;
+    border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Sidebar items */
+[data-theme="legacy"] .sidebar-item {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="legacy"] .sidebar-item:hover {
+    background-color: var(--hover-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="legacy"] .sidebar-item.active {
+    background-color: var(--active-bg) !important;
+    color: var(--teradata-orange) !important;
+}
+
+/* ============================================================================
+   LEGACY THEME - CARDS AND PANELS
+   ============================================================================ */
+
+[data-theme="legacy"] .card,
+[data-theme="legacy"] [class*="card"] {
+    background: var(--card-bg) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* KPI cards in Intelligence Performance */
+[data-theme="legacy"] .kpi-card {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Repository cards */
+[data-theme="legacy"] .repository-card {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="legacy"] .repository-card:hover {
+    background: var(--bg-tertiary) !important;
+}
+
+/* ============================================================================
+   MODERN THEME OVERRIDES
+   Ensures modern theme uses its slate/blue color palette consistently
+   ============================================================================ */
+
+/* ============================================================================
+   MODERN THEME - ALL TABLES
+   ============================================================================ */
+
+/* Glass panels for modern theme */
+[data-theme="modern"] .glass-panel {
+    background: rgba(30, 41, 59, 0.7) !important;
+    border-color: rgba(148, 163, 184, 0.15) !important;
+}
+
+/* Generic table styling for all admin tabs */
+[data-theme="modern"] .admin-tab-content table {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="modern"] .admin-tab-content table thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="modern"] .admin-tab-content table thead th {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="modern"] .admin-tab-content table tbody {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="modern"] .admin-tab-content table tbody tr {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="modern"] .admin-tab-content table tbody td {
+    color: var(--text-primary) !important;
+}
+
+/* Specific table body IDs */
+[data-theme="modern"] #users-table-body,
+[data-theme="modern"] #user-consumption-table-body,
+[data-theme="modern"] #features-table-body,
+[data-theme="modern"] #profiles-table-body,
+[data-theme="modern"] #panes-table-body,
+[data-theme="modern"] #parameters-table-body,
+[data-theme="modern"] #versions-table-body,
+[data-theme="modern"] #costs-table-body,
+[data-theme="modern"] #rag-collection-table-body {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="modern"] #users-table-body tr,
+[data-theme="modern"] #user-consumption-table-body tr,
+[data-theme="modern"] #features-table-body tr,
+[data-theme="modern"] #profiles-table-body tr,
+[data-theme="modern"] #panes-table-body tr,
+[data-theme="modern"] #parameters-table-body tr,
+[data-theme="modern"] #versions-table-body tr,
+[data-theme="modern"] #costs-table-body tr {
+    border-color: var(--border-primary) !important;
+}
+
+/* Table headers */
+[data-theme="modern"] thead.bg-gray-700\/50,
+[data-theme="modern"] thead.bg-gray-800 {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="modern"] thead th {
+    color: var(--text-secondary) !important;
+}
+
+/* Document Upload Config Table */
+[data-theme="modern"] #document-upload-config-container {
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="modern"] #document-upload-config-container table thead {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="modern"] #document-upload-config-container table tbody {
+    background: var(--bg-secondary) !important;
+}
+
+/* RAG Collection Table */
+[data-theme="modern"] #rag-collection-table-wrapper {
+    background: rgba(30, 41, 59, 0.7) !important;
+}
+
+[data-theme="modern"] #rag-collection-table-wrapper thead {
+    background: var(--bg-tertiary) !important;
+}
+
+/* Sticky headers */
+[data-theme="modern"] thead.sticky {
+    background: var(--bg-tertiary) !important;
+}
+
+/* KPI/Stats cards */
+[data-theme="modern"] .admin-tab-content .grid .glass-panel {
+    background: rgba(30, 41, 59, 0.7) !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - Notification Banners & Messages
+   ============================================================================ */
+
+/* Delete Confirmation Banner */
+[data-theme="light"] #delete-confirmation-banner {
+    background: rgba(239, 68, 68, 0.15) !important;
+    border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+[data-theme="light"] #delete-confirmation-banner .text-red-200 {
+    color: #991b1b !important; /* dark red for contrast */
+}
+
+[data-theme="light"] #delete-confirmation-banner svg {
+    color: #dc2626 !important;
+}
+
+[data-theme="light"] #delete-confirmation-cancel {
+    background: #64748b !important;
+    color: white !important;
+}
+
+[data-theme="light"] #delete-confirmation-cancel:hover {
+    background: #475569 !important;
+}
+
+/* Profile Override Warning Banner */
+[data-theme="light"] #profile-override-warning-banner {
+    background: rgba(234, 179, 8, 0.15) !important;
+    border-color: rgba(234, 179, 8, 0.4) !important;
+}
+
+[data-theme="light"] #profile-override-warning-banner .text-yellow-200,
+[data-theme="light"] #profile-override-warning-banner .text-yellow-300,
+[data-theme="light"] #profile-override-warning-banner .text-yellow-400 {
+    color: #92400e !important; /* dark amber for contrast */
+}
+
+/* Knowledge Banner */
+[data-theme="light"] #knowledge-banner {
+    background: rgba(59, 130, 246, 0.12) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+[data-theme="light"] #knowledge-banner.text-blue-200 {
+    color: #1e40af !important; /* dark blue */
+}
+
+/* Consumption Warning Banners */
+[data-theme="light"] #consumption-warning-80 .text-yellow-400 {
+    color: #92400e !important;
+}
+
+[data-theme="light"] #consumption-warning-80 .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #consumption-warning-95 .text-orange-400 {
+    color: #9a3412 !important;
+}
+
+[data-theme="light"] #consumption-warning-95 .text-gray-300 {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #consumption-warning-100 .text-red-400 {
+    color: #991b1b !important;
+}
+
+[data-theme="light"] #consumption-warning-100 .text-gray-300,
+[data-theme="light"] #consumption-warning-100 .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+/* General red text in light mode */
+[data-theme="light"] .text-red-200 {
+    color: #991b1b !important;
+}
+
+[data-theme="light"] .text-red-300 {
+    color: #b91c1c !important;
+}
+
+[data-theme="light"] .text-red-400 {
+    color: #dc2626 !important;
+}
+
+/* General yellow/amber text in light mode */
+[data-theme="light"] .text-yellow-200,
+[data-theme="light"] .text-yellow-300 {
+    color: #92400e !important;
+}
+
+[data-theme="light"] .text-yellow-400 {
+    color: #b45309 !important;
+}
+
+/* General blue text in light mode */
+[data-theme="light"] .text-blue-200,
+[data-theme="light"] .text-blue-300 {
+    color: #1e40af !important;
+}
+
+/* General green text in light mode */
+[data-theme="light"] .text-green-200,
+[data-theme="light"] .text-green-300 {
+    color: #166534 !important;
+}
+
+[data-theme="light"] .text-green-400 {
+    color: #15803d !important;
+}
+
+/* General purple text in light mode */
+[data-theme="light"] .text-purple-200,
+[data-theme="light"] .text-purple-300 {
+    color: #6b21a8 !important;
+}
+
+[data-theme="light"] .text-purple-400 {
+    color: #7c3aed !important;
+}
+
+/* General cyan text in light mode */
+[data-theme="light"] .text-cyan-200,
+[data-theme="light"] .text-cyan-300 {
+    color: #0e7490 !important;
+}
+
+[data-theme="light"] .text-cyan-400 {
+    color: #0891b2 !important;
+}
+
+/* Header Status Message */
+[data-theme="light"] #header-status-message {
+    color: var(--text-primary) !important;
+}
+
+/* MCP Classification Progress Banner */
+[data-theme="light"] #mcp-classification-progress {
+    background: rgba(234, 179, 8, 0.12) !important;
+    border-color: rgba(234, 179, 8, 0.3) !important;
+}
+
+[data-theme="light"] #mcp-classification-progress .text-yellow-200,
+[data-theme="light"] #mcp-classification-progress .text-yellow-300 {
+    color: #92400e !important;
+}
+
+/* System Prompts Tier Notice */
+[data-theme="light"] #system-prompts-tier-notice {
+    background: rgba(234, 179, 8, 0.12) !important;
+    border-color: rgba(234, 179, 8, 0.3) !important;
+}
+
+[data-theme="light"] #system-prompts-tier-notice .text-yellow-200,
+[data-theme="light"] #system-prompts-tier-notice .text-yellow-300 {
+    color: #92400e !important;
+}
+
+/* Notification Banner (general) */
+[data-theme="light"] .notification-banner {
+    background: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-primary) !important;
+    box-shadow: var(--shadow-lg) !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - Toggle Switches (Global)
+   ============================================================================ */
+
+/* Toggle switch track (unchecked state) - needs visible contrast */
+[data-theme="light"] .peer ~ div.bg-gray-700,
+[data-theme="light"] .peer ~ div.bg-gray-600,
+[data-theme="light"] div.bg-gray-700.rounded-full,
+[data-theme="light"] div.bg-gray-600.rounded-full {
+    background: #94a3b8 !important; /* slate-400 for visible track */
+}
+
+/* Toggle switch track when checked - keep brand orange */
+[data-theme="light"] .peer:checked ~ div.bg-gray-700,
+[data-theme="light"] .peer:checked ~ div.bg-gray-600,
+[data-theme="light"] .peer:checked ~ div.peer-checked\:bg-\[\#F15F22\] {
+    background: #F15F22 !important;
+}
+
+/* Toggle switch track when checked (blue variant for disabled/special) */
+[data-theme="light"] .peer:checked ~ div.peer-checked\:bg-blue-500 {
+    background: #3b82f6 !important;
+}
+
+/* ============================================================================
+   LIGHT THEME - Profile Card Dropdown Menus
+   ============================================================================ */
+
+/* Profile dropdown menu */
+[data-theme="light"] .profile-menu {
+    background: var(--bg-primary) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: var(--shadow-lg) !important;
+}
+
+[data-theme="light"] .profile-menu button {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .profile-menu button:hover {
+    background: rgba(241, 95, 34, 0.08) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .profile-menu button svg {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .profile-menu button[data-action="delete-profile"] {
+    color: #dc2626 !important;
+}
+
+[data-theme="light"] .profile-menu button[data-action="delete-profile"]:hover {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: #b91c1c !important;
+}
+
+[data-theme="light"] .profile-menu .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Classification dropdown menu */
+[data-theme="light"] .classification-menu {
+    background: var(--bg-primary) !important;
+    border-color: var(--border-primary) !important;
+    box-shadow: var(--shadow-lg) !important;
+}
+
+[data-theme="light"] .classification-menu button {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .classification-menu button:hover {
+    background: rgba(241, 95, 34, 0.08) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] .classification-menu button svg {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] .classification-menu button.text-amber-300 {
+    color: #b45309 !important;
+    background: rgba(245, 158, 11, 0.1) !important;
+}
+
+[data-theme="light"] .classification-menu button.text-orange-300 {
+    color: #c2410c !important;
+    background: rgba(249, 115, 22, 0.1) !important;
+}
+
+[data-theme="light"] .classification-menu .border-gray-700 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Profile action buttons (User Profile page: Edit, Change Password) */
+[data-theme="light"] .profile-action-btn {
+    color: #c2410c;
+    background: rgba(194, 65, 12, 0.12);
+    border-color: rgba(194, 65, 12, 0.35);
+}
+[data-theme="light"] .profile-action-btn:hover {
+    background: rgba(194, 65, 12, 0.2);
+    border-color: rgba(194, 65, 12, 0.5);
+}
+
+/* ============================================================================
+   LIGHT THEME - Profile Modal Styles
+   ============================================================================ */
+
+/* Profile Modal Container */
+[data-theme="light"] #profile-modal .glass-panel {
+    background: var(--bg-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+/* Modal Header */
+[data-theme="light"] #profile-modal .bg-gradient-to-r {
+    background: linear-gradient(to right, #f1f5f9, #e2e8f0) !important;
+    border-color: var(--teradata-orange) !important;
+}
+
+[data-theme="light"] #profile-modal-title {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #profile-modal .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+/* Input fields */
+[data-theme="light"] #profile-modal input[type="text"],
+[data-theme="light"] #profile-modal select,
+[data-theme="light"] #profile-modal textarea {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #profile-modal input::placeholder,
+[data-theme="light"] #profile-modal textarea::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Labels */
+[data-theme="light"] #profile-modal .text-gray-300,
+[data-theme="light"] #profile-modal label.text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #profile-modal .text-white {
+    color: var(--text-primary) !important;
+}
+
+/* Tab Container Background */
+[data-theme="light"] #profile-modal .bg-gradient-to-br {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] #profile-modal .bg-gray-900\/60 {
+    background: rgba(241, 245, 249, 0.95) !important;
+}
+
+/* Tab Buttons - Inactive State */
+[data-theme="light"] #profile-tab-mcp-resources,
+[data-theme="light"] #profile-tab-intelligence,
+[data-theme="light"] #profile-tab-system-prompts {
+    color: var(--text-secondary) !important;
+    background: transparent !important;
+}
+
+/* Tab Buttons - Active State */
+[data-theme="light"] #profile-tab-mcp-resources.border-\[\#F15F22\],
+[data-theme="light"] #profile-tab-intelligence.border-\[\#F15F22\],
+[data-theme="light"] #profile-tab-system-prompts.border-\[\#F15F22\] {
+    color: var(--teradata-orange) !important;
+    background: rgba(241, 95, 34, 0.08) !important;
+}
+
+/* Tab Buttons - Hover State */
+[data-theme="light"] #profile-tab-mcp-resources:hover,
+[data-theme="light"] #profile-tab-intelligence:hover,
+[data-theme="light"] #profile-tab-system-prompts:hover {
+    color: var(--text-primary) !important;
+    background: var(--hover-bg) !important;
+}
+
+/* Tab Content Panels */
+[data-theme="light"] #profile-modal .border-gray-700\/50,
+[data-theme="light"] #profile-modal .border-gray-700\/30 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Section Headers - Available Tools, Available Prompts */
+[data-theme="light"] #profile-modal .text-blue-400,
+[data-theme="light"] #profile-modal .text-green-400,
+[data-theme="light"] #profile-modal .text-purple-400 {
+    filter: brightness(0.7) saturate(1.2);
+}
+
+/* Tool/Prompt Lists */
+[data-theme="light"] #profile-modal .bg-gray-800\/40,
+[data-theme="light"] #profile-modal .bg-gray-800\/30 {
+    background: var(--bg-secondary) !important;
+}
+
+[data-theme="light"] #profile-modal .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+/* Planner/Knowledge Repositories Section */
+[data-theme="light"] #profile-modal .from-orange-900\/20,
+[data-theme="light"] #profile-modal .from-purple-900\/20,
+[data-theme="light"] #profile-modal .bg-gradient-to-br.from-gray-800\/50 {
+    background: rgba(241, 95, 34, 0.05) !important;
+}
+
+[data-theme="light"] #profile-modal .text-orange-400 {
+    color: #c2410c !important;
+}
+
+/* Repository description text */
+[data-theme="light"] #profile-modal .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Table Headers */
+[data-theme="light"] #profile-modal thead,
+[data-theme="light"] #profile-modal .bg-gray-700\/30 {
+    background: var(--bg-tertiary) !important;
+}
+
+[data-theme="light"] #profile-modal th {
+    color: var(--text-secondary) !important;
+}
+
+/* Table Rows */
+[data-theme="light"] #profile-modal tbody tr {
+    background: var(--bg-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-modal tbody tr:hover {
+    background: var(--hover-bg) !important;
+}
+
+[data-theme="light"] #profile-modal td {
+    color: var(--text-primary) !important;
+}
+
+/* Toggle Switches Background */
+[data-theme="light"] #profile-modal .bg-gray-600 {
+    background: #cbd5e1 !important;
+}
+
+/* Generate Tag Button */
+[data-theme="light"] #profile-modal-generate-tag {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #profile-modal-generate-tag:hover {
+    background: var(--hover-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Session Primer Section */
+[data-theme="light"] #profile-modal .from-cyan-900\/10 {
+    background: rgba(6, 182, 212, 0.08) !important;
+}
+
+/* Scrollbar in modal */
+[data-theme="light"] #profile-modal ::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+[data-theme="light"] #profile-modal ::-webkit-scrollbar-thumb {
+    background: var(--border-primary);
+}
+
+/* Footer buttons */
+[data-theme="light"] #profile-modal .bg-gray-700 {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Intelligence Collections Tab - Repository Sections */
+[data-theme="light"] #profile-content-intelligence .bg-gray-800\/40 {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-800\/60 {
+    background: rgba(241, 95, 34, 0.08) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-900\/50 {
+    background: var(--bg-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-800\/50 {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence h4.text-white {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .text-gray-300 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .text-gray-400 {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .border-gray-700\/40,
+[data-theme="light"] #profile-content-intelligence .border-gray-700\/50 {
+    border-color: var(--border-primary) !important;
+}
+
+/* Info message at bottom of Advanced Settings */
+[data-theme="light"] #profile-content-intelligence .bg-gray-900\/30 {
+    background: rgba(241, 95, 34, 0.08) !important;
+    border-color: rgba(241, 95, 34, 0.2) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-900\/30 .text-gray-400 {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-900\/30 .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Form inputs in Advanced Settings */
+[data-theme="light"] #profile-content-intelligence input[type="number"] {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+    color: var(--text-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence input::placeholder {
+    color: var(--text-muted) !important;
+}
+
+/* Locked badges */
+[data-theme="light"] #profile-content-intelligence .bg-gray-600 {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-secondary) !important;
+}
+
+/* Help text under inputs */
+[data-theme="light"] #profile-content-intelligence .text-gray-500 {
+    color: var(--text-muted) !important;
+}
+
+/* Collection row items */
+[data-theme="light"] #profile-content-intelligence .bg-gray-800\/30 {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-primary) !important;
+}
+
+[data-theme="light"] #profile-content-intelligence .hover\:bg-gray-800\/50:hover {
+    background: var(--hover-bg) !important;
+}
+
+/* Toggle switch tracks - make visible in light mode */
+[data-theme="light"] #profile-content-intelligence .bg-gray-700 {
+    background: #94a3b8 !important; /* slate-400 - visible gray */
+}
+
+[data-theme="light"] #profile-content-intelligence .bg-gray-600 {
+    background: #94a3b8 !important;
+}
+
+/* Toggle switch when checked - keep orange */
+[data-theme="light"] #profile-content-intelligence .peer:checked ~ div.peer-checked\:bg-\[\#F15F22\] {
+    background: #F15F22 !important;
+}
+
+/* Collection name text */
+[data-theme="light"] #profile-content-intelligence .text-gray-200 {
+    color: var(--text-primary) !important;
+}
+
+/* ============================================================================
+   Theme-Aware Application Banner System
+   ============================================================================ */
+
+/* Dark theme (default) - Vibrant colors on dark background */
+.app-banner-success {
+    background-color: rgba(34, 197, 94, 0.9); /* green-600 */
+    color: white;
+}
+
+.app-banner-error {
+    background-color: rgba(220, 38, 38, 0.9); /* red-600 */
+    color: white;
+}
+
+.app-banner-warning {
+    background-color: rgba(234, 179, 8, 0.9); /* yellow-600 */
+    color: white;
+}
+
+.app-banner-info {
+    background-color: rgba(37, 99, 235, 0.9); /* blue-600 */
+    color: white;
+}
+
+/* Light theme - Light backgrounds with dark text for better readability */
+[data-theme="light"] .app-banner-success {
+    background-color: rgba(220, 252, 231, 0.95); /* green-100 */
+    color: rgba(21, 128, 61, 1); /* green-700 - dark text */
+    border: 1px solid rgba(187, 247, 208, 1); /* green-200 */
+}
+
+[data-theme="light"] .app-banner-error {
+    background-color: rgba(254, 226, 226, 0.95); /* red-100 */
+    color: rgba(185, 28, 28, 1); /* red-700 - dark text */
+    border: 1px solid rgba(254, 202, 202, 1); /* red-200 */
+}
+
+[data-theme="light"] .app-banner-warning {
+    background-color: rgba(254, 243, 199, 0.95); /* amber-100 */
+    color: rgba(146, 64, 14, 1); /* amber-800 - dark text */
+    border: 1px solid rgba(253, 230, 138, 1); /* amber-200 */
+}
+
+[data-theme="light"] .app-banner-info {
+    background-color: rgba(219, 234, 254, 0.95); /* blue-100 */
+    color: rgba(29, 78, 216, 1); /* blue-700 - dark text */
+    border: 1px solid rgba(191, 219, 254, 1); /* blue-200 */
+}
+
+/* Legacy theme - Classic colors */
+[data-theme="legacy"] .app-banner-success {
+    background-color: rgba(34, 197, 94, 0.9); /* green-600 */
+    color: white;
+}
+
+[data-theme="legacy"] .app-banner-error {
+    background-color: rgba(220, 38, 38, 0.9); /* red-600 */
+    color: white;
+}
+
+[data-theme="legacy"] .app-banner-warning {
+    background-color: rgba(234, 179, 8, 0.9); /* yellow-600 */
+    color: white;
+}
+
+[data-theme="legacy"] .app-banner-info {
+    background-color: rgba(37, 99, 235, 0.9); /* blue-600 */
+    color: white;
+}
+
+/* ===================================================================
+   RAG Source Document Probability Score Badges
+   =================================================================== */
+
+/* Default (Dark theme) - High score badge (>= 0.8) */
+.rag-score-high {
+    background-color: rgba(21, 128, 61, 0.9); /* green-700 */
+    color: white;
+}
+
+/* Default (Dark theme) - Low score badge (< 0.8) */
+.rag-score-low {
+    background-color: rgba(161, 98, 7, 0.9); /* yellow-700 */
+    color: white;
+}
+
+/* Light theme - Darker backgrounds for better contrast */
+[data-theme="light"] .rag-score-high {
+    background-color: rgba(21, 128, 61, 0.95); /* green-700 with higher opacity */
+    color: white;
+}
+
+[data-theme="light"] .rag-score-low {
+    background-color: rgba(180, 83, 9, 0.95); /* amber-700 for better visibility */
+    color: white;
+}
+
+/* Legacy theme - Classic colors */
+[data-theme="legacy"] .rag-score-high {
+    background-color: rgba(21, 128, 61, 0.9); /* green-700 */
+    color: white;
+}
+
+[data-theme="legacy"] .rag-score-low {
+    background-color: rgba(161, 98, 7, 0.9); /* yellow-700 */
+    color: white;
+}
+
+/* ===================================================================
+   Knowledge Repository Banner (Status Panel)
+   =================================================================== */
+
+/* Default (Dark theme) */
+.knowledge-banner {
+    background-color: rgba(59, 130, 246, 0.2); /* blue-500/20 */
+    border: 1px solid rgba(96, 165, 250, 0.4); /* blue-400/40 */
+}
+
+.knowledge-banner-icon {
+    color: rgba(147, 197, 253, 1); /* blue-300 */
+}
+
+.knowledge-banner-label {
+    color: rgba(191, 219, 254, 1); /* blue-200 */
+}
+
+.knowledge-banner-text {
+    color: rgba(219, 234, 254, 1); /* blue-100 */
+}
+
+/* Light theme - Darker colors for better contrast */
+[data-theme="light"] .knowledge-banner {
+    background-color: rgba(59, 130, 246, 0.15); /* blue-500 with lower opacity */
+    border: 1px solid rgba(37, 99, 235, 0.4); /* blue-600 */
+}
+
+[data-theme="light"] .knowledge-banner-icon {
+    color: rgba(37, 99, 235, 1); /* blue-600 */
+}
+
+[data-theme="light"] .knowledge-banner-label {
+    color: rgba(29, 78, 216, 1); /* blue-700 */
+}
+
+[data-theme="light"] .knowledge-banner-text {
+    color: rgba(30, 64, 175, 1); /* blue-800 - much darker for readability */
+}
+
+/* Legacy theme */
+[data-theme="legacy"] .knowledge-banner {
+    background-color: rgba(59, 130, 246, 0.2); /* blue-500/20 */
+    border: 1px solid rgba(96, 165, 250, 0.4); /* blue-400/40 */
+}
+
+[data-theme="legacy"] .knowledge-banner-icon {
+    color: rgba(147, 197, 253, 1); /* blue-300 */
+}
+
+[data-theme="legacy"] .knowledge-banner-label {
+    color: rgba(191, 219, 254, 1); /* blue-200 */
+}
+
+[data-theme="legacy"] .knowledge-banner-text {
+    color: rgba(219, 234, 254, 1); /* blue-100 */
+}
+
+/* ============================================================================
+   DEPRECATED MODEL BADGE - Theme-aware styling
+   ============================================================================ */
+
+/* Default (Modern Theme) */
+.deprecated-badge {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.12) 100%);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    color: #fbbf24;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 2px 4px rgba(251, 191, 36, 0.1);
+    transition: all var(--duration-fast) var(--ease-in-out-smooth);
+}
+
+.deprecated-badge:hover {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.18) 100%);
+    border-color: rgba(251, 191, 36, 0.4);
+    box-shadow: 0 4px 8px rgba(251, 191, 36, 0.15);
+}
+
+/* Legacy Theme */
+[data-theme="legacy"] .deprecated-badge {
+    background: rgba(234, 179, 8, 0.15);
+    border-color: rgba(234, 179, 8, 0.35);
+    color: #eab308;
+}
+
+[data-theme="legacy"] .deprecated-badge:hover {
+    background: rgba(234, 179, 8, 0.22);
+    border-color: rgba(234, 179, 8, 0.45);
+}
+
+/* Light Theme */
+[data-theme="light"] .deprecated-badge {
+    background: linear-gradient(135deg, rgba(217, 119, 6, 0.12) 0%, rgba(180, 83, 9, 0.08) 100%);
+    border: 1px solid rgba(217, 119, 6, 0.3);
+    color: #d97706;
+    backdrop-filter: blur(4px);
+}
+
+[data-theme="light"] .deprecated-badge:hover {
+    background: linear-gradient(135deg, rgba(217, 119, 6, 0.18) 0%, rgba(180, 83, 9, 0.14) 100%);
+    border-color: rgba(217, 119, 6, 0.4);
+}
+
+/* Deprecated row styling - theme-aware */
+[data-theme="modern"] tr.bg-yellow-500\/5 {
+    background-color: rgba(234, 179, 8, 0.05);
+}
+
+[data-theme="modern"] tr.bg-yellow-500\/5:hover {
+    background-color: rgba(234, 179, 8, 0.1);
+}
+
+[data-theme="legacy"] tr.bg-yellow-500\/5 {
+    background-color: rgba(234, 179, 8, 0.06);
+}
+
+[data-theme="legacy"] tr.bg-yellow-500\/5:hover {
+    background-color: rgba(234, 179, 8, 0.12);
+}
+
+[data-theme="light"] tr.bg-yellow-500\/5 {
+    background-color: rgba(217, 119, 6, 0.08);
+}
+
+[data-theme="light"] tr.bg-yellow-500\/5:hover {
+    background-color: rgba(217, 119, 6, 0.14);
+}
+
+/* Border accent for deprecated rows */
+[data-theme="modern"] .border-l-yellow-500 {
+    border-left-color: rgba(251, 191, 36, 0.4) !important;
+}
+
+[data-theme="legacy"] .border-l-yellow-500 {
+    border-left-color: rgba(234, 179, 8, 0.45) !important;
+}
+
+[data-theme="light"] .border-l-yellow-500 {
+    border-left-color: rgba(217, 119, 6, 0.5) !important;
+}
+
+
+/* ============================================================================
+   SHOW DEPRECATED CHECKBOX - Theme-aware styling
+   ============================================================================ */
+
+/* Modern Theme (default) */
+#show-deprecated-checkbox {
+    accent-color: #eab308; /* Yellow */
+    cursor: pointer;
+}
+
+#show-deprecated-checkbox:checked {
+    background-color: #eab308;
+    border-color: #eab308;
+}
+
+#show-deprecated-checkbox:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.3);
+}
+
+/* Legacy Theme */
+[data-theme="legacy"] #show-deprecated-checkbox {
+    accent-color: #d97706; /* Darker amber */
+}
+
+[data-theme="legacy"] #show-deprecated-checkbox:checked {
+    background-color: #d97706;
+    border-color: #d97706;
+}
+
+[data-theme="legacy"] #show-deprecated-checkbox:focus {
+    box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.3);
+}
+
+/* Light Theme */
+[data-theme="light"] #show-deprecated-checkbox {
+    accent-color: #ca8a04; /* Darker yellow for light theme */
+    border-color: rgba(148, 163, 184, 0.4);
+}
+
+[data-theme="light"] #show-deprecated-checkbox:checked {
+    background-color: #ca8a04;
+    border-color: #ca8a04;
+}
+
+[data-theme="light"] #show-deprecated-checkbox:focus {
+    box-shadow: 0 0 0 3px rgba(202, 138, 4, 0.2);
+}
+
+/* Hover states */
+#show-deprecated-checkbox:hover {
+    border-color: #eab308;
+}
+
+[data-theme="legacy"] #show-deprecated-checkbox:hover {
+    border-color: #d97706;
+}
+
+/* ==========================================
+   Legacy Theme: Profile Modal Overrides
+   Eliminates blue color leakage from modern theme
+   ========================================== */
+
+/* Modal glass panel - warm neutral */
+[data-theme="legacy"] #profile-modal .glass-panel {
+    background: rgba(38, 38, 38, 0.98) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Section headers - blue → Teradata orange (very subtle) */
+[data-theme="legacy"] #profile-modal .text-blue-400,
+[data-theme="legacy"] #profile-modal .from-blue-900\/10,
+[data-theme="legacy"] #profile-modal .to-blue-900\/10,
+[data-theme="legacy"] #profile-modal .border-blue-700\/20 {
+    color: rgba(241, 95, 34, 0.9) !important; /* Slightly muted orange */
+    background: linear-gradient(to bottom right, rgba(241, 95, 34, 0.03), rgba(217, 80, 26, 0.02)) !important; /* Much more subtle */
+    border-color: rgba(241, 95, 34, 0.15) !important;
+}
+
+/* Green section headers (very subtle for Ideate profiles) */
+[data-theme="legacy"] #profile-modal .text-green-400,
+[data-theme="legacy"] #profile-modal .from-green-900\/10,
+[data-theme="legacy"] #profile-modal .to-green-900\/10,
+[data-theme="legacy"] #profile-modal .border-green-700\/20 {
+    color: rgba(74, 222, 128, 0.8) !important; /* Muted green */
+    background: linear-gradient(to bottom right, rgba(74, 222, 128, 0.03), rgba(34, 197, 94, 0.02)) !important; /* Much more subtle */
+    border-color: rgba(74, 222, 128, 0.12) !important;
+}
+
+/* Purple section headers (very subtle for Coordinate profiles) */
+[data-theme="legacy"] #profile-modal .text-purple-400,
+[data-theme="legacy"] #profile-modal .from-purple-900\/10,
+[data-theme="legacy"] #profile-modal .to-purple-900\/10,
+[data-theme="legacy"] #profile-modal .border-purple-700\/20 {
+    color: rgba(168, 85, 247, 0.85) !important; /* Muted purple */
+    background: linear-gradient(to bottom right, rgba(168, 85, 247, 0.03), rgba(147, 51, 234, 0.02)) !important; /* Much more subtle */
+    border-color: rgba(168, 85, 247, 0.12) !important;
+}
+
+/* Orange section headers (very subtle for Optimize profiles) */
+[data-theme="legacy"] #profile-modal .text-orange-400,
+[data-theme="legacy"] #profile-modal .from-orange-900\/10,
+[data-theme="legacy"] #profile-modal .to-orange-900\/10,
+[data-theme="legacy"] #profile-modal .border-orange-700\/20 {
+    color: rgba(241, 95, 34, 0.9) !important; /* Slightly muted orange */
+    background: linear-gradient(to bottom right, rgba(241, 95, 34, 0.03), rgba(217, 80, 26, 0.02)) !important; /* Much more subtle */
+    border-color: rgba(241, 95, 34, 0.15) !important;
+}
+
+/* Form inputs - warm neutral */
+[data-theme="legacy"] #profile-modal input[type="text"],
+[data-theme="legacy"] #profile-modal select,
+[data-theme="legacy"] #profile-modal textarea {
+    background-color: rgba(64, 64, 64, 0.8) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    color: #F0F0F0 !important;
+}
+
+[data-theme="legacy"] #profile-modal input::placeholder,
+[data-theme="legacy"] #profile-modal textarea::placeholder {
+    color: rgba(153, 153, 153, 0.7) !important;
+}
+
+/* Text colors - warm neutral */
+[data-theme="legacy"] #profile-modal .text-gray-400 {
+    color: #999999 !important;
+}
+
+[data-theme="legacy"] #profile-modal .text-gray-300 {
+    color: #CCCCCC !important;
+}
+
+[data-theme="legacy"] #profile-modal .text-white {
+    color: #ffffff !important;
+}
+
+[data-theme="legacy"] #profile-modal .text-gray-200 {
+    color: #F0F0F0 !important;
+}
+
+/* Background panels - warm neutral */
+[data-theme="legacy"] #profile-modal .bg-gray-800\/40,
+[data-theme="legacy"] #profile-modal .bg-gray-800\/30 {
+    background-color: rgba(51, 51, 51, 0.4) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-900\/60 {
+    background-color: rgba(38, 38, 38, 0.6) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-700 {
+    background-color: rgba(64, 64, 64, 0.5) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-600 {
+    background-color: rgba(74, 74, 74, 0.5) !important;
+}
+
+/* Table styling - warm neutral */
+[data-theme="legacy"] #profile-modal thead {
+    background-color: rgba(51, 51, 51, 0.5) !important;
+}
+
+[data-theme="legacy"] #profile-modal th {
+    color: #999999 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #profile-modal tbody tr {
+    border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme="legacy"] #profile-modal tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme="legacy"] #profile-modal td {
+    color: #F0F0F0 !important;
+}
+
+/* Scrollbar styling - warm neutral */
+[data-theme="legacy"] #profile-modal ::-webkit-scrollbar-track {
+    background: rgba(51, 51, 51, 0.3) !important;
+}
+
+[data-theme="legacy"] #profile-modal ::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 100, 100, 0.6) !important;
+    border-color: rgba(38, 38, 38, 0.3) !important;
+}
+
+[data-theme="legacy"] #profile-modal ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(120, 120, 120, 0.8) !important;
+}
+
+/* Modal header gradient - warm neutral */
+[data-theme="legacy"] #profile-modal .bg-gradient-to-r {
+    background: linear-gradient(to right, #333333, #262626) !important;
+}
+
+/* Session Primer section - cyan/blue to warm orange tint */
+[data-theme="legacy"] #profile-modal .from-cyan-900\/10 {
+    background: linear-gradient(to bottom right, rgba(241, 95, 34, 0.03), rgba(217, 80, 26, 0.02)) !important;
+    border-color: rgba(241, 95, 34, 0.15) !important;
+}
+
+/* Additional background panels - warm neutral */
+[data-theme="legacy"] #profile-modal .bg-gray-800\/60 {
+    background-color: rgba(51, 51, 51, 0.6) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-800\/50 {
+    background-color: rgba(51, 51, 51, 0.5) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-900\/50 {
+    background-color: rgba(38, 38, 38, 0.5) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-900\/30 {
+    background-color: rgba(38, 38, 38, 0.3) !important;
+}
+
+[data-theme="legacy"] #profile-modal .bg-gray-700\/40 {
+    background-color: rgba(64, 64, 64, 0.4) !important;
+}
+
+/* Border overrides - warm neutral */
+[data-theme="legacy"] #profile-modal .border-gray-700\/50 {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="legacy"] #profile-modal .border-gray-700\/40 {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="legacy"] #profile-modal .border-gray-700\/30 {
+    border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+[data-theme="legacy"] #profile-modal .border-gray-600\/50 {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Cyan text → Teradata orange */
+[data-theme="legacy"] #profile-modal .text-cyan-400 {
+    color: rgba(241, 95, 34, 0.9) !important;
+}
+
+/* Cyan focus rings → orange */
+[data-theme="legacy"] #profile-modal .focus\:ring-cyan-500\/50:focus {
+    --tw-ring-color: rgba(241, 95, 34, 0.5) !important;
+}
+
+[data-theme="legacy"] #profile-modal .focus\:border-cyan-500\/50:focus {
+    border-color: rgba(241, 95, 34, 0.5) !important;
+}
+
+/* Provider Configuration gradient - warm neutral */
+[data-theme="legacy"] #profile-modal .from-gray-800\/30 {
+    background: linear-gradient(to bottom right, rgba(51, 51, 51, 0.3), rgba(38, 38, 38, 0.3)) !important;
+}
+
+/* ==========================================
+   Legacy Theme: Blue Badge/Button Overrides
+   Converts blue elements to Teradata orange
+   ========================================== */
+
+/* Blue text classes → Teradata orange */
+[data-theme="legacy"] .text-blue-300,
+[data-theme="legacy"] .text-blue-400 {
+    color: #F15F22 !important;
+}
+
+/* Blue background classes → solid orange */
+[data-theme="legacy"] .bg-blue-500,
+[data-theme="legacy"] .bg-blue-600,
+[data-theme="legacy"] .bg-blue-700,
+[data-theme="legacy"] [class*="bg-blue-5"],
+[data-theme="legacy"] [class*="bg-blue-6"],
+[data-theme="legacy"] [class*="bg-blue-7"] {
+    background-color: #F15F22 !important;
+    color: white !important;
+}
+
+/* Blue background with transparency (badges) */
+[data-theme="legacy"] .bg-blue-500\/20,
+[data-theme="legacy"] .bg-blue-500\/30,
+[data-theme="legacy"] [class*="bg-blue-5"][class*="\/2"],
+[data-theme="legacy"] [class*="bg-blue-5"][class*="\/3"] {
+    background-color: rgba(241, 95, 34, 0.3) !important;
+    color: #F15F22 !important;
+}
+
+/* Blue borders */
+[data-theme="legacy"] .border-blue-400\/30,
+[data-theme="legacy"] [class*="border-blue-4"][class*="\/3"] {
+    border-color: rgba(241, 95, 34, 0.3) !important;
+}
+
+/* Blue button hover states */
+[data-theme="legacy"] .bg-blue-600:hover,
+[data-theme="legacy"] .hover\:bg-blue-700:hover,
+[data-theme="legacy"] [class*="hover:bg-blue-7"]:hover {
+    background-color: #D9501A !important;
+}
+
+/* ==========================================
+   Legacy Theme: Toggle Switch Overrides
+   Ensures toggles use Teradata orange
+   ========================================== */
+
+/* Toggle checked state → Teradata orange */
+[data-theme="legacy"] .peer:checked ~ div.bg-gray-700,
+[data-theme="legacy"] .peer:checked ~ div.bg-gray-600,
+[data-theme="legacy"] .peer:checked ~ div.peer-checked\:bg-\[\#F15F22\] {
+    background: #F15F22 !important;
+}
+
+/* Blue variant toggles → orange */
+[data-theme="legacy"] .peer:checked ~ div.peer-checked\:bg-blue-500,
+[data-theme="legacy"] .peer:checked ~ div.peer-checked\:bg-blue-600 {
+    background: #F15F22 !important;
+}
+
+/* Toggle circle - ensure contrast */
+[data-theme="legacy"] .peer:checked ~ div::after {
+    background: #ffffff !important;
+}
+
+/* ==========================================
+   Legacy Theme: Checkbox/Radio Overrides
+   Complements unified checkbox system
+   ========================================== */
+
+/* Radio buttons → Teradata orange */
+[data-theme="legacy"] input[type="radio"]:checked {
+    color: #F15F22 !important;
+    background-color: #F15F22 !important;
+}
+
+/* Focus states - orange ring */
+[data-theme="legacy"] input[type="checkbox"]:focus,
+[data-theme="legacy"] input[type="radio"]:focus {
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(241, 95, 34, 0.3) !important;
+}
+
+[data-theme="light"] #show-deprecated-checkbox:hover {
+    border-color: #ca8a04;
+}
+
+/* ============================================================================
+   FILE ATTACHMENT CHIP - Theme Overrides
+   ============================================================================ */
+
+/* Light theme - light chip backgrounds with dark text */
+[data-theme="light"] .attachment-chip {
+    background: rgba(241, 245, 249, 0.95) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-primary) !important;
+}
+[data-theme="light"] .attachment-chip .chip-filesize {
+    color: var(--text-muted) !important;
+}
+[data-theme="light"] .attachment-chip .chip-remove-btn {
+    color: var(--text-muted) !important;
+}
+[data-theme="light"] .attachment-chip .chip-remove-btn:hover {
+    color: #dc2626 !important;
+    background: rgba(239, 68, 68, 0.08) !important;
+}
+[data-theme="light"] .attachment-chip .chip-icon {
+    color: var(--text-tertiary) !important;
+}
+[data-theme="light"] .attachment-chip .bg-green-400\/10 {
+    background: rgba(22, 163, 74, 0.1) !important;
+    color: #16a34a !important;
+}
+[data-theme="light"] .attachment-chip .bg-blue-400\/10 {
+    background: rgba(37, 99, 235, 0.1) !important;
+    color: #2563eb !important;
+}
+/* Light theme - shimmer uses lighter gradient */
+[data-theme="light"] .attachment-chip-uploading {
+    background: linear-gradient(90deg,
+        rgba(241, 245, 249, 0.95) 25%,
+        rgba(226, 232, 240, 0.98) 50%,
+        rgba(241, 245, 249, 0.95) 75%) !important;
+    background-size: 200% 100%;
+}
+/* Light theme - drop zone overlay */
+[data-theme="light"] .drop-zone-overlay {
+    background: rgba(241, 95, 34, 0.05);
+    border-color: rgba(241, 95, 34, 0.4);
+}
+[data-theme="light"] .drop-zone-overlay .text-gray-400 {
+    color: var(--text-muted) !important;
+}
+/* Light theme - upload error toast */
+[data-theme="light"] .upload-error-toast {
+    background: rgba(220, 38, 38, 0.92);
+}
+
+/* Legacy theme - opaque dark chip backgrounds (no blur) */
+[data-theme="legacy"] .attachment-chip {
+    background: #404040 !important;
+    color: #F0F0F0 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme="legacy"] .attachment-chip .chip-filesize {
+    color: #999999 !important;
+}
+[data-theme="legacy"] .attachment-chip .chip-remove-btn {
+    color: #999999 !important;
+}
+/* Legacy theme - shimmer uses opaque gradient */
+[data-theme="legacy"] .attachment-chip-uploading {
+    background: linear-gradient(90deg,
+        #404040 25%,
+        #4a4a4a 50%,
+        #404040 75%) !important;
+    background-size: 200% 100%;
+}
+
+/* ── Industrial Card Buttons: Light Theme ── */
+/* Darken every variant so text meets WCAG AA contrast against white */
+[data-theme="light"] .card-btn--danger   { --btn-color: 185, 28, 28; }
+[data-theme="light"] .card-btn--warning  { --btn-color: 146, 64, 14; }
+[data-theme="light"] .card-btn--success  { --btn-color: 4, 120, 87; }
+[data-theme="light"] .card-btn--info     { --btn-color: 29, 78, 216; }
+[data-theme="light"] .card-btn--primary  { --btn-color: 194, 65, 12; }
+[data-theme="light"] .card-btn--cyan     { --btn-color: 14, 116, 144; }
+[data-theme="light"] .card-btn--amber    { --btn-color: 146, 64, 14; }
+[data-theme="light"] .card-btn--secondary{ --btn-color: 154, 52, 18; }
+[data-theme="light"] .card-btn--neutral  { --btn-color: 71, 85, 105; }
+
+[data-theme="light"] .card-btn {
+    background: rgba(var(--btn-color), 0.18);
+    border-color: rgba(var(--btn-color), 0.55);
+    color: rgb(var(--btn-color));
+    font-weight: 600;
+}
+[data-theme="light"] .card-btn:hover:not(:disabled) {
+    background: rgba(var(--btn-color), 0.28);
+    border-color: rgba(var(--btn-color), 0.75);
+}
+
+/* ── Industrial Toggle Switch: Light Theme ── */
+[data-theme="light"] .ind-toggle .ind-track {
+    --toggle-color: 100, 116, 139;
+    background: rgba(var(--toggle-color), 0.12);
+    border-color: rgba(var(--toggle-color), 0.35);
+}
+[data-theme="light"] .ind-toggle input:checked + .ind-track {
+    background: rgba(var(--toggle-active), 0.15);
+    border-color: rgba(var(--toggle-active), 0.45);
+}
+/* Darker active colors for WCAG contrast */
+[data-theme="light"] .ind-toggle .ind-track                    { --toggle-active: 4, 120, 87; }
+[data-theme="light"] .ind-toggle--primary .ind-track            { --toggle-active: 194, 65, 12; }
+[data-theme="light"] .ind-toggle--info    .ind-track            { --toggle-active: 29, 78, 216; }
+[data-theme="light"] .ind-toggle--warning .ind-track            { --toggle-active: 146, 64, 14; }
+[data-theme="light"] .ind-toggle--danger  .ind-track            { --toggle-active: 185, 28, 28; }
+[data-theme="light"] .ind-toggle--cyan    .ind-track            { --toggle-active: 14, 116, 144; }
+
+/* ── Industrial Tab: Light Theme ── */
+[data-theme="light"] .ind-tab {
+    color: var(--text-muted, #64748b);
+}
+[data-theme="light"] .ind-tab:hover {
+    color: var(--text-primary, #1e293b);
+}
+[data-theme="light"] .ind-tab--underline:hover {
+    border-bottom-color: rgba(0, 0, 0, 0.15);
+}
+[data-theme="light"] .ind-tab--underline.active {
+    color: var(--text-primary, #1e293b);
+}
+[data-theme="light"] .ind-tab--pill:hover,
+[data-theme="light"] .ind-tab--sidebar:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .ind-tab--pill.active,
+[data-theme="light"] .ind-tab--sidebar.active {
+    background: rgba(var(--tab-color), 0.1);
+    border-color: rgba(var(--tab-color), 0.35);
+}
+[data-theme="light"] .ind-tab--primary  { --tab-color: 194, 65, 12; }
+[data-theme="light"] .ind-tab--success  { --tab-color: 4, 120, 87; }
+[data-theme="light"] .ind-tab--info     { --tab-color: 29, 78, 216; }
+[data-theme="light"] .ind-tab--purple   { --tab-color: 107, 33, 168; }
+[data-theme="light"] .ind-tab--cyan     { --tab-color: 14, 116, 144; }
+[data-theme="light"] .ind-tab--warning  { --tab-color: 146, 64, 14; }
+[data-theme="light"] .ind-tab--neutral  { --tab-color: 71, 85, 105; }
+
+/* ── Light theme: Template Edit Modal ── */
+[data-theme="light"] .tpl-modal-content {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+}
+[data-theme="light"] .tpl-form-input {
+    border-color: var(--border-primary);
+}
+[data-theme="light"] .tpl-form-input:focus {
+    border-color: var(--teradata-orange-light-mode, #c2410c);
+    box-shadow: 0 0 0 2px rgba(194, 65, 12, 0.15);
+}
+[data-theme="light"] .tpl-info-code {
+    color: var(--teradata-orange-light-mode, #c2410c);
+}
+

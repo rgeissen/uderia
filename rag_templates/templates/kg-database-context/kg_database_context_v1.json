@@ -1,0 +1,125 @@
+{
+  "template_id": "kg_database_context_v1",
+  "template_name": "Knowledge Graph Constructor - Database Context",
+  "template_version": "1.0.0",
+  "template_type": "knowledge_graph",
+  "description": "Two-phase extraction: deterministic structural parsing plus optional LLM semantic enrichment from MCP database schema context.",
+  "status": "active",
+  "created_at": "2026-02-27T00:00:00Z",
+  "updated_at": "2026-02-27T00:00:00Z",
+  "icon": {
+    "type": "knowledge_graph",
+    "color": "purple"
+  },
+  "input_variables": {
+    "profile_id": {
+      "type": "string",
+      "required": true,
+      "description": "Target profile to populate the knowledge graph for",
+      "placeholder": "profile-1764006444002-z0hdduce9"
+    },
+    "database_name": {
+      "type": "string",
+      "required": true,
+      "description": "Database name for scoping the top-level entity",
+      "placeholder": "fitness_db"
+    },
+    "database_context": {
+      "type": "string",
+      "required": true,
+      "description": "MCP schema output (from context prompt execution)",
+      "validation": {
+        "min_length": 50,
+        "max_length": 500000
+      }
+    },
+    "mcp_context_prompt": {
+      "type": "string",
+      "required": false,
+      "description": "MCP prompt to execute for gathering database context",
+      "placeholder": "base_databaseBusinessDesc",
+      "default": "base_databaseBusinessDesc"
+    },
+    "target_database": {
+      "type": "string",
+      "required": false,
+      "description": "Target database system for syntax awareness",
+      "placeholder": "Teradata",
+      "default": "Teradata"
+    },
+    "include_semantic": {
+      "type": "boolean",
+      "required": false,
+      "description": "Enable Phase 2 LLM semantic enrichment",
+      "default": true
+    }
+  },
+  "extraction_phases": {
+    "structural": {
+      "phase": 1,
+      "description": "Deterministic parsing of database schema into entities and relationships",
+      "requires_llm": false,
+      "always_runs": true,
+      "extracts": {
+        "entity_types": ["database", "table", "column", "foreign_key"],
+        "relationship_types": ["contains", "foreign_key"]
+      },
+      "source_tag": "constructor_structural",
+      "parsing_rules": {
+        "database": "Extracted from database_name input variable or schema header",
+        "table": "Extracted from CREATE TABLE statements, table listings, or schema descriptions",
+        "column": "Extracted from column definitions within table schemas (name, data type, nullable)",
+        "foreign_key": "Extracted from FOREIGN KEY constraints or FK annotations in schema",
+        "contains_db_table": "Database → Table containment from schema grouping",
+        "contains_table_column": "Table → Column containment from column definitions",
+        "foreign_key_rel": "FK entity → source/target columns from constraint definitions"
+      }
+    },
+    "semantic": {
+      "phase": 2,
+      "description": "LLM-powered inference of business concepts, metrics, and taxonomies",
+      "requires_llm": true,
+      "optional": true,
+      "controlled_by": "include_semantic",
+      "extracts": {
+        "entity_types": ["business_concept", "metric", "taxonomy"],
+        "relationship_types": ["measures", "derives_from", "is_a", "has_property", "relates_to"]
+      },
+      "source_tag": "constructor_semantic"
+    }
+  },
+  "output_configuration": {
+    "target": "knowledge_graph",
+    "import_method": "GraphStore.import_bulk()",
+    "upsert_semantics": true,
+    "notes": "Output goes to SQLite-backed GraphStore, not ChromaDB. Re-running enriches rather than replaces."
+  },
+  "usage_examples": [
+    {
+      "name": "Fitness database — structural only",
+      "database_name": "fitness_db",
+      "include_semantic": false,
+      "expected_output": {
+        "structural": {
+          "entities": 45,
+          "relationships": 38
+        }
+      }
+    },
+    {
+      "name": "Sales database — full extraction",
+      "database_name": "sales_db",
+      "include_semantic": true,
+      "expected_output": {
+        "structural": {
+          "entities": 120,
+          "relationships": 105
+        },
+        "semantic": {
+          "entities": 15,
+          "relationships": 22
+        }
+      }
+    }
+  ]
+}

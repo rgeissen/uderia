@@ -1,0 +1,514 @@
+{
+  "name": "Uderia Simple Query",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "node-manual-trigger",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5050/api/v1/sessions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "headerAuth",
+        "options": {}
+      },
+      "id": "node-create-session",
+      "name": "Create Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300],
+      "credentials": {
+        "headerAuth": {
+          "id": "credential-uderia-token",
+          "name": "Uderia API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "session-id",
+              "name": "session_id",
+              "value": "={{ $json.session_id }}",
+              "type": "string"
+            },
+            {
+              "id": "created-at",
+              "name": "created_at",
+              "value": "={{ $now }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-store-session",
+      "name": "Store Session Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:5050/api/v1/sessions/{{ $('Store Session Context').item.json.session_id }}/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "headerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"prompt\": \"Show me all databases available on the system\"\n}",
+        "options": {}
+      },
+      "id": "node-submit-query",
+      "name": "Submit Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300],
+      "credentials": {
+        "headerAuth": {
+          "id": "credential-uderia-token",
+          "name": "Uderia API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "task-id",
+              "name": "task_id",
+              "value": "={{ $json.task_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "pending",
+              "type": "string"
+            },
+            {
+              "id": "poll-count",
+              "name": "poll_count",
+              "value": "0",
+              "type": "number"
+            },
+            {
+              "id": "max-polls",
+              "name": "max_polls",
+              "value": "30",
+              "type": "number"
+            },
+            {
+              "id": "result",
+              "name": "result",
+              "value": "null",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-init-poll",
+      "name": "Initialize Poll State",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "node-poll-loop",
+      "name": "Poll Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "node-wait",
+      "name": "Wait 2 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "webhookId": "auto-webhook-id"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://localhost:5050/api/v1/tasks/{{ $('Initialize Poll State').item.json.task_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "headerAuth",
+        "options": {}
+      },
+      "id": "node-poll-status",
+      "name": "Poll Task Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 300],
+      "credentials": {
+        "headerAuth": {
+          "id": "credential-uderia-token",
+          "name": "Uderia API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "task-id-update",
+              "name": "task_id",
+              "value": "={{ $('Initialize Poll State').item.json.task_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status-update",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "poll-count-update",
+              "name": "poll_count",
+              "value": "={{ $('Initialize Poll State').item.json.poll_count + 1 }}",
+              "type": "number"
+            },
+            {
+              "id": "max-polls-update",
+              "name": "max_polls",
+              "value": "={{ $('Initialize Poll State').item.json.max_polls }}",
+              "type": "number"
+            },
+            {
+              "id": "result-update",
+              "name": "result",
+              "value": "={{ $json.result }}",
+              "type": "object"
+            },
+            {
+              "id": "last-updated",
+              "name": "last_updated",
+              "value": "={{ $json.last_updated }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-update-poll",
+      "name": "Update Poll State",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-complete",
+              "leftValue": "={{ $('Update Poll State').item.json.status }}",
+              "rightValue": "complete",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-error",
+              "leftValue": "={{ $('Update Poll State').item.json.status }}",
+              "rightValue": "error",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "node-check-complete",
+      "name": "Check If Complete",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Update Poll State').item.json.status }}",
+                    "rightValue": "complete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "success"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Update Poll State').item.json.status }}",
+                    "rightValue": "error",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "error"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-route-status",
+      "name": "Route by Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [2440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const taskData = $input.item.json;\nconst result = taskData.result;\n\nif (!result) {\n  return {\n    json: {\n      error: true,\n      message: \"No result found in task response\",\n      status: taskData.status\n    }\n  };\n}\n\nconst finalAnswer = result.final_answer_text || result.final_answer || \"No answer provided\";\n\nreturn {\n  json: {\n    final_answer: finalAnswer,\n    profile_tag: result.profile_tag || \"unknown\",\n    profile_type: result.profile_type || \"unknown\",\n    input_tokens: result.turn_input_tokens || 0,\n    output_tokens: result.turn_output_tokens || 0,\n    total_tokens: (result.turn_input_tokens || 0) + (result.turn_output_tokens || 0),\n    turn_id: result.turn_id,\n    poll_count: taskData.poll_count,\n    session_id: taskData.task_id\n  }\n};"
+      },
+      "id": "node-extract-answer",
+      "name": "Extract Answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 200]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Query failed: {{ $('Update Poll State').item.json.result.error || 'Unknown error' }}"
+      },
+      "id": "node-handle-error",
+      "name": "Handle Error",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [2660, 300]
+    },
+    {
+      "parameters": {
+        "errorMessage": "=Query timed out after {{ $('Update Poll State').item.json.poll_count }} polls ({{ $('Update Poll State').item.json.poll_count * 2 }} seconds)"
+      },
+      "id": "node-handle-timeout",
+      "name": "Handle Timeout",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [2660, 400]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Create Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Session": {
+      "main": [
+        [
+          {
+            "node": "Store Session Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Session Context": {
+      "main": [
+        [
+          {
+            "node": "Submit Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Query": {
+      "main": [
+        [
+          {
+            "node": "Initialize Poll State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Poll State": {
+      "main": [
+        [
+          {
+            "node": "Poll Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Loop": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check If Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Poll Task Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Task Status": {
+      "main": [
+        [
+          {
+            "node": "Update Poll State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Poll State": {
+      "main": [
+        [
+          {
+            "node": "Poll Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Complete": {
+      "main": [
+        [
+          {
+            "node": "Route by Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Timeout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Status": {
+      "main": [
+        [
+          {
+            "node": "Extract Answer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Timeout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "uderia-simple-query-v1"
+  },
+  "id": "uderia-simple-query",
+  "tags": [
+    {
+      "createdAt": "2026-02-09T18:00:00.000Z",
+      "updatedAt": "2026-02-09T18:00:00.000Z",
+      "id": "1",
+      "name": "uderia"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "step-by-step",
+  "version": "1.0.0",
+  "description": "Chain-of-thought reasoning with numbered steps showing the full thought process.",
+  "author": "Uderia",
+  "tags": ["reasoning", "chain-of-thought", "methodology"],
+  "keywords": ["step by step", "chain of thought", "reasoning", "methodology", "process", "walkthrough"],
+  "use_cases": [
+    "Understanding complex query logic",
+    "Debugging data issues systematically",
+    "Teaching and explaining methodologies"
+  ],
+  "main_file": "step-by-step.md",
+  "last_updated": "2026-02-22",
+  "uderia": {
+    "injection_target": "system_prompt",
+    "icon": "list-ordered"
+  }
+}

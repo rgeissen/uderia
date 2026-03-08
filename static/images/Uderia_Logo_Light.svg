@@ -1,0 +1,47 @@
+<svg width="512" height="512" viewBox="0 0 220 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- 
+      UDERIA PLATFORM - LIGHT VERSION FOR DARK BACKGROUNDS
+      Concept: "The Active Foundation"
+      Colors:
+        - Frame: Bright grays for visibility on dark backgrounds
+        - Core:  #F15F22 (Brand Orange)
+    -->
+
+    <!-- GROUP: THE SOVEREIGN FRAME (Bright Structure for Dark BG) -->
+    <g id="SovereignFrame">
+        <!-- 1. LEFT PILLAR -->
+        <!-- Outer Face -->
+        <path d="M45 50 L45 150 L75 165 L75 65 Z" fill="#9CA3AF"/>
+        <!-- Inner Face -->
+        <path d="M75 65 L75 165 L85 160 L85 60 Z" fill="#D1D5DB"/>
+        <!-- Top Face -->
+        <path d="M45 50 L75 65 L85 60 L55 45 Z" fill="#E5E7EB"/>
+
+        <!-- 2. RIGHT PILLAR -->
+        <!-- Inner Face -->
+        <path d="M135 60 L135 160 L145 165 L145 65 Z" fill="#D1D5DB"/>
+        <!-- Outer Face -->
+        <path d="M145 65 L145 165 L175 150 L175 50 Z" fill="#9CA3AF"/>
+        <!-- Top Face -->
+        <path d="M135 60 L165 45 L175 50 L145 65 Z" fill="#E5E7EB"/>
+    </g>
+
+    <!-- GROUP: THE ACTIVE FOUNDATION (The Fusion Optimizer) -->
+    <g id="FusionCore">
+        <!-- Glow Effect (Soft Orange Shadow) -->
+        <ellipse cx="110" cy="175" rx="40" ry="12" fill="#F15F22" fill-opacity="0.3" style="mix-blend-mode: multiply;"/>
+
+        <!-- The Structural Bridge -->
+        <!-- Front Face (Brightest Brand Color) -->
+        <path d="M85 160 L85 140 L135 140 L135 160 L110 175 L85 160 Z" fill="#F15F22"/> 
+        
+        <!-- Left Face (Shadowed for Depth) -->
+        <path d="M85 160 L110 175 L110 155 L85 140 Z" fill="#D9501A"/>
+        
+        <!-- Right Face (Deep Shadow) -->
+        <path d="M135 160 L110 175 L110 155 L135 140 Z" fill="#C2410C"/>
+
+        <!-- Top Face (Lightest - The Platform Floor) -->
+        <path d="M85 140 L110 125 L135 140 L110 155 Z" fill="#FF8C50"/>
+    </g>
+</svg>

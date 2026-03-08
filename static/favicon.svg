@@ -1,0 +1,27 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Lighter grey rounded square background -->
+  <rect width="64" height="64" fill="#4B5563" rx="8"/>
+  
+  <!-- Uderia Logo - larger scale -->
+  <g transform="translate(32, 32) scale(0.32) translate(-110, -110)">
+    <!-- THE SOVEREIGN FRAME -->
+    <g id="SovereignFrame">
+        <!-- LEFT PILLAR -->
+        <path d="M45 50 L45 150 L75 165 L75 65 Z" fill="#9CA3AF"/>
+        <path d="M75 65 L75 165 L85 160 L85 60 Z" fill="#D1D5DB"/>
+        <path d="M45 50 L75 65 L85 60 L55 45 Z" fill="#E5E7EB"/>
+        <!-- RIGHT PILLAR -->
+        <path d="M135 60 L135 160 L145 165 L145 65 Z" fill="#D1D5DB"/>
+        <path d="M145 65 L145 165 L175 150 L175 50 Z" fill="#9CA3AF"/>
+        <path d="M135 60 L165 45 L175 50 L145 65 Z" fill="#E5E7EB"/>
+    </g>
+    <!-- THE ACTIVE FOUNDATION -->
+    <g id="FusionCore">
+        <ellipse cx="110" cy="175" rx="40" ry="12" fill="#F15F22" fill-opacity="0.3"/>
+        <path d="M85 160 L85 140 L135 140 L135 160 L110 175 L85 160 Z" fill="#F15F22"/> 
+        <path d="M85 160 L110 175 L110 155 L85 140 Z" fill="#D9501A"/>
+        <path d="M135 160 L110 175 L110 155 L135 140 Z" fill="#C2410C"/>
+        <path d="M85 140 L110 125 L135 140 L110 155 Z" fill="#FF8C50"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,220 @@
+{
+  "template_id": "knowledge_repo_v1",
+  "template_name": "Knowledge Repository - Document Storage",
+  "template_version": "1.0.0",
+  "template_type": "knowledge_repository",
+  "description": "Document-based knowledge repository with configurable chunking and embedding strategies",
+  "status": "active",
+  "created_at": "2025-11-29T00:00:00Z",
+  "updated_at": "2025-11-29T00:00:00Z",
+  "icon": {
+    "type": "document",
+    "color": "green"
+  },
+  "repository_configuration": {
+    "repository_type": "knowledge",
+    "requires_mcp_server": false,
+    "mcp_server_id": null,
+    "chunking_strategy": {
+      "type": "enum",
+      "required": true,
+      "default": "semantic",
+      "options": ["semantic", "paragraph", "sentence", "fixed_size"],
+      "description": "How documents are split into searchable chunks"
+    },
+    "chunk_size": {
+      "type": "integer",
+      "required": false,
+      "default": 1000,
+      "min": 100,
+      "max": 5000,
+      "applies_to": ["fixed_size"],
+      "description": "Number of characters per chunk (fixed_size only)"
+    },
+    "chunk_overlap": {
+      "type": "integer",
+      "required": false,
+      "default": 200,
+      "min": 0,
+      "max": 500,
+      "applies_to": ["fixed_size"],
+      "description": "Character overlap between consecutive chunks (fixed_size only)"
+    },
+    "embedding_model": {
+      "type": "enum",
+      "required": true,
+      "default": "all-MiniLM-L6-v2",
+      "options": [
+        {
+          "value": "all-MiniLM-L6-v2",
+          "label": "all-MiniLM-L6-v2 (fast, lightweight)"
+        },
+        {
+          "value": "all-mpnet-base-v2",
+          "label": "all-mpnet-base-v2 (balanced)"
+        }
+      ],
+      "description": "Embedding model for semantic similarity"
+    }
+  },
+  "document_configuration": {
+    "supported_types": ["pdf", "txt", "docx", "md"],
+    "max_file_size_mb": 50,
+    "metadata_fields": {
+      "category": {
+        "type": "string",
+        "required": false,
+        "description": "Document category or classification",
+        "placeholder": "e.g., Technical Documentation, Business Process"
+      },
+      "author": {
+        "type": "string",
+        "required": false,
+        "description": "Document author or creator",
+        "placeholder": "e.g., John Doe, Engineering Team"
+      },
+      "tags": {
+        "type": "array",
+        "required": false,
+        "description": "Comma-separated tags for organization",
+        "placeholder": "e.g., database, performance, best-practices"
+      }
+    },
+    "preview_configuration": {
+      "enabled": true,
+      "initial_chunks_displayed": 5,
+      "max_text_preview_chars": 500,
+      "pdf_max_pages": 20,
+      "infinite_scroll": true
+    }
+  },
+  "output_configuration": {
+    "session_id": {
+      "type": "constant",
+      "value": "00000000-0000-0000-0000-000000000000",
+      "description": "Knowledge repositories use shared session ID"
+    },
+    "repository_type": {
+      "type": "constant",
+      "value": "knowledge",
+      "description": "Identifies this as a knowledge repository"
+    },
+    "template_generated": {
+      "type": "constant",
+      "value": true,
+      "description": "Marker for template-based creation"
+    },
+    "template_type": {
+      "type": "constant",
+      "value": "knowledge_repository",
+      "description": "Template type identifier"
+    }
+  },
+  "validation_rules": {
+    "repository_name": {
+      "not_empty": true,
+      "min_length": 3,
+      "max_length": 100,
+      "pattern": "^[a-zA-Z0-9\\s\\-_]+$",
+      "error_message": "Repository name must be 3-100 characters (letters, numbers, spaces, hyphens, underscores only)"
+    },
+    "chunking_strategy": {
+      "enum": ["semantic", "paragraph", "sentence", "fixed_size"],
+      "error_message": "Invalid chunking strategy"
+    },
+    "chunk_size": {
+      "min": 100,
+      "max": 5000,
+      "condition": "if chunking_strategy == 'fixed_size'",
+      "error_message": "Chunk size must be between 100 and 5000 characters"
+    },
+    "chunk_overlap": {
+      "min": 0,
+      "max": 500,
+      "condition": "if chunking_strategy == 'fixed_size'",
+      "less_than": "chunk_size",
+      "error_message": "Overlap must be less than chunk size"
+    }
+  },
+  "ui_workflow": {
+    "steps": [
+      {
+        "step": 1,
+        "title": "Repository Configuration",
+        "description": "Configure basic repository settings",
+        "fields": [
+          "repository_name",
+          "description",
+          "chunking_strategy",
+          "chunk_size",
+          "chunk_overlap",
+          "embedding_model"
+        ],
+        "conditional_fields": {
+          "chunk_size": "chunking_strategy == 'fixed_size'",
+          "chunk_overlap": "chunking_strategy == 'fixed_size'"
+        }
+      },
+      {
+        "step": 2,
+        "title": "Document Upload",
+        "description": "Upload initial documents (optional)",
+        "fields": [
+          "document_files",
+          "category",
+          "author",
+          "tags"
+        ],
+        "features": [
+          "drag_and_drop",
+          "multiple_files",
+          "preview_chunking",
+          "auto_preview_on_change"
+        ]
+      }
+    ],
+    "preview_features": {
+      "live_preview": true,
+      "preview_trigger_events": [
+        "file_selected",
+        "chunking_strategy_changed",
+        "chunk_size_changed",
+        "chunk_overlap_changed"
+      ],
+      "preview_debounce_ms": 300,
+      "preview_display": {
+        "initial_chunks": 5,
+        "infinite_scroll": true,
+        "chunk_expansion": true
+      }
+    }
+  },
+  "usage_examples": [
+    {
+      "name": "Technical Documentation Repository",
+      "repository_name": "Technical Docs",
+      "description": "Product documentation and API references",
+      "chunking_strategy": "paragraph",
+      "embedding_model": "all-MiniLM-L6-v2",
+      "use_case": "Storing and searching technical documentation"
+    },
+    {
+      "name": "Policy & Compliance Repository",
+      "repository_name": "Compliance Policies",
+      "description": "Company policies and regulatory requirements",
+      "chunking_strategy": "sentence",
+      "embedding_model": "all-mpnet-base-v2",
+      "use_case": "Precise retrieval of policy statements"
+    },
+    {
+      "name": "Research Papers Repository",
+      "repository_name": "Research Archive",
+      "description": "Academic and industry research papers",
+      "chunking_strategy": "fixed_size",
+      "chunk_size": 1500,
+      "chunk_overlap": 300,
+      "embedding_model": "all-mpnet-base-v2",
+      "use_case": "Large document corpus with consistent chunking"
+    }
+  ]
+}

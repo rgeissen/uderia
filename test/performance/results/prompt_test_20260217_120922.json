@@ -1,0 +1,82 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T12:09:22.001581",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "dba_databaseHealthAssessment",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 205366,
+    "total_duration_ms": 58575,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 205366.0,
+    "avg_duration_ms": 58575.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_databaseHealthAssessment_system",
+      "prompt_name": "dba_databaseHealthAssessment",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-932e2418-97d4-496a-a016-260b4acdfd05",
+      "session_id": "2e8a300f-ffa6-419d-9879-c3240b6d3b80",
+      "duration_ms": 58575,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 196268,
+        "output": 9098,
+        "total": 205366
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "base_databaseList",
+          "dba_databaseSpace",
+          "dba_resusageSummary",
+          "TDA_LLMTask",
+          "TDA_ComplexPromptReport",
+          "TDA_SystemOrchestration",
+          "dba_flowControl",
+          "dba_userDelay",
+          "base_tableList",
+          "base_tableUsage"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {
+          "database_scope": true
+        },
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "name": "kg-database-context",
+  "version": "1.0.0",
+  "template_id": "kg_database_context_v1",
+  "display_name": "Knowledge Graph Constructor - Database Context",
+  "description": "Auto-populate a Knowledge Graph with database topology (tables, columns, foreign keys) and optional semantic enrichment (business concepts, metrics, taxonomies) from MCP database schema context.",
+  "author": "TDA Core Team",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/rgeissen/uderia",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rgeissen/uderia"
+  },
+  "keywords": [
+    "knowledge-graph",
+    "database",
+    "schema",
+    "topology",
+    "entities",
+    "relationships",
+    "mcp",
+    "llm-assisted"
+  ],
+  "compatibility": {
+    "min_app_version": "1.0.0",
+    "max_app_version": "2.x.x"
+  },
+  "dependencies": {
+    "templates": [],
+    "python_packages": []
+  },
+  "files": {
+    "template": "kg_database_context_v1.json",
+    "readme": "README.md"
+  },
+  "permissions": [
+    "database_access",
+    "mcp_tools",
+    "knowledge_graph"
+  ],
+  "ui_components": {
+    "config_panel": false,
+    "preview_renderer": false
+  },
+  "population_modes": {
+    "auto_generate": {
+      "supported": true,
+      "requires_llm": true,
+      "requires_mcp_context": true,
+      "input_method": "mcp_context",
+      "generation_endpoint": "/api/v1/knowledge-graph/generate",
+      "description": "Two-phase extraction: (1) Deterministic structural parsing of database schema into entities and relationships, (2) Optional LLM-powered semantic enrichment to infer business concepts, metrics, and taxonomies.",
+      "input_variables": {
+        "database_name": {
+          "required": true,
+          "description": "Target database name for entity scoping",
+          "example": "fitness_db, analytics_warehouse"
+        },
+        "mcp_context_prompt": {
+          "required": false,
+          "description": "MCP prompt to execute for gathering database context",
+          "default": "base_databaseBusinessDesc"
+        },
+        "include_semantic": {
+          "required": false,
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to run Phase 2 LLM semantic enrichment (business concepts, metrics, taxonomies)"
+        },
+        "target_database": {
+          "required": false,
+          "description": "Target database system for syntax awareness",
+          "default": "Teradata",
+          "example": "Teradata, PostgreSQL, MySQL"
+        }
+      }
+    },
+    "manual": {
+      "supported": false,
+      "description": "Knowledge graphs are populated via the constructor or TDA_KnowledgeGraph tool"
+    },
+    "document_upload": {
+      "supported": false,
+      "description": "Knowledge graphs are populated via schema context, not documents"
+    }
+  },
+  "prompt_templates": {
+    "kg_extraction": {
+      "system_role": "You are a database schema analyst specializing in extracting semantic meaning from database structures. You identify business concepts, metrics, and taxonomies that underlie the physical schema.",
+      "task_description": "Analyze the following database schema context and extract semantic entities and relationships. Focus on:\n1. Business concepts that tables and column groups represent\n2. Metrics that can be derived from numeric columns and aggregations\n3. Taxonomy hierarchies implied by categorical columns or lookup tables",
+      "requirements": [
+        "Identify business concepts (e.g., 'Customer Lifetime Value', 'Order Fulfillment Process')",
+        "Identify metrics with their derivation formulas (e.g., 'Total Revenue = SUM(order_items.price * quantity)')",
+        "Identify taxonomy hierarchies from categorical/enum columns or lookup tables",
+        "Create relationships linking concepts to their source tables and columns",
+        "Use ONLY the entity types: business_concept, metric, taxonomy",
+        "Use ONLY the relationship types: measures, derives_from, is_a, has_property, relates_to",
+        "Reference existing table and column names exactly as they appear in the schema"
+      ],
+      "output_format": "Return your response as a valid JSON object with this exact structure:\n{\n  \"entities\": [\n    {\"name\": \"Customer Lifetime Value\", \"entity_type\": \"business_concept\", \"properties\": {\"description\": \"Total value a customer generates over their relationship\", \"related_tables\": [\"customers\", \"orders\"]}}\n  ],\n  \"relationships\": [\n    {\"source_name\": \"Customer Lifetime Value\", \"source_type\": \"business_concept\", \"target_name\": \"total_spent\", \"target_type\": \"column\", \"relationship_type\": \"measures\", \"metadata\": {\"formula\": \"SUM(orders.amount)\"}}\n  ]\n}",
+      "critical_guidelines": [
+        "Your entire response must be ONLY the JSON object, with no other text before or after",
+        "Only reference tables and columns that actually exist in the schema context",
+        "Do NOT duplicate structural entities (database, table, column, foreign_key) — those are handled separately",
+        "Focus on SEMANTIC meaning, not physical structure",
+        "Each metric MUST include a derivation formula in its properties or relationship metadata",
+        "Taxonomy entities should represent classification hierarchies, not individual values"
+      ]
+    }
+  },
+  "output_schema": {
+    "structural_entities": {
+      "description": "Entities extracted deterministically from schema (Phase 1)",
+      "entity_types": ["database", "table", "column", "foreign_key"],
+      "relationship_types": ["contains", "foreign_key"],
+      "source_tag": "constructor_structural"
+    },
+    "semantic_entities": {
+      "description": "Entities inferred by LLM from schema context (Phase 2)",
+      "entity_types": ["business_concept", "metric", "taxonomy"],
+      "relationship_types": ["measures", "derives_from", "is_a", "has_property", "relates_to"],
+      "source_tag": "constructor_semantic"
+    }
+  },
+  "metadata": {
+    "category": "Knowledge Graph",
+    "difficulty": "intermediate",
+    "estimated_tokens": {
+      "semantic_extraction": 2000
+    },
+    "tags": ["built-in", "knowledge-graph", "schema-analysis", "topology"]
+  }
+}

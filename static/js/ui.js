@@ -1,0 +1,8043 @@
+/**
+ * ui.js
+ * * This module handles all direct DOM manipulations and UI updates.
+ * Functions here are responsible for rendering messages, modals, status updates, and other visual changes.
+ */
+
+import * as DOM from './domElements.js';
+import { state } from './state.js';
+import { renderChart, isPrivilegedUser, isPromptCustomForModel, getNormalizedModelId } from './utils.js';
+import { renderComponent, hasRenderer } from './componentRenderers.js';
+// We need access to the functions that will handle save/cancel from the input
+import { handleSessionRenameSave, handleSessionRenameCancel } from './handlers/sessionManagement.js?v=3.6';
+import { handleReplayQueryClick } from './eventHandlers.js?v=3.4';
+import { checkServerStatus, loadSessions, fetchTurnDetails } from './api.js';
+import { exportKnowledgeRepository, importKnowledgeRepository } from './handlers/knowledgeRepositoryHandler.js';
+import { groupByAgentPack, createPackContainerCardDOM, attachPackContainerHandlers, updatePackContainerDocCounts } from './handlers/agentPackGrouping.js';
+
+// 🔥 DEBUG: Module load detection (v1.0 - Feb 13, 2026)
+console.log('%c🔥 UI.JS LOADED - VERSION 1.0 (NEW CODE)', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 5px;');
+
+// NOTE: This module no longer imports from eventHandlers.js, breaking a circular dependency.
+// Instead, eventHandlers.js will import these UI functions.
+
+// ============================================================================
+// Profile Type Colors for Status Window Tags
+// CORRECTED IFOC MAPPING: Coordinate=Orange (Teradata brand)
+// ============================================================================
+
+const PROFILE_TYPE_COLORS = {
+    'llm_only': '#4ade80',      // Green (IDEATE)
+    'rag_focused': '#3b82f6',   // Blue (FOCUS)
+    'tool_enabled': '#9333ea',  // Purple (OPTIMIZE) - CHANGED
+    'genie': '#F15F22'          // Orange (COORDINATE - Teradata brand) - CHANGED
+};
+
+// ============================================================================
+// EVENT CATEGORY COLOR CODING SYSTEM (6 Categories)
+// Maps event types to background color categories
+// Left border = execution state (active=orange, completed=green)
+// Background = event category (success, system, optimization, error, coordination)
+// ============================================================================
+const EVENT_CATEGORY_MAP = {
+    // Success Events (Green background) - normal execution & completion
+    'phase_start': 'success',
+    'phase_end': 'success',
+    'tool_result': 'success',
+    'tool_intent': 'success',
+    'llm_execution': 'success',
+    'llm_execution_complete': 'success',
+    'knowledge_retrieval_start': 'success',
+    'knowledge_retrieval_complete': 'success',
+    'knowledge_reranking_start': 'success',
+    'knowledge_reranking_complete': 'success',
+    'rag_llm_step': 'success',
+    'conversation_tool_invoked': 'success',
+    'conversation_tool_completed': 'success',
+    'conversation_llm_step': 'success',
+    'conversation_llm_complete': 'success',
+    'genie_slave_invoked': 'success',
+    'genie_slave_progress': 'success',
+    'genie_slave_completed': 'success',
+    'final_answer': 'success',
+
+    // Lifecycle Bookend Events (Green sidebar, NO background)
+    // These frame the execution and should have distinct visual style
+    'execution_start': 'lifecycle',
+    'execution_complete': 'lifecycle',
+    'conversation_agent_start': 'lifecycle',
+    'conversation_agent_complete': 'lifecycle',
+    'genie_coordination_start': 'lifecycle',
+    'genie_coordination_complete': 'lifecycle',
+
+    // System Events (Yellow background) - session/status updates
+    'session_name_generation_start': 'system',
+    'session_name_generation_complete': 'system',
+    'status_indicator_update': 'system',
+    'token_update': 'system',
+
+    // System Correction Events (Yellow background) - reactive fixes
+    'workaround': 'system',
+
+    // Plan Optimization Events (Blue background) - proactive improvements
+    'plan_optimization': 'optimization',
+
+    // Context Optimization Events (Blue background) - data reduction for token efficiency
+    'context_optimization': 'optimization',
+
+    // Error Events (Red background)
+    'execution_error': 'error',
+    'tool_error': 'error',
+    'error': 'error',
+    'execution_cancelled': 'error',
+
+    // Genie LLM Events - same green as other profile LLM calls
+    'genie_llm_step': 'success',
+    'genie_synthesis_start': 'success',
+    'genie_synthesis_complete': 'success',
+    'genie_routing': 'success',
+};
+
+/**
+ * Get the category for an event type (for background color).
+ * @param {string} eventType - The event type
+ * @returns {string} The category name (success, system, optimization, error, coordination)
+ */
+function getEventCategory(eventType) {
+    return EVENT_CATEGORY_MAP[eventType] || 'success';
+}
+
+// ============================================================================
+// EVENT FILTER CATEGORY SYSTEM
+// Maps (source, type) to one of 7 filter categories for the header filter chips.
+// This is separate from EVENT_CATEGORY_MAP which controls visual styling.
+// ============================================================================
+
+/**
+ * Determine the filter category for an event based on its source and type.
+ * @param {string} source - The event source (rest, genie, conversation_agent, etc.)
+ * @param {string} type - The event type (phase_start, tool_intent, etc.)
+ * @returns {string} The filter category name
+ */
+function getFilterCategory(source, type) {
+    // Source-level routing (highest priority)
+    if (source === 'context_window') return 'context';
+    if (source === 'genie') return 'coordination';
+    if (source === 'conversation_agent') return 'agent';
+    if (source === 'knowledge_retrieval') return 'knowledge';
+    if (source === 'session_name') return 'system';
+    if (source === 'skills') return 'system';
+    if (source === 'extension') return 'system';
+    if (source === 'lifecycle') return 'system';
+
+    // Type-level routing for rest/interactive sources
+    if (source === 'rest' || source === 'interactive') {
+        if (type === 'phase_start' || type === 'phase_end' ||
+            type === 'plan_generated' || type === 'plan_optimization') {
+            return 'planning';
+        }
+        if (type === 'tool_intent' || type === 'tool_result' ||
+            type === 'tool_error' || type === 'workaround') {
+            return 'tool-execution';
+        }
+        if (type === 'context_optimization' || type === 'context_window_snapshot') {
+            return 'context';
+        }
+        if (type?.startsWith('knowledge_') || type === 'rag_llm_step' ||
+            type === 'kg_enrichment' || type === 'llm_execution' ||
+            type === 'llm_execution_complete') {
+            return 'knowledge';
+        }
+        if (type?.startsWith('conversation_') || type === 'component_llm_resolution') {
+            return 'agent';
+        }
+    }
+
+    return 'system';
+}
+
+/**
+ * Check if a given filter category is currently enabled (visible).
+ * @param {string} category - The filter category name
+ * @returns {boolean} True if the category is enabled
+ */
+function isFilterCategoryEnabled(category) {
+    return state.eventFilterState[category] !== false;
+}
+
+/**
+ * Toggle visibility of events matching a filter category.
+ * Updates chip UI, persists to localStorage, and applies to DOM.
+ * @param {string} category - The filter category to toggle
+ */
+export function toggleEventFilter(category) {
+    const isNowEnabled = !state.eventFilterState[category];
+    state.eventFilterState[category] = isNowEnabled;
+
+    // Update chip UI
+    const chip = document.querySelector(`.event-filter-chip[data-filter="${category}"]`);
+    if (chip) {
+        chip.classList.toggle('active', isNowEnabled);
+    }
+
+    // Persist to localStorage
+    try {
+        localStorage.setItem('uderia_event_filter_state', JSON.stringify(state.eventFilterState));
+    } catch (e) { /* ignore storage errors */ }
+
+    applyEventFilterToDOM();
+}
+
+/**
+ * Apply the current filter state to all event steps in the status window.
+ * Adds/removes 'event-filtered-hidden' CSS class based on data-filter-category.
+ * Called after filter toggle AND after reload rendering completes.
+ */
+export function applyEventFilterToDOM() {
+    const container = DOM.statusWindowContent;
+    if (!container) return;
+
+    const allTagged = container.querySelectorAll('[data-filter-category]');
+    allTagged.forEach(el => {
+        const category = el.dataset.filterCategory;
+        if (category && state.eventFilterState[category] === false) {
+            el.classList.add('event-filtered-hidden');
+        } else {
+            el.classList.remove('event-filtered-hidden');
+        }
+    });
+}
+
+/**
+ * Sync filter chip UI with persisted state on page load.
+ * Ensures chips reflect previously disabled categories.
+ */
+export function syncFilterChipsWithState() {
+    const chips = document.querySelectorAll('.event-filter-chip');
+    chips.forEach(chip => {
+        const category = chip.dataset.filter;
+        if (category) {
+            chip.classList.toggle('active', state.eventFilterState[category] !== false);
+        }
+    });
+}
+
+/**
+ * Get the color for a profile tag based on its profile type.
+ * @param {string} profileTag - The profile tag (e.g., 'OPTIM', 'GENIE')
+ * @param {string} profileType - Optional profile type (llm_only, rag_focused, tool_enabled, genie)
+ * @returns {string} The hex color for the profile type
+ */
+function getProfileTagColor(profileTag, profileType) {
+    // If profile_type is provided directly, use it
+    if (profileType && PROFILE_TYPE_COLORS[profileType]) {
+        return PROFILE_TYPE_COLORS[profileType];
+    }
+    // Fallback: Look up from configState
+    const profile = window.configState?.profiles?.find(p => p.tag === profileTag);
+    if (profile && profile.profile_type && PROFILE_TYPE_COLORS[profile.profile_type]) {
+        return PROFILE_TYPE_COLORS[profile.profile_type];
+    }
+    // Default fallback
+    return '#94a3b8'; // gray-400
+}
+
+/**
+ * Adjust color brightness by a percentage.
+ * @param {string} hex - Hex color code (e.g., "#F15F22")
+ * @param {number} percent - Percentage to adjust (-100 to 100). Positive = lighter, negative = darker.
+ * @returns {string} Adjusted hex color code
+ */
+function adjustColorBrightness(hex, percent) {
+    // Remove # if present
+    hex = hex.replace('#', '');
+
+    // Convert hex to RGB
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+
+    // Adjust brightness
+    const factor = 1 + (percent / 100);
+    const newR = Math.min(255, Math.max(0, Math.round(r * factor)));
+    const newG = Math.min(255, Math.max(0, Math.round(g * factor)));
+    const newB = Math.min(255, Math.max(0, Math.round(b * factor)));
+
+    // Convert back to hex
+    const toHex = (n) => n.toString(16).padStart(2, '0');
+    return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
+}
+
+/**
+ * Determine if a color is light (for text contrast calculation).
+ * @param {string} hex - Hex color code (e.g., "#4ade80")
+ * @returns {boolean} True if color is light (needs dark text)
+ */
+function isLightColor(hex) {
+    // Remove # if present
+    hex = hex.replace('#', '');
+
+    // Convert hex to RGB
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+
+    // Calculate relative luminance (WCAG formula)
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    // Return true if luminance > 0.5 (light color needs dark text)
+    return luminance > 0.5;
+}
+
+/**
+ * Render a profile tag with the correct profile type color using PURE INDUSTRIAL SOLID STYLING.
+ * @param {string} tag - The profile tag (without @)
+ * @param {string} profileType - Optional profile type for color lookup
+ * @param {string} additionalClasses - Optional additional CSS classes
+ * @returns {string} HTML string for the colored profile tag
+ */
+export function renderProfileTag(tag, profileType, additionalClasses = '') {
+    const color = getProfileTagColor(tag, profileType);
+
+    // PURE INDUSTRIAL: Solid colors, flat monolithic design
+    // Border matches background (no gradient depth effect)
+    const hoverColor = adjustColorBrightness(color, 10);     // 10% lighter for hover
+
+    return `<span class="profile-tag profile-tag--sm ${additionalClasses}" style="--profile-tag-bg: ${color}; --profile-tag-border: ${color}; --profile-tag-bg-hover: ${hoverColor}; --profile-tag-text: #FFFFFF;">@${tag}</span>`;
+}
+
+// ============================================================================
+// Genie Slave Session Collapse State Management
+// ============================================================================
+
+const GENIE_COLLAPSE_STATE_KEY = 'genie_slave_collapse_state';
+
+/**
+ * Get the collapse state for genie slave sessions from localStorage.
+ * Returns an object mapping parent session IDs to boolean (true = collapsed).
+ */
+export function getGenieCollapseState() {
+    try {
+        const stored = localStorage.getItem(GENIE_COLLAPSE_STATE_KEY);
+        return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+        console.warn('[UI] Failed to read genie collapse state:', e);
+        return {};
+    }
+}
+
+/**
+ * Save the collapse state for genie slave sessions to localStorage.
+ */
+function saveGenieCollapseState(state) {
+    try {
+        localStorage.setItem(GENIE_COLLAPSE_STATE_KEY, JSON.stringify(state));
+    } catch (e) {
+        console.warn('[UI] Failed to save genie collapse state:', e);
+    }
+}
+
+/**
+ * Toggle visibility of child sessions for a genie parent session.
+ * @param {string} parentSessionId - The session ID of the genie parent
+ */
+export function toggleGenieSlaveVisibility(parentSessionId) {
+    const collapseState = getGenieCollapseState();
+    const isCurrentlyCollapsed = collapseState[parentSessionId] || false;
+    const newState = !isCurrentlyCollapsed;
+
+    // Update state
+    collapseState[parentSessionId] = newState;
+    saveGenieCollapseState(collapseState);
+
+    // Recursively find all descendant sessions (children, grandchildren, etc.)
+    function getAllDescendants(ancestorId) {
+        const directChildren = Array.from(document.querySelectorAll(`[data-genie-parent-id="${ancestorId}"]`));
+        let allDescendants = [...directChildren];
+
+        // For each direct child, recursively get their descendants
+        directChildren.forEach(childItem => {
+            const childSessionId = childItem.dataset.sessionId;
+            if (childSessionId) {
+                const grandchildren = getAllDescendants(childSessionId);
+                allDescendants = allDescendants.concat(grandchildren);
+            }
+        });
+
+        return allDescendants;
+    }
+
+    // Find all descendants (including nested children)
+    const slaveItems = getAllDescendants(parentSessionId);
+
+    slaveItems.forEach((item, index) => {
+        if (newState) {
+            // Collapsing: apply class IMMEDIATELY like expand does (no setTimeout)
+            item.classList.add('genie-slave-hidden');
+
+            // Find wrapper and apply collapsed state via JavaScript (not CSS :has())
+            const wrapper = item.closest('.genie-wrapper');
+            if (wrapper) {
+                wrapper.classList.add('genie-wrapper-collapsed');
+            }
+
+            // Force reflow before animation
+            item.offsetHeight;
+
+            // Use requestAnimationFrame for batched style updates (synchronized timeline)
+            requestAnimationFrame(() => {
+                item.style.transition = `opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1) ${index * 0.05}s,
+                                         max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1) ${index * 0.05}s,
+                                         margin 0.3s cubic-bezier(0.4, 0, 0.2, 1) ${index * 0.05}s`;
+                item.style.opacity = '0';
+                item.style.maxHeight = '0';
+                item.style.marginTop = '0';
+                item.style.marginBottom = '0';
+                item.style.overflow = 'hidden';
+            });
+
+            // Clean up inline styles after animation completes
+            item.addEventListener('transitionend', function cleanup(e) {
+                // Only clean up on the final property (max-height typically finishes last)
+                if (e.propertyName === 'max-height') {
+                    item.style.transition = '';
+                    item.style.opacity = '';
+                    item.style.maxHeight = '';
+                    item.style.margin = '';
+                    item.style.marginTop = '';
+                    item.style.marginBottom = '';
+                    item.style.overflow = '';
+                    item.removeEventListener('transitionend', cleanup);
+                }
+            });
+        } else {
+            // Expanding: remove classes first
+            item.classList.remove('genie-slave-hidden');
+
+            // Remove wrapper collapsed state
+            const wrapper = item.closest('.genie-wrapper');
+            if (wrapper) {
+                wrapper.classList.remove('genie-wrapper-collapsed');
+            }
+            item.style.transition = `opacity 0.3s ease ${index * 0.05}s, max-height 0.3s ease ${index * 0.05}s`;
+            item.style.overflow = 'hidden';
+            item.style.maxHeight = '0';
+            item.style.opacity = '0';
+
+            // Trigger reflow to ensure transition works
+            item.offsetHeight;
+
+            // Animate to full visibility
+            requestAnimationFrame(() => {
+                item.style.opacity = '1';
+                item.style.maxHeight = '200px'; // Enough for session item
+                item.style.marginTop = '';
+                item.style.marginBottom = '';
+            });
+
+            // Clean up inline styles after animation completes
+            item.addEventListener('transitionend', function cleanup(e) {
+                // Only clean up on the final property (max-height typically finishes last)
+                if (e.propertyName === 'max-height') {
+                    item.style.maxHeight = '';
+                    item.style.overflow = '';
+                    item.style.transition = '';
+                    item.style.opacity = '';
+                    item.removeEventListener('transitionend', cleanup);
+                }
+            });
+        }
+    });
+
+    // Update the toggle icon in the parent with rotation animation
+    const parentItem = document.getElementById(`session-${parentSessionId}`);
+    if (parentItem) {
+        const toggleIcon = parentItem.querySelector('.genie-collapse-toggle');
+        if (toggleIcon) {
+            // Smooth rotation animation
+            toggleIcon.style.transform = newState ? 'rotate(-90deg)' : 'rotate(0deg)';
+        }
+    }
+
+    console.log(`[UI] Toggled genie slave visibility for ${parentSessionId}: ${newState ? 'collapsed' : 'expanded'}`);
+}
+
+/**
+ * Mark sessions that are genie parents (have child sessions).
+ * Call this after loading all sessions to identify which sessions have children.
+ * @param {Array} sessions - Array of session objects
+ * @returns {Array} - Sessions with _isGenieMaster flag added (flag name preserved for compatibility)
+ */
+export function markGenieMasterSessions(sessions) {
+    // Build a set of parent session IDs that have slaves
+    const parentIds = new Set();
+    sessions.forEach(session => {
+        const genieMetadata = session.genie_metadata || {};
+        if (genieMetadata.is_genie_slave && genieMetadata.parent_session_id) {
+            parentIds.add(genieMetadata.parent_session_id);
+        }
+    });
+
+    // Mark sessions that have children as genie parents
+    sessions.forEach(session => {
+        session._isGenieMaster = parentIds.has(session.id);
+    });
+
+    console.log(`[UI] Marked ${parentIds.size} sessions as genie parents`);
+    return sessions;
+}
+
+/**
+ * Sort sessions hierarchically so slave sessions always appear directly under their parent.
+ * This ensures proper visual ordering even during Genie execution when slaves are created/updated.
+ *
+ * @param {Array} sessions - Array of session objects
+ * @returns {Array} - Sessions sorted with slaves directly under their parents
+ */
+export function sortSessionsHierarchically(sessions) {
+    // Build parent-to-children map for ALL sessions (supports multi-level nesting)
+    const parentToChildren = new Map(); // parentId -> [child sessions]
+    const topLevelSessions = []; // Sessions with no parent
+
+    // First pass: catalog all sessions
+    sessions.forEach(session => {
+        const genieMetadata = session.genie_metadata || {};
+        const parentId = genieMetadata.parent_session_id;
+
+        if (genieMetadata.is_genie_slave && parentId) {
+            // This session has a parent - add to parent's children list
+            if (!parentToChildren.has(parentId)) {
+                parentToChildren.set(parentId, []);
+            }
+            parentToChildren.get(parentId).push(session);
+        } else {
+            // This is a top-level session (no parent)
+            topLevelSessions.push(session);
+        }
+    });
+
+    // Recursive function to add session and all its descendants
+    function addSessionWithChildren(session, sorted) {
+        // Add the session itself
+        sorted.push(session);
+
+        // Get children of this session
+        const children = parentToChildren.get(session.id);
+        if (children && children.length > 0) {
+            // Sort children by created_at (oldest first)
+            children.sort((a, b) => {
+                const timeA = new Date(a.created_at || 0).getTime();
+                const timeB = new Date(b.created_at || 0).getTime();
+                return timeA - timeB;
+            });
+
+            // Recursively add each child and its descendants
+            children.forEach(child => {
+                addSessionWithChildren(child, sorted);
+            });
+        }
+    }
+
+    // Build the final sorted list starting with top-level sessions
+    const sorted = [];
+
+    // Sort top-level sessions by created_at (NEWEST FIRST - most recent at top)
+    topLevelSessions.sort((a, b) => {
+        const timeA = new Date(a.created_at || 0).getTime();
+        const timeB = new Date(b.created_at || 0).getTime();
+        return timeB - timeA;  // Reversed: newest first
+    });
+
+    // Add each top-level session and all its descendants recursively
+    topLevelSessions.forEach(session => {
+        addSessionWithChildren(session, sorted);
+    });
+
+    return sorted;
+}
+
+/**
+ * Update the genie parent badge visibility after sessions are rendered.
+ * Call this after the session list is populated to add parent badges to sessions
+ * that weren't initially marked but have child sessions in the DOM.
+ */
+export function updateGenieMasterBadges() {
+    // Find all slave sessions and their parent IDs
+    const slaveElements = document.querySelectorAll('.genie-slave-session');
+    const parentIds = new Set();
+
+    slaveElements.forEach(el => {
+        const parentId = el.dataset.genieParentId;
+        if (parentId) {
+            parentIds.add(parentId);
+        }
+    });
+
+    // For each parent that doesn't have a parent badge, add one
+    parentIds.forEach(parentId => {
+        const parentItem = document.getElementById(`session-${parentId}`);
+        if (parentItem && !parentItem.querySelector('.genie-master-badge')) {
+            parentItem.classList.add('genie-master-session');
+            parentItem.dataset.isGenieMaster = 'true';
+
+            // Find the name container and add the badge with world-class styling
+            const nameContainer = parentItem.querySelector('.flex-1.min-w-0');
+            if (nameContainer) {
+                const collapseState = getGenieCollapseState();
+                const isCollapsed = collapseState[parentId] || false;
+
+                // Create level badge matching child style
+                const levelBadge = document.createElement('span');
+                levelBadge.className = 'level-badge level-badge-l0';
+                levelBadge.textContent = 'L0';
+                levelBadge.title = 'Level 0 parent session';
+
+                // Container for badge + collapse toggle
+                const genieMasterBadge = document.createElement('span');
+                genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-0.5 mt-1 text-xs cursor-pointer';
+                genieMasterBadge.appendChild(levelBadge);
+
+                // Toggle
+                const toggle = document.createElement('span');
+                toggle.style.cssText = `
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 18px;
+                    height: 18px;
+                    color: #F15F22;
+                    background: rgba(241, 95, 34, 0.15);
+                    border-radius: 4px;
+                    border: 1px solid rgba(241, 95, 34, 0.3);
+                    transition: all 0.2s ease;
+                    font-size: 10px;
+                    transform: ${isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)'};
+                `;
+                toggle.textContent = '▼';
+                genieMasterBadge.appendChild(toggle);
+
+                genieMasterBadge.title = 'Click to collapse/expand child sessions';
+
+                // Hover effects
+                genieMasterBadge.addEventListener('mouseenter', () => {
+                    genieMasterBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.3), rgba(255, 140, 0, 0.15))';
+                    genieMasterBadge.style.borderColor = 'rgba(241, 95, 34, 0.6)';
+                    genieMasterBadge.style.boxShadow = '0 3px 8px rgba(241, 95, 34, 0.2)';
+                });
+                genieMasterBadge.addEventListener('mouseleave', () => {
+                    genieMasterBadge.style.background = 'linear-gradient(135deg, rgba(241, 95, 34, 0.2), rgba(255, 140, 0, 0.1))';
+                    genieMasterBadge.style.borderColor = 'rgba(241, 95, 34, 0.4)';
+                    genieMasterBadge.style.boxShadow = '0 2px 4px rgba(241, 95, 34, 0.1)';
+                });
+
+                genieMasterBadge.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleGenieSlaveVisibility(parentId);
+                    // Animate toggle
+                    const currentCollapsed = getGenieCollapseState()[parentId] || false;
+                    toggle.style.transform = currentCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+                });
+
+                nameContainer.appendChild(genieMasterBadge);
+            }
+        }
+    });
+
+    // Apply collapse state to slave sessions
+    const collapseState = getGenieCollapseState();
+    slaveElements.forEach(el => {
+        const parentId = el.dataset.genieParentId;
+        if (parentId && collapseState[parentId]) {
+            el.classList.add('genie-slave-hidden');
+        }
+    });
+}
+
+/**
+ * Renders the historical plan and execution trace in the status window.
+ * @param {Array<object>} originalPlan - The original plan array generated for the turn.
+ * @param {Array<object>} executionTrace - The execution trace array (action/result pairs).
+ * @param {string|number} turnId - The ID of the turn being displayed.
+ * @param {string} userQuery - The original user query for this turn.
+ * @param {Object} knowledgeRetrievalEvent - Optional knowledge retrieval event data.
+ * @param {Object} turnTokens - Optional turn token data { turn_input_tokens, turn_output_tokens }.
+ * @param {Array<object>} systemEvents - Optional system events (session name generation, etc.).
+ * @param {number} durationMs - Optional execution duration in milliseconds (for tool_enabled profiles).
+ */
+export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, kgEnrichmentEvent = null, turnTokens = null, systemEvents = [], durationMs = 0, toolEnabledEvents = [], contextWindowSnapshotHtml = null, strategicSnapshotHtml = null) {
+    DOM.statusWindowContent.innerHTML = ''; // Clear previous content
+    state.currentStatusId = 0; // Reset status ID counter for this rendering
+    state.isInFastPath = false; // Reset fast path flag
+    state.currentPhaseContainerEl = null; // Reset phase container reference
+    state.pendingSubtaskPlanningEvents = []; // Clear any pending events
+
+    // Hide knowledge banner by default when loading a turn
+    const knowledgeBanner = document.getElementById('knowledge-banner');
+    if (knowledgeBanner && !knowledgeRetrievalEvent) {
+        knowledgeBanner.classList.add('hidden');
+    }
+
+    // --- Separate lifecycle events by depth for correct positioning ---
+    // Depth=0 events render as bookends (top/bottom). Depth>0 events render inline within trace.
+    const depth0StartEvents = (toolEnabledEvents || []).filter(e => e.type === 'execution_start' && !(e.metadata?.execution_depth > 0));
+    const subStartEvents = (toolEnabledEvents || []).filter(e => e.type === 'execution_start' && e.metadata?.execution_depth > 0);
+    const subCompleteEvents = (toolEnabledEvents || []).filter(e => e.type === 'execution_complete' && e.metadata?.execution_depth > 0);
+
+    // Render budget allocation context window snapshot at the top (before execution_start)
+    if (contextWindowSnapshotHtml) {
+        _renderStandardStep({
+            step: 'Context Window Assembly',
+            details: contextWindowSnapshotHtml,
+            type: 'context_window_snapshot',
+            _filterCategory: 'context'
+        }, DOM.statusWindowContent, true);
+    }
+
+    // Render depth=0 execution_start at the top (parent executor bookend)
+    for (const startEvent of depth0StartEvents) {
+        const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+            ? window.EventHandlers.getLifecycleTitle('execution_start', startEvent.payload, startEvent.payload?.profile_type || 'tool_enabled')
+            : 'Efficiency Focused Started';
+        _renderStandardStep({
+            step: stepTitle,
+            details: startEvent.payload,
+            type: 'execution_start',
+            metadata: startEvent.metadata,
+            _filterCategory: 'system'
+        }, DOM.statusWindowContent, true);
+    }
+
+    // Render strategic per-call context snapshot (after execution_start, before planning events)
+    if (strategicSnapshotHtml) {
+        _renderStandardStep({
+            step: 'Context Assembly (Strategic)',
+            details: strategicSnapshotHtml,
+            type: 'context_window_snapshot',
+            _filterCategory: 'context'
+        }, DOM.statusWindowContent, true);
+    }
+
+    // --- PHASE 2: Render knowledge retrieval event FIRST if present ---
+    if (knowledgeRetrievalEvent) {
+        // Use knowledge_retrieval_complete type to show duration if available
+        const eventType = knowledgeRetrievalEvent.duration_ms ? 'knowledge_retrieval_complete' : 'knowledge_retrieval';
+        const docCount = knowledgeRetrievalEvent.document_count || 0;
+        const duration = knowledgeRetrievalEvent.duration_ms || 0;
+        const stepTitle = eventType === 'knowledge_retrieval_complete'
+            ? `Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`
+            : `Knowledge Retrieved (${docCount} chunks)`;
+        // Render directly via _renderConversationAgentStep to avoid title override.
+        // (updateStatusWindow with 'knowledge_retrieval' source would reset the title
+        // that handleReloadPlanClick already set to "<Branded Agent> - Turn X".)
+        _renderConversationAgentStep({
+            step: stepTitle,
+            details: knowledgeRetrievalEvent,
+            type: eventType,
+            _filterCategory: 'knowledge'
+        }, DOM.statusWindowContent, false);
+    }
+    // --- PHASE 2 END ---
+
+    // --- KG ENRICHMENT: Render knowledge graph enrichment event if present ---
+    if (kgEnrichmentEvent) {
+        const entities = kgEnrichmentEvent.total_entities || 0;
+        const rels = kgEnrichmentEvent.total_relationships || 0;
+        _renderConversationAgentStep({
+            step: `Knowledge Graph Enrichment (${entities} entities, ${rels} relationships)`,
+            details: kgEnrichmentEvent,
+            type: 'kg_enrichment',
+            _filterCategory: 'knowledge'
+        }, DOM.statusWindowContent, true);
+    }
+
+    // 2. Iterate through the execution trace with collapsible phase containers
+    // Phase container stack mirrors the live execution's phaseContainerStack
+    const _phaseContainerStack = [];
+    let _prevTraceDepth = 0;
+    let _subStartRendered = false;
+    let _subCompleteRendered = false;
+
+    // Helper: get the current render target (innermost phase content or root)
+    const _getPhaseTarget = () => {
+        if (_phaseContainerStack.length > 0) {
+            return _phaseContainerStack[_phaseContainerStack.length - 1]
+                .querySelector('.status-phase-content') || DOM.statusWindowContent;
+        }
+        return DOM.statusWindowContent;
+    };
+
+    executionTrace.forEach(traceEntry => {
+        const _traceMetadata = traceEntry.action?.metadata || {};
+        const _currentTraceDepth = _traceMetadata.execution_depth || 0;
+
+        // --- Intercept phase_start: create collapsible container ---
+        if (traceEntry.action?.tool_name === 'TDA_SystemLog' && _traceMetadata.type === 'phase_start') {
+            const details = traceEntry.action.arguments?.details || {};
+            const depth = _traceMetadata.execution_depth || 0;
+
+            // Close any containers at same or deeper depth (handles re-planning)
+            while (_phaseContainerStack.length > depth) {
+                const old = _phaseContainerStack.pop();
+                if (old) old.classList.add('completed');
+            }
+
+            const phaseContainer = document.createElement('details');
+            phaseContainer.className = 'status-phase-container';
+            phaseContainer.dataset.filterCategory = 'planning';
+            if (!isFilterCategoryEnabled('planning')) {
+                phaseContainer.classList.add('event-filtered-hidden');
+            }
+            // Collapsed by default — user can expand to inspect details
+            phaseContainer.open = false;
+
+            const phaseHeader = document.createElement('summary');
+            phaseHeader.className = 'status-phase-header phase-start';
+            const depthPrefix = depth > 0 ? '↳ '.repeat(depth) : '';
+            phaseHeader.innerHTML = `
+                <span class="font-bold flex-shrink-0">${depthPrefix}Phase ${details.phase_num}/${details.total_phases}</span>
+                <span class="text-gray-400 text-xs truncate ml-2">${details.goal || ''}</span>
+            `;
+            phaseContainer.appendChild(phaseHeader);
+
+            const phaseContent = document.createElement('div');
+            phaseContent.className = 'status-phase-content';
+            phaseContainer.appendChild(phaseContent);
+
+            _getPhaseTarget().appendChild(phaseContainer);
+            _phaseContainerStack.push(phaseContainer);
+
+            _prevTraceDepth = _currentTraceDepth;
+            return; // Consumed — don't render as a flat step
+        }
+
+        // --- Intercept phase_end: close container with footer ---
+        if (traceEntry.action?.tool_name === 'TDA_SystemLog' && _traceMetadata.type === 'phase_end') {
+            const containerToEnd = _phaseContainerStack.pop();
+            if (containerToEnd) {
+                const details = traceEntry.action.arguments?.details || {};
+                const depth = details.execution_depth ?? (_traceMetadata.execution_depth || 0);
+                const depthPrefix = depth > 0 ? '↳ '.repeat(depth) : '';
+
+                const phaseFooter = document.createElement('div');
+                phaseFooter.className = 'status-phase-header phase-end';
+
+                if (details.status === 'skipped') {
+                    phaseFooter.classList.add('skipped');
+                    phaseFooter.innerHTML = `<span class="font-bold">${depthPrefix}Phase ${details.phase_num}/${details.total_phases} Skipped</span>`;
+                } else {
+                    phaseFooter.innerHTML = `<span class="font-bold">${depthPrefix}Phase ${details.phase_num}/${details.total_phases} Completed</span>`;
+                    containerToEnd.classList.add('completed');
+                }
+                containerToEnd.appendChild(phaseFooter);
+            }
+
+            _prevTraceDepth = _currentTraceDepth;
+            return; // Consumed — don't render as a flat step
+        }
+
+        // Transition depth=0 → depth>0: insert sub-executor's execution_start
+        if (_currentTraceDepth > 0 && _prevTraceDepth === 0 && !_subStartRendered) {
+            for (const startEvent of subStartEvents) {
+                const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+                    ? window.EventHandlers.getLifecycleTitle('execution_start', startEvent.payload, startEvent.payload?.profile_type || 'tool_enabled')
+                    : 'Efficiency Focused Started';
+                _renderStandardStep({
+                    step: stepTitle,
+                    details: startEvent.payload,
+                    type: 'execution_start',
+                    metadata: startEvent.metadata,
+                    _filterCategory: 'system'
+                }, _getPhaseTarget(), true);
+            }
+            _subStartRendered = true;
+        }
+
+        // Transition depth>0 → depth=0: insert sub-executor's execution_complete
+        if (_currentTraceDepth === 0 && _prevTraceDepth > 0 && !_subCompleteRendered) {
+            for (const completeEvent of subCompleteEvents) {
+                const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+                    ? window.EventHandlers.getLifecycleTitle('execution_complete', completeEvent.payload, completeEvent.payload?.profile_type || 'tool_enabled')
+                    : 'Execution Complete';
+                _renderStandardStep({
+                    step: stepTitle,
+                    details: completeEvent.payload,
+                    type: 'execution_complete',
+                    metadata: completeEvent.metadata,
+                    _filterCategory: 'system'
+                }, _getPhaseTarget(), true);
+            }
+            _subCompleteRendered = true;
+        }
+
+        _prevTraceDepth = _currentTraceDepth;
+
+        let eventData = {};
+
+        if (traceEntry.action && traceEntry.action.tool_name === 'TDA_SystemLog') {
+            // Skip context_window_snapshot — handled separately by _renderContextWindowSnapshotForReload()
+            // which uses the structured payload for rich visualization (trace only has plain text details)
+            const metadata = traceEntry.action.metadata || {};
+            if (metadata.type === 'context_window_snapshot') return;
+
+            // This is a system event (plan_generated, system_message, workaround, etc.)
+            eventData = {
+                step: traceEntry.action.arguments.message,
+                details: traceEntry.action.arguments.details,
+                type: metadata.type,
+                _filterCategory: getFilterCategory('rest', metadata.type),
+                metadata: {
+                    execution_depth: metadata.execution_depth
+                }
+            };
+        } else if (traceEntry.action && traceEntry.result) {
+            // This is a regular tool call, render as two steps
+            const metadata = traceEntry.action.metadata || {};
+
+            // Render intent
+            const intentEventData = {
+                step: `Tool Execution Intent`,
+                details: traceEntry.action,
+                type: 'tool_intent',
+                _filterCategory: 'tool-execution',
+                metadata: {
+                    execution_depth: metadata.execution_depth
+                }
+            };
+            _renderStandardStep(intentEventData, _getPhaseTarget(), true);
+
+            // Render result
+            const resultType = traceEntry.result.status === 'error' ? 'tool_error' : 'tool_result';
+            const resultEventData = {
+                step: `Tool Execution Result`,
+                details: traceEntry.result,
+                type: resultType,
+                _filterCategory: 'tool-execution',
+                metadata: {
+                    execution_depth: metadata.execution_depth
+                }
+            };
+            _renderStandardStep(resultEventData, _getPhaseTarget(), true);
+            return; // We've handled this entry completely
+        } else {
+            // Skip unknown trace entry formats
+            return;
+        }
+
+        // Render system event into current phase container
+        _renderStandardStep(eventData, _getPhaseTarget(), true);
+    });
+
+    // If trace ended at depth>0, render sub-executor execution_complete after trace
+    if (_prevTraceDepth > 0 && !_subCompleteRendered) {
+        for (const completeEvent of subCompleteEvents) {
+            const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+                ? window.EventHandlers.getLifecycleTitle('execution_complete', completeEvent.payload, completeEvent.payload?.profile_type || 'tool_enabled')
+                : 'Execution Complete';
+            _renderStandardStep({
+                step: stepTitle,
+                details: completeEvent.payload,
+                type: 'execution_complete',
+                metadata: completeEvent.metadata,
+                _filterCategory: 'system'
+            }, _getPhaseTarget(), true);
+        }
+    }
+
+    // Close any remaining open phase containers (edge case: trace ends mid-phase)
+    while (_phaseContainerStack.length > 0) {
+        const remaining = _phaseContainerStack.pop();
+        if (remaining) remaining.classList.add('completed');
+    }
+
+    // Render system events (session name generation, etc.) after execution trace
+    if (systemEvents && systemEvents.length > 0) {
+        systemEvents.forEach((event, index) => {
+            const isFinal = index === systemEvents.length - 1;
+            // Payload now contains the complete event_dict (step, details, type)
+            const eventData = event.payload;
+            // Add type from parent event structure (stored as {type: "...", payload: {...}})
+            if (!eventData.type && event.type) {
+                eventData.type = event.type;
+            }
+
+            // Skip context_window_snapshot — handled separately by _renderContextWindowSnapshotForReload()
+            if (eventData.type === 'context_window_snapshot') return;
+
+            // --- SKIP REDUNDANT RAG SYNTHESIS PREVIEW EVENT ---
+            // Skip the system_message that fires BEFORE LLM call (no data)
+            // The rag_llm_step event will follow with correct token/model data
+            if (eventData.type === 'system_message' && eventData.details?.summary === 'Synthesizing answer from retrieved knowledge') {
+                console.log('[Event Reload] Skipping redundant system_message preview event');
+                return; // Skip this event
+            }
+            // --- END SKIP ---
+
+            // --- HARMONIZATION: Regenerate title for knowledge events during reload ---
+            // Import harmonization functions from eventHandlers.js
+            if (window.EventHandlers && eventData.type) {
+                let harmonizedTitle = null;
+
+                // Detect profile type from event context (RAG profile uses knowledge events)
+                const isRagProfile = eventData.type.includes('knowledge') || eventData.type === 'rag_llm_step' || eventData.type === 'tool_result';
+
+                if (isRagProfile && typeof window.EventHandlers.getRagFocusedTitle === 'function') {
+                    harmonizedTitle = window.EventHandlers.getRagFocusedTitle(eventData.type, eventData.details || {});
+                } else if (typeof window.EventHandlers.getToolEnabledTitle === 'function') {
+                    harmonizedTitle = window.EventHandlers.getToolEnabledTitle(eventData.type, eventData.details || {});
+                }
+
+                // Override stored title with harmonized version
+                if (harmonizedTitle) {
+                    eventData.step = harmonizedTitle;
+                }
+            }
+            // --- END HARMONIZATION ---
+
+            // Tag with filter category for event filter chips
+            if (!eventData._filterCategory) {
+                eventData._filterCategory = getFilterCategory('rest', eventData.type);
+            }
+
+            // Use standard renderer for system events
+            _renderStandardStep(eventData, DOM.statusWindowContent, isFinal);
+        });
+    }
+
+    // Finalize the last step
+    const finalStepElement = document.getElementById(`status-step-${state.currentStatusId}`);
+    if (finalStepElement && finalStepElement.classList.contains('active')) {
+        finalStepElement.classList.remove('active');
+        if (!finalStepElement.classList.contains('error') && !finalStepElement.classList.contains('cancelled')) {
+            finalStepElement.classList.add('completed');
+        }
+    }
+
+    // Display turn tokens in the token counter if available
+    if (turnTokens) {
+        updateTokenDisplay({
+            statement_input: 0,  // No single statement for historical view
+            statement_output: 0,
+            turn_input: turnTokens.turn_input_tokens || 0,
+            turn_output: turnTokens.turn_output_tokens || 0,
+            total_input: 0,  // Session totals not shown for historical turn
+            total_output: 0
+        });
+    }
+
+    // --- Execution Summary Card for tool_enabled profiles ---
+    // Use execution_complete from tool_enabled_events if available (includes token counts),
+    // otherwise fall back to manually constructed summary card for backwards compatibility.
+    // Only depth=0 events render here (sub-executor events already rendered inline in trace).
+    const depth0CompleteEvents = (toolEnabledEvents || []).filter(e => e.type === 'execution_complete' && !(e.metadata?.execution_depth > 0));
+    if (depth0CompleteEvents.length > 0) {
+        for (const completeEvent of depth0CompleteEvents) {
+            const stepTitle = window.EventHandlers && typeof window.EventHandlers.getLifecycleTitle === 'function'
+                ? window.EventHandlers.getLifecycleTitle('execution_complete', completeEvent.payload, completeEvent.payload?.profile_type || 'tool_enabled')
+                : 'Execution Complete';
+            _renderStandardStep({
+                step: stepTitle,
+                details: completeEvent.payload,
+                type: 'execution_complete',
+                metadata: completeEvent.metadata,
+                _filterCategory: 'system'
+            }, DOM.statusWindowContent, true);
+        }
+    } else if (durationMs > 0) {
+        // Fallback for old sessions without tool_enabled_events
+        const summaryCard = document.createElement('div');
+        summaryCard.className = 'status-step p-3 rounded-md mb-2 completed lifecycle';
+        summaryCard.dataset.filterCategory = 'system';
+
+        const durationSec = (durationMs / 1000).toFixed(1);
+        const phaseCount = (originalPlan || []).length;
+        const toolCount = (executionTrace || []).reduce((acc, entry) => {
+            if (entry.action && entry.action.tool_name && entry.action.tool_name !== 'TDA_SystemLog') {
+                return acc + 1;
+            }
+            return acc;
+        }, 0);
+        const inputTokens = turnTokens?.turn_input_tokens || 0;
+        const outputTokens = turnTokens?.turn_output_tokens || 0;
+
+        summaryCard.innerHTML = `
+            <div class="flex items-center gap-2 mb-2">
+                <h4 class="font-bold text-sm text-white">Execution Complete</h4>
+            </div>
+            <div class="status-details text-xs text-gray-300">
+                <div class="status-kv-grid">
+                    <div class="status-kv-key">Phases</div>
+                    <div class="status-kv-value">${phaseCount} completed</div>
+                    <div class="status-kv-key">Tools</div>
+                    <div class="status-kv-value">${toolCount} executed</div>
+                    <div class="status-kv-key">Tokens</div>
+                    <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                    <div class="status-kv-key">Duration</div>
+                    <div class="status-kv-value">${durationSec}s</div>
+                </div>
+            </div>
+        `;
+        DOM.statusWindowContent.appendChild(summaryCard);
+    }
+    // --- End Execution Summary Card ---
+
+    // Auto-scroll logic
+    if (!state.isMouseOverStatus) {
+        DOM.statusWindowContent.scrollTop = 0; // Scroll to top for reloaded view
+    }
+}
+
+
+/**
+ * Show extension result when clicking an extension tag on a user message.
+ * For chat_append extensions: scrolls to and highlights the existing output block.
+ * For silent/status_panel extensions: fetches turn details and shows an inline popover.
+ */
+function _showExtensionResult(tagEl, messageBubble) {
+    const extName = tagEl.dataset.extName;
+
+    // Toggle off: remove existing popover if already shown
+    const existingPopover = messageBubble.querySelector(`.ext-result-popover[data-ext-name="${extName}"]`);
+    if (existingPopover) {
+        existingPopover.remove();
+        return;
+    }
+
+    // Look for chat_append output in the adjacent assistant message
+    const nextBubble = messageBubble.nextElementSibling;
+    if (nextBubble) {
+        const chatAppendBlock = nextBubble.querySelector(`.extension-output[data-ext-name="${extName}"]`);
+        if (chatAppendBlock) {
+            chatAppendBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            chatAppendBlock.classList.add('ext-highlight');
+            setTimeout(() => chatAppendBlock.classList.remove('ext-highlight'), 1500);
+            return;
+        }
+    }
+
+    // For silent/status_panel extensions: fetch turn details and show inline popover
+    // turnId may be on the user avatar (set retroactively), user/assistant badge, or assistant avatar
+    const turnId = messageBubble.querySelector('[data-turn-id]')?.dataset?.turnId
+        || nextBubble?.querySelector('[data-turn-id]')?.dataset?.turnId;
+    if (!turnId) return;
+
+    fetchTurnDetails(state.currentSessionId, turnId).then(turnData => {
+        const result = turnData?.extension_results?.[extName];
+        if (!result) return;
+
+        const contentStr = typeof result.content === 'object'
+            ? JSON.stringify(result.content, null, 2)
+            : String(result.content || result.error || 'No content');
+        const escapedContent = contentStr.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        const popover = document.createElement('div');
+        popover.className = 'ext-result-popover';
+        popover.dataset.extName = extName;
+        popover.innerHTML = `
+            <div class="text-xs font-medium text-amber-300 mb-1">!${extName} result
+                <span class="text-gray-500 font-normal">${result.content_type || 'json'}</span>
+            </div>
+            <pre class="text-xs text-gray-400 whitespace-pre-wrap overflow-auto max-h-48" style="font-family: 'JetBrains Mono', monospace;">${escapedContent}</pre>
+        `;
+        messageBubble.appendChild(popover);
+    }).catch(err => {
+        console.warn(`[ExtTag] Failed to fetch result for !${extName}:`, err);
+    });
+}
+
+
+export function addMessage(role, content, turnId = null, isValid = true, source = null, profileTag = null, isSessionPrimer = false, extensionSpecs = null, skillSpecs = null) { // eslint-disable-line no-unused-vars
+    // Normalize content - Google Gemini may return content as an array of parts
+    if (Array.isArray(content)) {
+        content = content.map(part => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object') {
+                // Handle Google Gemini content parts (text, thinking, etc.)
+                return part.text || part.thinking || JSON.stringify(part);
+            }
+            return String(part);
+        }).join(' ');
+    } else if (content && typeof content !== 'string') {
+        content = String(content);
+    }
+    content = content || '';
+
+    // Hide welcome screen when adding a message
+    if (window.hideWelcomeScreen) {
+        window.hideWelcomeScreen();
+    }
+    
+    const wrapper = document.createElement('div');
+    wrapper.className = `message-bubble group flex items-start gap-4 ${role === 'user' ? 'justify-end' : ''}`;
+    const icon = document.createElement('div');
+    icon.className = 'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-lg';
+    icon.textContent = role === 'user' ? 'U' : 'A';
+    icon.style.background = role === 'user' ? 'var(--avatar-bg, #4b5563)' : 'var(--teradata-orange, #F15F22)';
+    // Add role-specific class for selector compatibility
+    icon.classList.add(role === 'user' ? 'user-avatar' : 'assistant-avatar-icon');
+
+    if (role === 'assistant' && turnId) {
+        icon.classList.add('assistant-avatar');
+        icon.classList.add('clickable-avatar');
+        if (state.showTooltips) {
+            icon.title = 'Long-press to replay original query';
+        }
+        let pressTimer;
+
+        const startPress = (e) => {
+            e.preventDefault();
+            icon.classList.add('long-press');
+            pressTimer = setTimeout(() => {
+                icon.classList.remove('long-press');
+                handleReplayQueryClick({ dataset: { turnId } });
+            }, 1500);
+        };
+
+        const cancelPress = () => {
+            clearTimeout(pressTimer);
+            icon.classList.remove('long-press');
+        };
+
+        icon.addEventListener('mousedown', startPress);
+        icon.addEventListener('mouseup', cancelPress);
+        icon.addEventListener('mouseleave', cancelPress);
+        icon.addEventListener('touchstart', startPress, { passive: true });
+        icon.addEventListener('touchend', cancelPress, { passive: true });
+    }
+
+    // This logic is now handled by the badge.
+
+    const messageContainer = document.createElement('div');
+    messageContainer.className = 'p-4 rounded-xl shadow-lg max-w-3xl glass-panel relative';
+    // Use theme-aware gradients for message backgrounds
+    messageContainer.style.background = role === 'user' 
+        ? 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)' 
+        : 'var(--message-assistant-bg, rgba(30, 41, 59, 0.9))';
+
+    // Add profile badge for user messages if profileTag is provided
+    let profileBadge = null;
+    if (role === 'user' && profileTag) {
+        profileBadge = document.createElement('div');
+        profileBadge.className = 'profile-tag profile-tag--md message-profile-badge flex-shrink-0';
+        profileBadge.textContent = `@${profileTag}`;
+        profileBadge.title = `Executed with profile: ${profileTag}`;
+
+        // Apply profile-specific colors via CSS custom properties
+        if (window.configState?.profiles) {
+            const profile = window.configState.profiles.find(p => p.tag === profileTag);
+            if (profile && profile.color) {
+                // PURE INDUSTRIAL SOLID COLORS
+                const adjustBrightness = (hex, percent) => {
+                    hex = hex.replace('#', '');
+                    const r = parseInt(hex.slice(0, 2), 16);
+                    const g = parseInt(hex.slice(2, 4), 16);
+                    const b = parseInt(hex.slice(4, 6), 16);
+                    const factor = 1 + (percent / 100);
+                    const newR = Math.min(255, Math.max(0, Math.round(r * factor)));
+                    const newG = Math.min(255, Math.max(0, Math.round(g * factor)));
+                    const newB = Math.min(255, Math.max(0, Math.round(b * factor)));
+                    const toHex = (n) => n.toString(16).padStart(2, '0');
+                    return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
+                };
+
+                // PURE INDUSTRIAL: Flat monolithic design
+                profileBadge.style.setProperty('--profile-tag-bg', profile.color);
+                // Flat monolithic: Border matches background (no gradient depth)
+                profileBadge.style.setProperty('--profile-tag-border', profile.color);
+                // Pure industrial: Always white text on solid color backgrounds
+                profileBadge.style.setProperty('--profile-tag-text', '#FFFFFF');
+            }
+        }
+        profileBadge.style.alignSelf = 'flex-start';
+        profileBadge.style.marginRight = '12px';
+    }
+
+    const author = document.createElement('p');
+    author.className = 'font-bold mb-2 text-sm';
+    author.textContent = role === 'user' ? 'You' : 'Assistant';
+    author.style.color = role === 'user' ? 'var(--text-secondary, #d1d5db)' : 'var(--teradata-orange, #F15F22)';
+    messageContainer.appendChild(author);
+
+    if (role === 'user' && source === 'rest') {
+        const restTag = document.createElement('span');
+        restTag.className = 'rest-call-tag';
+        restTag.textContent = 'Rest Call';
+        author.appendChild(restTag);
+    }
+
+    // Add Session Primer badge for primer messages (both user and assistant)
+    if (isSessionPrimer) {
+        const primerTag = document.createElement('span');
+        primerTag.className = 'primer-tag text-xs px-2 py-0.5 rounded ml-2';
+
+        // Detect light mode for proper contrast
+        const isLightMode = document.documentElement.getAttribute('data-theme') === 'light';
+
+        if (isLightMode) {
+            // Light mode: use nearly opaque colors with proper !important syntax
+            primerTag.style.setProperty('background', 'rgba(6, 182, 212, 0.95)', 'important');
+            primerTag.style.setProperty('color', '#000000', 'important');
+            primerTag.style.setProperty('border', '1px solid rgba(6, 182, 212, 1.0)', 'important');
+            primerTag.style.padding = '0.125rem 0.5rem';
+            primerTag.style.borderRadius = '0.25rem';
+            primerTag.style.marginLeft = '0.5rem';
+            primerTag.style.fontSize = '0.75rem';
+            primerTag.style.lineHeight = '1rem';
+        } else {
+            // Dark mode: use lighter colors
+            primerTag.style.background = 'rgba(6, 182, 212, 0.3)';
+            primerTag.style.color = 'rgb(103, 232, 249)';
+            primerTag.style.border = '1px solid rgba(6, 182, 212, 0.4)';
+            primerTag.style.padding = '0.125rem 0.5rem';
+            primerTag.style.borderRadius = '0.25rem';
+            primerTag.style.marginLeft = '0.5rem';
+            primerTag.style.fontSize = '0.75rem';
+            primerTag.style.lineHeight = '1rem';
+        }
+
+        primerTag.textContent = 'Primer';
+        primerTag.title = 'Session initialization message';
+        author.appendChild(primerTag);
+    }
+
+    // Render skill tags for user messages (emerald badges like #sql-expert, #concise)
+    if (role === 'user' && skillSpecs && skillSpecs.length > 0) {
+        skillSpecs.forEach(spec => {
+            const skillTag = document.createElement('span');
+            skillTag.className = 'skill-tag';
+            skillTag.textContent = `#${spec.name}${spec.param ? ':' + spec.param : ''}`;
+            skillTag.title = `Skill: ${spec.name}${spec.param ? ' (' + spec.param + ')' : ''}`;
+            author.appendChild(skillTag);
+        });
+    }
+
+    // Render extension tags for user messages (amber badges like !json, !decision:critical)
+    if (role === 'user' && extensionSpecs && extensionSpecs.length > 0) {
+        extensionSpecs.forEach(spec => {
+            const extTag = document.createElement('span');
+            extTag.className = 'extension-tag';
+            extTag.textContent = `!${spec.name}${spec.param ? ':' + spec.param : ''}`;
+            extTag.title = `Extension: ${spec.name}${spec.param ? ' (' + spec.param + ')' : ''} — click to view result`;
+            extTag.dataset.extName = spec.name;
+            extTag.dataset.extParam = spec.param || '';
+
+            // Click handler: show extension result
+            extTag.addEventListener('click', () => {
+                _showExtensionResult(extTag, wrapper);
+            });
+
+            author.appendChild(extTag);
+        });
+    }
+
+    const messageContent = document.createElement('div');
+    messageContent.className = 'message-content';
+    // Render markdown for assistant messages if marked.js is available
+    // Skip markdown parsing for content that is already HTML (e.g., RAG responses, formatted tool outputs)
+    const isAlreadyHtml = content && (
+        content.trim().startsWith('<div') ||
+        content.trim().startsWith('<p') ||
+        content.includes('class="rag-') ||
+        content.includes('class="sql-') ||
+        content.includes('class="tool-')
+    );
+
+    if (role === 'assistant' && typeof marked !== 'undefined' && !isAlreadyHtml) {
+        try {
+            messageContent.innerHTML = marked.parse(content);
+        } catch (e) {
+            console.warn('[UI] Failed to parse markdown, falling back to raw content:', e);
+            messageContent.innerHTML = content;
+        }
+    } else {
+        messageContent.innerHTML = content;
+    }
+    messageContainer.appendChild(messageContent);
+
+    if (role === 'user') {
+        if (profileBadge) {
+            wrapper.appendChild(profileBadge);
+        }
+        wrapper.appendChild(messageContainer);
+    } else {
+        wrapper.appendChild(icon);
+    }
+    wrapper.appendChild(role === 'user' ? icon : messageContainer);
+
+    // --- MODIFICATION START: Add vertical feedback stack for assistant answers ---
+    if (role === 'assistant' && turnId) {
+        const feedbackWrapper = document.createElement('div');
+        feedbackWrapper.className = 'mt-2 flex justify-end';
+        feedbackWrapper.dataset.turnId = turnId;
+
+        const pill = document.createElement('div');
+        pill.className = 'flex items-stretch rounded-md bg-gray-900/50 border border-white/10 overflow-hidden backdrop-blur-sm';
+
+        const makeBtn = (dir) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            // Removed 'group' so hover only affects this button, not sibling
+            btn.className = 'feedback-btn px-2 py-1 flex items-center justify-center gap-1 text-gray-300 hover:text-white hover:bg-gray-800/60 transition text-xs';
+            btn.setAttribute('aria-label', dir === 'up' ? 'Mark answer as helpful' : 'Mark answer as unhelpful');
+            btn.setAttribute('aria-pressed', 'false');
+            btn.dataset.vote = dir;
+            const svg = dir === 'up'
+                ? `<svg class='w-4 h-4' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'>
+                     <path d='M14 9V5a3 3 0 00-3-3l-4 9v11h11a3 3 0 003-3v-5a3 3 0 00-3-3h-7'/>
+                   </svg>`
+                : `<svg class='w-4 h-4' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'>
+                     <path d='M10 15v4a3 3 0 003 3l4-9V2H6a3 3 0 00-3 3v5a3 3 0 003 3h7'/>
+                   </svg>`;
+            const labelText = dir === 'up' ? 'Helpful' : 'Unhelpful';
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'vote-label opacity-70 transition text-[10px] tracking-wide text-gray-400';
+            labelSpan.textContent = labelText;
+            btn.innerHTML = svg; // set icon first
+            btn.appendChild(labelSpan);
+            // Isolated hover: only brighten hovered button's label
+            btn.addEventListener('mouseenter', () => {
+                labelSpan.classList.remove('opacity-70', 'text-gray-400');
+                labelSpan.classList.add('opacity-100', 'text-white');
+            });
+            btn.addEventListener('mouseleave', () => {
+                labelSpan.classList.add('opacity-70', 'text-gray-400');
+                labelSpan.classList.remove('opacity-100', 'text-white');
+            });
+            return btn;
+        };
+
+        const upBtn = makeBtn('up');
+        const divider = document.createElement('div');
+        divider.className = 'w-px bg-white/10';
+        const downBtn = makeBtn('down');
+
+        const applyState = () => {
+            const current = state.feedbackByTurn[turnId] || 'none';
+            upBtn.classList.toggle('active', current === 'up');
+            downBtn.classList.toggle('active', current === 'down');
+            upBtn.setAttribute('aria-pressed', current === 'up' ? 'true' : 'false');
+            downBtn.setAttribute('aria-pressed', current === 'down' ? 'true' : 'false');
+            if (current === 'up') {
+                upBtn.classList.remove('text-gray-300');
+                upBtn.classList.add('text-[#F15F22]', 'bg-gray-800/60');
+                downBtn.classList.add('text-gray-300');
+                downBtn.classList.remove('text-[#F15F22]', 'bg-gray-800/60');
+            } else if (current === 'down') {
+                downBtn.classList.remove('text-gray-300');
+                downBtn.classList.add('text-[#F15F22]', 'bg-gray-800/60');
+                upBtn.classList.add('text-gray-300');
+                upBtn.classList.remove('text-[#F15F22]', 'bg-gray-800/60');
+            } else {
+                upBtn.classList.add('text-gray-300');
+                upBtn.classList.remove('text-[#F15F22]', 'bg-gray-800/60');
+                downBtn.classList.add('text-gray-300');
+                downBtn.classList.remove('text-[#F15F22]', 'bg-gray-800/60');
+            }
+        };
+
+        const toggleVote = (dir) => {
+            const current = state.feedbackByTurn[turnId] || 'none';
+            state.feedbackByTurn[turnId] = current === dir ? null : dir;
+            applyState();
+            
+            // --- MODIFICATION START: Save feedback to backend ---
+            const vote = state.feedbackByTurn[turnId];
+            if (state.currentSessionId) {
+                import('./api.js').then(({ updateTurnFeedback }) => {
+                    updateTurnFeedback(state.currentSessionId, turnId, vote)
+                        .catch(err => {
+                            console.error(`Failed to save feedback for turn ${turnId}:`, err);
+                        });
+                });
+            }
+            // --- MODIFICATION END ---
+        };
+
+        upBtn.addEventListener('click', () => toggleVote('up'));
+        downBtn.addEventListener('click', () => toggleVote('down'));
+
+        pill.appendChild(upBtn);
+        pill.appendChild(divider);
+        pill.appendChild(downBtn);
+        feedbackWrapper.appendChild(pill);
+        messageContainer.appendChild(feedbackWrapper);
+        applyState();
+    }
+    // --- MODIFICATION END ---
+
+    DOM.chatLog.appendChild(wrapper);
+
+    // Logic for avatar click, header buttons, and turn badges
+    if (role === 'assistant' && turnId) {
+        // --- Add Turn Badge to Assistant Avatar ---
+        const assistantBadge = document.createElement('span');
+        assistantBadge.className = 'turn-badge clickable-badge';
+        assistantBadge.dataset.turnId = turnId;
+        if (state.showTooltips) {
+            assistantBadge.title = 'Click to toggle context validity';
+        }
+        assistantBadge.addEventListener('mousedown', (e) => e.stopPropagation());
+        assistantBadge.textContent = turnId;
+        assistantBadge.classList.add('assistant-badge');
+        wrapper.appendChild(assistantBadge); // Append badge to wrapper, not icon
+
+        if (isValid === false) {
+            assistantBadge.classList.add('context-invalid');
+        }
+
+
+        // --- Find previous User message and add badge/click handler ---
+        const userBubbles = DOM.chatLog.querySelectorAll('.message-bubble:has(.user-avatar)');
+        const lastUserBubble = userBubbles.length > 0 ? userBubbles[userBubbles.length - 1] : null;
+
+        if (lastUserBubble) {
+            const userAvatarIcon = lastUserBubble.querySelector('.user-avatar');
+            if (userAvatarIcon) {
+                // 1. Make the User Avatar clickable (REGARDLESS of context)
+                userAvatarIcon.classList.add('clickable-avatar');
+                userAvatarIcon.dataset.turnId = turnId;
+
+                // --- Add Turn Badge to User Avatar ---
+                const userBadge = document.createElement('span');
+                userBadge.className = 'turn-badge clickable-badge';
+                userBadge.dataset.turnId = turnId;
+                if (state.showTooltips) {
+                    userBadge.title = 'Click to toggle context validity';
+                }
+                userBadge.addEventListener('mousedown', (e) => e.stopPropagation());
+                userBadge.textContent = turnId;
+                userBadge.classList.add('user-badge');
+                lastUserBubble.appendChild(userBadge); // Append badge to wrapper, not icon
+
+                if (isValid === false) {
+                    userBadge.classList.add('context-invalid');
+                }
+                if (state.showTooltips) {
+                    if (isValid === false) {
+                        userAvatarIcon.title = `Reload Details for Turn ${turnId} (Archived Context)`;
+                    } else {
+                        userAvatarIcon.title = `Reload Plan & Details for Turn ${turnId}`;
+                    }
+                }
+            }
+        }
+
+        // --- Show and update the header replay buttons ---
+        if (DOM.headerReplayPlannedButton) {
+            DOM.headerReplayPlannedButton.classList.remove('hidden');
+            DOM.headerReplayPlannedButton.dataset.turnId = turnId;
+        }
+        if (DOM.headerReplayOptimizedButton) {
+            DOM.headerReplayOptimizedButton.classList.remove('hidden');
+            DOM.headerReplayOptimizedButton.dataset.turnId = turnId;
+        }
+    }
+
+    // --- Component rendering: generalized [data-component-id] + legacy .chart-render-target ---
+    const componentContainers = messageContent.querySelectorAll('[data-component-id]');
+    componentContainers.forEach(container => {
+        const componentId = container.dataset.componentId;
+        const spec = container.dataset.spec;
+        if (componentId && spec && hasRenderer(componentId)) {
+            renderComponent(componentId, container.id, spec);
+        }
+    });
+
+    // Legacy: .chart-render-target without data-component-id (backward compat)
+    const chartContainers = messageContent.querySelectorAll('.chart-render-target:not([data-component-id])');
+    chartContainers.forEach(container => {
+        if (container.dataset.spec) {
+            renderChart(container.id, container.dataset.spec);
+        }
+    });
+
+    wrapper.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+/**
+ * Updates the profile badge of the most recent user message.
+ * Used when the backend resolves the correct profile tag for session primers.
+ * @param {string} profileTag - The profile tag to display
+ */
+export function updateLastUserMessageProfileTag(profileTag) {
+    if (!profileTag) return;
+
+    // Find the last user message wrapper
+    const chatContainer = DOM.chatLog;
+    if (!chatContainer) return;
+
+    const messageWrappers = chatContainer.querySelectorAll('.message-bubble');
+    let lastUserWrapper = null;
+
+    // Find the last user message (has justify-end class)
+    for (let i = messageWrappers.length - 1; i >= 0; i--) {
+        if (messageWrappers[i].classList.contains('justify-end')) {
+            lastUserWrapper = messageWrappers[i];
+            break;
+        }
+    }
+
+    if (!lastUserWrapper) return;
+
+    // Check if there's already a profile badge
+    let existingBadge = lastUserWrapper.querySelector('[title^="Executed with profile"]');
+
+    // Create or update the badge
+    // PURE INDUSTRIAL SOLID COLORS
+    const adjustBrightness = (hex, percent) => {
+        hex = hex.replace('#', '');
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        const factor = 1 + (percent / 100);
+        const newR = Math.min(255, Math.max(0, Math.round(r * factor)));
+        const newG = Math.min(255, Math.max(0, Math.round(g * factor)));
+        const newB = Math.min(255, Math.max(0, Math.round(b * factor)));
+        const toHex = (n) => n.toString(16).padStart(2, '0');
+        return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
+    };
+
+    // Get profile colors if available - use solid colors
+    let bgStyleValue = null;
+    let borderColorValue = null;
+    let textColorValue = '#FFFFFF';  // Pure industrial: Always white text
+    if (window.configState?.profiles) {
+        const profile = window.configState.profiles.find(p => p.tag === profileTag);
+        if (profile && profile.color) {
+            bgStyleValue = profile.color;  // Solid color
+            borderColorValue = profile.color;  // Flat monolithic: border matches background
+        }
+    }
+
+    if (existingBadge) {
+        // Update existing badge - ensure it has unified classes
+        if (!existingBadge.classList.contains('profile-tag')) {
+            existingBadge.className = 'profile-tag profile-tag--md message-profile-badge flex-shrink-0';
+        }
+        existingBadge.textContent = `@${profileTag}`;
+        existingBadge.title = `Executed with profile: ${profileTag}`;
+        if (bgStyleValue) {
+            existingBadge.style.setProperty('--profile-tag-bg', bgStyleValue);
+            existingBadge.style.setProperty('--profile-tag-border', borderColorValue);
+            existingBadge.style.setProperty('--profile-tag-text', textColorValue);
+        }
+    } else {
+        // Create new badge with unified classes
+        const profileBadge = document.createElement('div');
+        profileBadge.className = 'profile-tag profile-tag--md message-profile-badge flex-shrink-0';
+        profileBadge.textContent = `@${profileTag}`;
+        profileBadge.title = `Executed with profile: ${profileTag}`;
+        if (bgStyleValue) {
+            profileBadge.style.setProperty('--profile-tag-bg', bgStyleValue);
+            profileBadge.style.setProperty('--profile-tag-border', borderColorValue);
+            profileBadge.style.setProperty('--profile-tag-text', textColorValue);
+        }
+        profileBadge.style.alignSelf = 'flex-start';
+        profileBadge.style.marginRight = '12px';
+
+        // Insert at the beginning of the wrapper (before the message container)
+        const messageContainer = lastUserWrapper.querySelector('.glass-panel');
+        if (messageContainer) {
+            lastUserWrapper.insertBefore(profileBadge, messageContainer);
+        }
+    }
+}
+
+
+/**
+ * Sets the UI state for active execution (disables input, shows stop button, etc.).
+ * @param {boolean} isActive - True if execution is starting, false if ending.
+ */
+export function setExecutionState(isActive) {
+    DOM.userInput.disabled = isActive;
+    DOM.submitButton.disabled = isActive;
+    DOM.newChatButton.disabled = isActive;
+    DOM.sendIcon.classList.toggle('hidden', isActive);
+    DOM.loadingSpinner.classList.toggle('hidden', !isActive);
+
+    if (DOM.stopExecutionButton) {
+        DOM.stopExecutionButton.classList.toggle('hidden', !isActive);
+        DOM.stopExecutionButton.disabled = !isActive;
+    }
+
+    if (isActive) {
+        // Hide and disable buttons when execution starts
+        if (DOM.headerReplayPlannedButton) {
+            DOM.headerReplayPlannedButton.classList.add('hidden');
+            DOM.headerReplayPlannedButton.disabled = true;
+        }
+        if (DOM.headerReplayOptimizedButton) {
+            DOM.headerReplayOptimizedButton.classList.add('hidden');
+            DOM.headerReplayOptimizedButton.disabled = true;
+        }
+    } else {
+        // Enable buttons when execution ends (they will be shown by addMessage if applicable)
+        if (DOM.headerReplayPlannedButton) {
+            DOM.headerReplayPlannedButton.disabled = false;
+        }
+        if (DOM.headerReplayOptimizedButton) {
+            DOM.headerReplayOptimizedButton.disabled = false;
+        }
+        // Don't explicitly show them here, addMessage handles showing them when a turn completes
+    }
+
+    if (!isActive) {
+        setThinkingIndicator(false);
+        DOM.mcpStatusDot.classList.remove('pulsing', 'busy');
+        DOM.llmStatusDot.classList.remove('pulsing', 'busy');
+
+        if (!DOM.mcpStatusDot.classList.contains('disconnected')) {
+            DOM.mcpStatusDot.classList.add('connected');
+        }
+        if (!DOM.llmStatusDot.classList.contains('disconnected')) {
+            DOM.llmStatusDot.classList.add('idle');
+        }
+    }
+}
+
+
+/**
+ * Updates the visual status of the Server-Sent Events (SSE) connection indicator.
+ * @param {('connected'|'reconnecting'|'disconnected')} status - The current status of the connection.
+ */
+export function updateSSEStatus(status) {
+    if (!DOM.sseStatusDot) return;
+
+    DOM.sseStatusDot.classList.remove('connected', 'reconnecting', 'disconnected');
+    DOM.sseStatusDot.classList.add(status);
+
+    switch (status) {
+        case 'connected':
+            DOM.sseStatusDot.title = 'Real-time connection active.';
+            break;
+        case 'reconnecting':
+            DOM.sseStatusDot.title = 'Connection lost. Attempting to reconnect...';
+            break;
+        case 'disconnected':
+            DOM.sseStatusDot.title = 'Real-time connection failed. Please refresh the page.';
+            break;
+    }
+}
+
+
+function _renderKnowledgeRetrievalDetails(details) {
+    if (!details.collections || !details.chunks) return null;
+
+    const collections = details.collections || [];
+    const chunks = details.chunks || [];
+    const documentCount = details.document_count || chunks.length;
+
+    let html = `
+        <div class="status-kv-grid">
+            <div class="status-kv-key">Collections</div>
+            <div class="status-kv-value">${collections.join(', ')}</div>
+            <div class="status-kv-key">Documents</div>
+            <div class="status-kv-value">${documentCount} chunks retrieved</div>
+        </div>
+    `;
+
+    if (chunks.length > 0) {
+        html += `
+            <details class="text-xs mt-2">
+                <summary class="cursor-pointer text-gray-400 hover:text-white">View Retrieved Chunks (${chunks.length})</summary>
+                <div class="space-y-2 mt-2">
+        `;
+
+        chunks.forEach((chunk, idx) => {
+            const similarity = (chunk.similarity_score * 100).toFixed(1);
+            const content = chunk.content || '';
+            const previewLength = 150;
+            const preview = content.length > previewLength ? content.substring(0, previewLength) + '...' : content;
+            
+            html += `
+                <div class="p-2 bg-gray-900/50 rounded border border-indigo-500/30">
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-indigo-400 font-semibold text-xs">Chunk ${idx + 1}</span>
+                        <span class="text-gray-500 text-xs">Relevance: ${similarity}%</span>
+                    </div>
+                    <div class="text-gray-400 text-xs mb-1">
+                        <span class="text-gray-500">Collection:</span> ${chunk.collection_name || 'Unknown'}
+                    </div>
+            `;
+
+            if (content.length > previewLength) {
+                html += `
+                    <details class="text-xs">
+                        <summary class="cursor-pointer text-gray-400 hover:text-white">${preview}</summary>
+                        <div class="mt-2 p-2 status-text-block whitespace-pre-wrap text-gray-300">${content}</div>
+                    </details>
+                `;
+            } else {
+                html += `<div class="text-gray-300 text-xs whitespace-pre-wrap">${content}</div>`;
+            }
+
+            html += `</div>`;
+        });
+
+        html += `
+                </div>
+            </details>
+        `;
+    }
+
+    return html;
+}
+
+function _renderSessionNameStartDetails(details) {
+    const summary = details.summary || 'Generating session name...';
+    return `
+        <div class="status-kv-grid">
+            <div class="status-kv-key">Status</div>
+            <div class="status-kv-value text-amber-400">In Progress...</div>
+        </div>
+    `;
+}
+
+function _renderSessionNameCompleteDetails(details) {
+    const sessionName = details.session_name || 'Unknown';
+    const inputTokens = details.input_tokens || 0;
+    const outputTokens = details.output_tokens || 0;
+    const costUsd = details.cost_usd;
+
+    // Build cost HTML if cost is available
+    let costHtml = '';
+    if (costUsd !== null && costUsd !== undefined && costUsd > 0) {
+        costHtml = `
+            <div class="status-kv-key">Cost</div>
+            <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+        `;
+    }
+
+    return `
+        <div class="status-kv-grid">
+            <div class="status-kv-key">Name</div>
+            <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
+            <div class="status-kv-key">Tokens</div>
+            <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+            ${costHtml}
+        </div>
+    `;
+}
+
+function _renderExecutionStartDetails(details) {
+    const profileTag = details.profile_tag || 'Unknown';
+    const profileType = details.profile_type || 'tool_enabled';
+    const query = details.query || '';
+    const queryPreview = query.length > 100 ? query.substring(0, 100) + '...' : query;
+
+    return `
+        <div class="status-kv-grid">
+            <div class="status-kv-key">Profile</div>
+            <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+            <div class="status-kv-key">Type</div>
+            <div class="status-kv-value">${profileType}</div>
+            ${queryPreview ? `
+            <div class="status-kv-key">Query</div>
+            <div class="status-kv-value text-gray-300">"${queryPreview}"</div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function _renderExecutionCompleteDetails(details) {
+    const profileTag = details.profile_tag || 'Unknown';
+    const profileType = details.profile_type;
+    const phasesExecuted = details.phases_executed || 0;
+    const inputTokens = details.total_input_tokens || 0;
+    const outputTokens = details.total_output_tokens || 0;
+    const durationMs = details.duration_ms || 0;
+    const durationSec = (durationMs / 1000).toFixed(1);
+    const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
+
+    return `
+        <div class="status-kv-grid">
+            <div class="status-kv-key">Profile</div>
+            <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+            <div class="status-kv-key">Phases</div>
+            <div class="status-kv-value">${phasesExecuted} executed</div>
+            <div class="status-kv-key">Tokens</div>
+            <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+            ${costUsd !== null ? `
+            <div class="status-kv-key">Cost</div>
+            <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+            ` : ''}
+            <div class="status-kv-key">Duration</div>
+            <div class="status-kv-value">${durationSec}s</div>
+        </div>
+    `;
+}
+
+function _renderPlanningDetails(details) {
+    if (!details.summary || !details.full_text) return null;
+
+    let fullTextHtml = '';
+    const text = details.full_text;
+    const characterThreshold = 150;
+
+    if (text.length > characterThreshold) {
+        fullTextHtml = `
+            <details class="text-xs">
+                <summary class="cursor-pointer text-gray-400 hover:text-white">Full Text (${text.length} chars)</summary>
+                <div class="mt-2 p-2 status-text-block whitespace-pre-wrap">${text}</div>
+            </details>
+        `;
+    } else {
+        fullTextHtml = `<div class="status-text-block whitespace-pre-wrap">${text}</div>`;
+    }
+
+    return `
+        <div class="status-kv-grid">
+            <div class="status-kv-key">Summary</div>
+            <div class="status-kv-value">${details.summary}</div>
+            <div class="status-kv-key">Full Text</div>
+            <div class="status-kv-value">${fullTextHtml}</div>
+        </div>
+    `;
+}
+
+function _renderMetaPlanDetails(details) {
+    if (!Array.isArray(details)) return null;
+
+    let html = `<details class="text-xs" open>
+                    <summary class="cursor-pointer text-gray-400 hover:text-white">Generated Plan (${details.length} steps)</summary>
+                    <div class="space-y-3 mt-2">`;
+
+    details.forEach(phase => {
+        let argsHtml = '';
+        if (phase.arguments) {
+            const argsString = JSON.stringify(phase.arguments, null, 2);
+            argsHtml = `
+                <div class="status-kv-item">
+                    <div class="status-kv-key">Args</div>
+                    <div class="status-kv-value">
+                        <details class="text-xs">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Arguments</summary>
+                            <div class="mt-2 p-2 status-text-block whitespace-pre-wrap">${argsString}</div>
+                        </details>
+                    </div>
+                </div>
+            `;
+        }
+
+        let structuralKeysHtml = '';
+        if (phase.type) {
+            structuralKeysHtml += `<div class="status-kv-item"><div class="status-kv-key">Type</div><div class="status-kv-value"><code class="status-code font-bold text-yellow-300">${phase.type}</code></div></div>`;
+        }
+        if (phase.loop_over) {
+            structuralKeysHtml += `<div class="status-kv-item"><div class="status-kv-key">Loop Over</div><div class="status-kv-value"><code class="status-code">${phase.loop_over}</code></div></div>`;
+        }
+
+        html += `<div class="status-phase-card">
+                    <div class="font-bold text-gray-300 mb-2">Step ${phase.phase}</div>
+                    <div class="status-kv-item"><div class="status-kv-key">Goal</div><div class="status-kv-value">${phase.goal}</div></div>`;
+
+        html += structuralKeysHtml;
+
+        if (phase.relevant_tools) {
+            html += `<div class="status-kv-item"><div class="status-kv-key">Tools</div><div class="status-kv-value"><code class="status-code">${phase.relevant_tools.join(', ')}</code></div></div>`;
+        }
+        if (phase.executable_prompt) {
+            html += `<div class="status-kv-item"><div class="status-kv-key">Prompt</div><div class="status-kv-value"><code class="status-code">${phase.executable_prompt}</code></div></div>`;
+        }
+        html += `${argsHtml}</div>`;
+    });
+    html += '</div></details>';
+    return html;
+}
+
+function _renderToolIntentDetails(details) {
+    if (!details || (!details.tool_name && !details.prompt_name)) return null;
+
+    const name = details.tool_name || details.prompt_name;
+    const type = details.tool_name ? 'Tool' : 'Prompt';
+
+    let argsHtml = '';
+    if (details.arguments) {
+        try {
+             const argsString = JSON.stringify(details.arguments, null, 2);
+             argsHtml = `
+                <div class="status-kv-item">
+                    <div class="status-kv-key">Args</div>
+                    <div class="status-kv-value">
+                        <details class="text-xs">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Arguments</summary>
+                            <div class="mt-2 p-2 status-text-block whitespace-pre-wrap">${argsString}</div>
+                        </details>
+                    </div>
+                </div>
+            `;
+        } catch (e) {
+            argsHtml = `<div class="status-kv-item"><div class="status-kv-key">Args</div><div class="status-kv-value text-rose-400">[Error displaying arguments]</div></div>`;
+        }
+    }
+
+    return `
+        <div class="status-kv-item"><div class="status-kv-key">${type}</div><div class="status-kv-value"><code class="status-code">${name}</code></div></div>
+        ${argsHtml}
+    `;
+}
+
+/**
+ * Render Genie coordination events in the status window.
+ * Uses purple-themed styling for world-class visual feedback.
+ *
+ * ARCHITECTURE: All coordination visualization is in Live Status window only.
+ * The chat pane stays clean with just Q&A - this panel shows the "how".
+ */
+function _renderGenieStep(eventData, parentContainer, isFinal = false) {
+    const { step, details, type } = eventData;
+
+    // Skip obsolete events - genie_coordination_start provides the same info
+    if (type === 'genie_start' || type === 'genie_routing') {
+        return;
+    }
+
+    // Skip transient UI-only events — these are for indicator dots only, not status cards
+    if (type === 'status_indicator_update' || type === 'token_update') {
+        return;
+    }
+
+    // Mark previous active step as completed
+    const lastStep = parentContainer.querySelector('.status-step.active');
+    if (lastStep) {
+        lastStep.classList.remove('active');
+        lastStep.classList.add('completed');
+    }
+
+    const stepEl = document.createElement('div');
+    stepEl.className = 'status-step p-3 rounded-md mb-2 genie-status-step';
+
+    // Tag with filter category for event filter chips
+    if (eventData._filterCategory) {
+        stepEl.dataset.filterCategory = eventData._filterCategory;
+        if (!isFilterCategoryEnabled(eventData._filterCategory)) {
+            stepEl.classList.add('event-filtered-hidden');
+        }
+    }
+
+    if (isFinal) {
+        stepEl.classList.add('completed');
+    } else {
+        stepEl.classList.add('active');
+    }
+
+    // Add category class for background color
+    const category = getEventCategory(type);
+    stepEl.classList.add(category);
+
+    // Color-code based on event type
+    if (type === 'genie_coordination_complete') {
+        stepEl.classList.add(details?.success ? 'genie-success' : 'genie-error');
+    } else if (type === 'genie_slave_completed') {
+        stepEl.classList.add(details?.success ? 'genie-slave-success' : 'genie-slave-error');
+    }
+
+    // Step header (text-only, matching Optimizer style)
+    const stepHeader = document.createElement('div');
+    stepHeader.className = 'flex items-center gap-2 mb-2';
+
+    const titleEl = document.createElement('h4');
+    titleEl.className = 'font-bold text-sm text-white';
+    titleEl.textContent = step || 'Genie Coordination';
+    stepHeader.appendChild(titleEl);
+
+    stepEl.appendChild(stepHeader);
+
+    // Render details based on event type
+    if (details && typeof details === 'object') {
+        const detailsEl = document.createElement('div');
+        detailsEl.className = 'text-xs';
+
+        switch (type) {
+            case 'genie_start':
+            case 'genie_routing':
+            case 'genie_coordination_start': {
+                const profileCount = details.slave_profiles?.length || 0;
+                const profileTag = details.profile_tag || 'GENIE';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, 'genie')}</div>
+                        <div class="status-kv-key">Experts</div>
+                        <div class="status-kv-value">${profileCount} available</div>
+                    </div>
+                    ${details.slave_profiles && details.slave_profiles.length > 0 ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Available Profiles</summary>
+                            <div class="genie-profile-tags mt-2 flex flex-wrap gap-1">
+                                ${details.slave_profiles.map(p => {
+                                    return renderProfileTag(p.tag, p.profile_type);
+                                }).join('')}
+                            </div>
+                        </details>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            case 'genie_llm_step': {
+                const stepNumber = details.step_number || '?';
+                const stepName = details.step_name || `Step ${stepNumber}`;
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Step</div>
+                        <div class="status-kv-value"><code class="status-code text-indigo-300">#${stepNumber}: ${stepName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-emerald-400">✓ Complete</div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                        ${costUsd !== null ? `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                        ` : ''}
+                    </div>
+                `;
+                break;
+            }
+
+            case 'genie_routing_decision': {
+                const selectedCount = details.selected_profiles?.length || 0;
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Decision</div>
+                        <div class="status-kv-value">${selectedCount} profile${selectedCount > 1 ? 's' : ''} selected</div>
+                    </div>
+                    ${details.decision_text ? `
+                        <div class="mt-2 p-2 bg-slate-900/30 rounded border border-slate-500/30 text-gray-300 text-xs">
+                            ${details.decision_text}
+                        </div>
+                    ` : ''}
+                    ${details.selected_profiles && details.selected_profiles.length > 0 ? `
+                        <div class="mt-2 flex flex-wrap gap-1">
+                            ${details.selected_profiles.map(tag => `<span class="profile-tag profile-tag--sm profile-tag--status-selected">@${tag}</span>`).join('')}
+                        </div>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            case 'genie_slave_invoked': {
+                const profileTag = details.profile_tag || 'UNKNOWN';
+                const profileType = details.profile_type;
+                const slaveTagColor = getProfileTagColor(profileTag, profileType);
+                const query = details.query || details.query_preview || '';
+
+                // Build query display - show full query in expandable section
+                let queryHtml = '';
+                if (query) {
+                    const queryPreview = query.length > 100 ? query.slice(0, 100) + '...' : query;
+                    const needsExpand = query.length > 100;
+                    queryHtml = needsExpand ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-slate-400 hover:text-white text-xs font-medium">Question to <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${slaveTagColor}; --profile-tag-border: ${slaveTagColor}; --profile-tag-text: #FFFFFF;">@${profileTag}</span></summary>
+                            <div class="mt-1 p-2 bg-slate-900/50 rounded border border-slate-600/30 text-slate-200 text-sm whitespace-pre-wrap">${escapeHtml(query)}</div>
+                        </details>
+                    ` : `
+                        <div class="mt-2">
+                            <div class="text-slate-400 text-xs font-medium mb-1">Question to <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${slaveTagColor}; --profile-tag-border: ${slaveTagColor}; --profile-tag-text: #FFFFFF;">@${profileTag}</span></div>
+                            <div class="p-2 bg-slate-900/50 rounded border border-slate-600/30 text-slate-200 text-sm whitespace-pre-wrap">${escapeHtml(query)}</div>
+                        </div>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-amber-400">Processing...</div>
+                    </div>
+                    ${queryHtml}
+                    ${details.slave_session_id ? `
+                        <div class="mt-1 text-gray-500 text-xs">Session: ${details.slave_session_id.slice(0, 8)}...</div>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            case 'genie_slave_progress': {
+                const profileTag = details.profile_tag || 'UNKNOWN';
+                const profileType = details.profile_type;
+                const message = details.message || 'Working...';
+                const progress = details.progress_pct !== undefined ? details.progress_pct : null;
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-amber-400">${message}</div>
+                        ${progress !== null ? `
+                            <div class="status-kv-key">Progress</div>
+                            <div class="status-kv-value">${progress}%</div>
+                        ` : ''}
+                    </div>
+                `;
+                break;
+            }
+
+            case 'genie_slave_completed': {
+                const profileTag = details.profile_tag || 'UNKNOWN';
+                const profileType = details.profile_type;
+                const slaveTagColor = getProfileTagColor(profileTag, profileType);
+                const duration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(2)}s` : 'N/A';
+                const statusText = details.success ? '✓ Success' : '✗ Failed';
+                const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
+
+                // Use full result if available, otherwise fall back to preview
+                const result = details.result || details.result_preview || '';
+                let resultHtml = '';
+                if (result) {
+                    // Show result collapsed by default - user can expand to see details
+                    resultHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-emerald-400 hover:text-emerald-300 text-xs font-medium">Response from <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${slaveTagColor}; --profile-tag-border: ${slaveTagColor}; --profile-tag-text: #FFFFFF;">@${profileTag}</span></summary>
+                            <div class="mt-1 p-2 bg-emerald-900/20 rounded border border-emerald-600/30 text-slate-200 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml(result)}</div>
+                        </details>
+                    `;
+                }
+
+                let errorHtml = '';
+                if (details.error) {
+                    errorHtml = `
+                        <div class="mt-2">
+                            <div class="text-rose-400 text-xs font-medium mb-1">Error from <span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${slaveTagColor}; --profile-tag-border: ${slaveTagColor}; --profile-tag-text: #FFFFFF;">@${profileTag}</span></div>
+                            <div class="p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${escapeHtml(details.error)}</div>
+                        </div>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass}">${statusText}</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${duration}</div>
+                    </div>
+                    ${resultHtml}
+                    ${errorHtml}
+                `;
+                break;
+            }
+
+            case 'genie_synthesis_start': {
+                const consulted = details.profiles_consulted?.length || 0;
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-indigo-400">Synthesizing response...</div>
+                        <div class="status-kv-key">Profiles</div>
+                        <div class="status-kv-value">${consulted} consulted</div>
+                    </div>
+                    ${details.profiles_consulted && details.profiles_consulted.length > 0 ? `
+                        <div class="mt-2 flex flex-wrap gap-1">
+                            ${details.profiles_consulted.map(tag => {
+                                const tagColor = getProfileTagColor(tag);
+                                return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${tagColor}; --profile-tag-border: ${tagColor}; --profile-tag-text: #FFFFFF;">@${tag}</span>`;
+                            }).join('')}
+                        </div>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            case 'genie_synthesis_complete': {
+                // Show synthesized response (matches "Response from @TAG" pattern in other profiles)
+                const consulted = details.profiles_consulted?.length || 0;
+                let responseHtml = '';
+                if (details.synthesized_response && details.success !== false) {
+                    responseHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-emerald-400 hover:text-emerald-300 text-xs font-medium">Synthesized Response</summary>
+                            <div class="mt-1 p-2 bg-emerald-900/20 rounded border border-emerald-600/30 text-slate-200 text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml(details.synthesized_response)}</div>
+                        </details>
+                    `;
+                }
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-emerald-400">✓ Complete</div>
+                        <div class="status-kv-key">Profiles</div>
+                        <div class="status-kv-value">${consulted} consulted</div>
+                    </div>
+                    ${responseHtml}
+                `;
+                break;
+            }
+
+            case 'genie_coordination_complete': {
+                const totalDuration = details.total_duration_ms ? `${(details.total_duration_ms / 1000).toFixed(2)}s` : 'N/A';
+                const usedCount = details.profiles_used?.length || 0;
+                const statusText = details.success ? '✓ Complete' : '✗ Failed';
+                const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
+
+                // Token counts (if available)
+                const inputTokens = details.input_tokens;
+                const outputTokens = details.output_tokens;
+                let tokensHtml = '';
+                if (inputTokens !== undefined && outputTokens !== undefined && (inputTokens > 0 || outputTokens > 0)) {
+                    tokensHtml = `
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                    `;
+                }
+
+                // Cost (if available)
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
+                let costHtml = '';
+                if (costUsd !== null) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
+                let profilesHtml = '';
+                if (details.profiles_used && details.profiles_used.length > 0) {
+                    profilesHtml = `
+                        <div class="mt-2">
+                            <div class="text-gray-500 text-xs mb-1">Profiles Consulted:</div>
+                            <div class="genie-profile-tags flex flex-wrap gap-1">
+                                ${details.profiles_used.map(tag => {
+                                    const tagColor = getProfileTagColor(tag);
+                                    return `<span class="profile-tag profile-tag--sm" style="--profile-tag-bg: ${tagColor}; --profile-tag-border: ${tagColor}; --profile-tag-text: #FFFFFF;">@${tag}</span>`;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                let errorHtml = '';
+                if (details.error) {
+                    errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass} font-semibold">${statusText}</div>
+                        <div class="status-kv-key">Profiles Used</div>
+                        <div class="status-kv-value">${usedCount}</div>
+                        <div class="status-kv-key">Total Time</div>
+                        <div class="status-kv-value">${totalDuration}</div>
+                        ${tokensHtml}
+                        ${costHtml}
+                    </div>
+                    ${profilesHtml}
+                    ${errorHtml}
+                `;
+                break;
+            }
+
+            case 'session_name_generation_start': {
+                const summary = details.summary || 'Generating session name...';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-amber-400">In Progress...</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'session_name_generation_complete': {
+                const sessionName = details.session_name || 'Unknown';
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                const costUsd = details.cost_usd || null;
+
+                let costHtml = '';
+                if (costUsd !== null && costUsd !== undefined) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Name</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+                        ${costHtml}
+                    </div>
+                `;
+                break;
+            }
+
+            case 'genie_component_invoked': {
+                const compToolName = details.tool_name || 'Component Tool';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Tool</div>
+                        <div class="status-kv-value"><code class="status-code text-cyan-300">${compToolName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-amber-400">Executing...</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'genie_component_completed': {
+                const compToolNameDone = details.tool_name || 'Component Tool';
+                const componentId = details.component_id || 'unknown';
+                const compStatusText = details.success ? '✓ Success' : '✗ Failed';
+                const compStatusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Tool</div>
+                        <div class="status-kv-value"><code class="status-code text-cyan-300">${compToolNameDone}</code></div>
+                        <div class="status-kv-key">Component</div>
+                        <div class="status-kv-value">${componentId}</div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${compStatusClass}">${compStatusText}</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'execution_start':
+            case 'execution_complete':
+            case 'execution_error':
+                // Skip rendering - these lifecycle events are redundant for genie profiles
+                // genie_coordination_start and genie_coordination_complete already show this info
+                return;
+
+            default:
+                // Generic fallback with JSON display
+                try {
+                    const jsonStr = JSON.stringify(details, null, 2);
+                    detailsEl.innerHTML = `
+                        <details>
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Details</summary>
+                            <pre class="mt-1 p-2 bg-gray-900/50 rounded text-gray-400 overflow-x-auto">${jsonStr}</pre>
+                        </details>
+                    `;
+                } catch (e) {
+                    detailsEl.innerHTML = `<span class="text-gray-500">[Unable to display details]</span>`;
+                }
+        }
+
+        stepEl.appendChild(detailsEl);
+    }
+
+    parentContainer.appendChild(stepEl);
+
+    // Auto-scroll to latest step (skip during historical replay to keep scroll at top)
+    if (!state.isViewingHistoricalTurn) {
+        stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // Reset genie coordination state on completion
+    if (type === 'genie_coordination_complete') {
+        state.isGenieCoordinationActive = false;
+    }
+}
+
+/**
+ * Exported wrapper for rendering genie events during plan reload.
+ * Uses the same rendering logic as live execution for consistent UX.
+ */
+export function renderGenieStepForReload(eventData, parentContainer, isFinal = false) {
+    if (!eventData._filterCategory) eventData._filterCategory = 'coordination';
+    _renderGenieStep(eventData, parentContainer, isFinal);
+}
+
+/**
+ * Render Conversation Agent tool execution events in the status window.
+ * Uses blue/cyan-themed styling to differentiate from genie (purple) events.
+ */
+/**
+ * Render conversation agent events in the Live Status window.
+ * Uses consistent styling with tool_enabled profiles for a world-class UX.
+ *
+ * ARCHITECTURE: All tool execution visualization is in Live Status window only.
+ * The chat pane stays clean with just Q&A - this panel shows the "how".
+ */
+function _renderConversationAgentStep(eventData, parentContainer, isFinal = false) {
+    const { step, details, type } = eventData;
+
+    // EARLY SKIP: execution_complete for genie profiles is redundant
+    // genie_coordination_complete already shows this info with synthesized response
+    // Also check for case variations just in case
+    const profileType = details?.profile_type?.toLowerCase?.() || details?.profile_type || '';
+    if (type === 'execution_complete' && profileType === 'genie') {
+        console.log('[_renderConversationAgentStep] Skipping redundant execution_complete for genie profile');
+        return;  // Early exit before any DOM creation
+    }
+
+    // CRITICAL FIX: For session name generation complete, UPDATE the existing "Generating..." step
+    // Use deterministic data-event-type selector (set by START event) with fallback to .active
+    if (type === 'session_name_generation_complete') {
+        const lastStep = parentContainer.querySelector('.status-step[data-event-type="session_name_generation_start"]')
+                      || parentContainer.querySelector('.status-step.active');
+
+        if (lastStep) {
+            // Update the existing step as completed
+            lastStep.classList.remove('active');
+            lastStep.classList.add('completed');
+
+            // Update details section with session name and tokens
+            // Session name events use .text-xs instead of .status-details
+            const detailsEl = lastStep.querySelector('.text-xs') || lastStep.querySelector('.status-details');
+
+            if (detailsEl) {
+                const sessionName = details.session_name || details.name || 'Unknown';
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                const costUsd = details.cost_usd;
+
+                // Build cost HTML if cost is available
+                let costHtml = '';
+                if (costUsd !== null && costUsd !== undefined && costUsd > 0) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Name</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+                        ${costHtml}
+                    </div>
+                `;
+            }
+
+            // Scroll to updated step (skip during historical replay)
+            if (!state.isViewingHistoricalTurn) {
+                lastStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            return; // Exit early - we updated existing step, no need to create new one
+        }
+    }
+
+    // CRITICAL FIX: For tool completion, UPDATE the existing "Executing..." step instead of creating a new one
+    // When multiple tools run in parallel, we match by tool_name to find the correct step
+    if (type === 'conversation_tool_completed') {
+        const toolName = details?.tool_name;
+        console.log('[LiveStatus] Received conversation_tool_completed:', {toolName, details, hasResultPreview: !!details?.result_preview});
+
+        // Find the executing step for THIS specific tool (not just any active step)
+        // Use data-tool-status="executing" to distinguish from already-completed tools
+        let lastStep = null;
+        if (toolName) {
+            lastStep = parentContainer.querySelector(
+                `.status-step[data-tool-name="${toolName}"][data-tool-status="executing"]`
+            );
+            console.log('[LiveStatus] querySelector result for tool:', toolName, 'found:', !!lastStep);
+        }
+
+        // Fallback to any active step (backwards compatibility)
+        // CRITICAL: Only use fallback if it's actually a tool execution step, not an LLM step
+        if (!lastStep) {
+            const activeStep = parentContainer.querySelector('.status-step.active');
+            // Check if the active step is a tool step (has data-tool-name) or an LLM step
+            // We should NOT overwrite LLM synthesis steps with tool completion data
+            if (activeStep && activeStep.dataset.toolName) {
+                lastStep = activeStep;
+                console.log('[LiveStatus] Fallback to .active tool step, found:', !!lastStep);
+            } else {
+                console.log('[LiveStatus] Fallback skipped - active step is not a tool step (likely LLM synthesis)');
+            }
+        }
+
+        if (lastStep) {
+            console.log('[LiveStatus] Updating existing step for tool:', toolName);
+            // Mark as completed so next completion for same tool finds a different element
+            lastStep.dataset.toolStatus = 'completed';
+
+            // Update the existing step as completed
+            lastStep.classList.remove('active');
+            lastStep.classList.add('completed');
+
+            // Update details section with completion status
+            const detailsEl = lastStep.querySelector('.status-details');
+            if (detailsEl) {
+                const displayToolName = toolName || 'Unknown';
+                const duration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(2)}s` : 'N/A';
+                const statusText = details.success ? '✓ Success' : '✗ Failed';
+                const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
+
+                let resultHtml = '';
+                if (details.result_preview) {
+                    resultHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Result Preview</summary>
+                            <div class="mt-1 p-2 bg-gray-900/50 rounded text-gray-300 whitespace-pre-wrap">${details.result_preview}</div>
+                        </details>
+                    `;
+                }
+
+                let errorHtml = '';
+                if (details.error) {
+                    errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Tool</div>
+                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-emerald-300' : 'text-rose-300'}">${displayToolName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass}">${statusText}</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${duration}</div>
+                    </div>
+                    ${resultHtml}
+                    ${errorHtml}
+                `;
+            }
+
+            // Scroll to updated step (skip during historical replay)
+            if (!state.isViewingHistoricalTurn) {
+                lastStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            return; // Exit early - we updated existing step, no need to create new one
+        } else {
+            console.warn('[LiveStatus] conversation_tool_completed did NOT find executing step for tool:', toolName, '- will create new step instead');
+        }
+    }
+
+    // Mark previous active step as completed and stop icon animations
+    // Mark previous active step as completed
+    const lastStep = parentContainer.querySelector('.status-step.active');
+    if (lastStep) {
+        lastStep.classList.remove('active');
+        lastStep.classList.add('completed');
+
+        // Remove progress indicator when stage completes
+        const progressIndicator = lastStep.querySelector('.progress-indicator');
+        if (progressIndicator) {
+            progressIndicator.remove();
+        }
+    }
+
+    const stepEl = document.createElement('div');
+    stepEl.className = 'status-step p-3 rounded-md mb-2 conversation-agent-status-step';
+
+    // Tag with filter category for event filter chips
+    if (eventData._filterCategory) {
+        stepEl.dataset.filterCategory = eventData._filterCategory;
+        if (!isFilterCategoryEnabled(eventData._filterCategory)) {
+            stepEl.classList.add('event-filtered-hidden');
+        }
+    }
+
+    // Add data attributes for tool matching during live execution
+    // This allows completion events to find the correct executing step when multiple tools run in parallel
+    if (type === 'conversation_tool_invoked' && details?.tool_name) {
+        stepEl.dataset.toolName = details.tool_name;
+        stepEl.dataset.toolStatus = 'executing';
+        console.log('[LiveStatus] Set data attributes on invoked step:', {toolName: details.tool_name, toolStatus: 'executing'});
+    }
+    // Tag session name START card so the COMPLETE handler can find it deterministically
+    if (type === 'session_name_generation_start') {
+        stepEl.dataset.eventType = 'session_name_generation_start';
+    }
+
+    if (isFinal) {
+        stepEl.classList.add('completed');
+    } else {
+        stepEl.classList.add('active');
+    }
+
+    // Add category class for background color
+    const category = getEventCategory(type);
+    stepEl.classList.add(category);
+
+    // Note: conversation_agent_complete is a 'lifecycle' bookend event
+    // Its styling is handled by the category class (lifecycle = green sidebar, no background)
+    // Do NOT add conv-agent-success class as it would override the transparent background
+
+    // Step header (text-only, matching Optimizer style)
+    const stepHeader = document.createElement('div');
+    stepHeader.className = 'flex items-center gap-2 mb-2';
+
+    const titleEl = document.createElement('h4');
+    titleEl.className = 'font-bold text-sm text-white';
+    titleEl.textContent = step || 'Tool Execution';
+
+    // Add progress indicator for active rag_focused stages
+    if ((type === 'knowledge_retrieval_start' || type === 'rag_llm_step' ||
+         type === 'knowledge_reranking_start') && !isFinal) {
+        const progressLabel = document.createElement('span');
+        progressLabel.className = 'text-amber-400 text-xs ml-2 progress-indicator';
+        progressLabel.textContent = 'Processing...';
+        titleEl.appendChild(progressLabel);
+    }
+
+    stepHeader.appendChild(titleEl);
+
+    stepEl.appendChild(stepHeader);
+
+    // Render details based on event type
+    if (details && typeof details === 'object') {
+        const detailsEl = document.createElement('div');
+        detailsEl.className = 'status-details text-xs';
+
+        switch (type) {
+            case 'conversation_agent_start': {
+                const toolCount = details.available_tools?.length || 0;
+                const profileTag = details.profile_tag || 'CONV';
+                const profileType = details.profile_type || 'conversation_with_tools';
+                const query = details.query || '';
+                const queryPreview = query.length > 100 ? query.substring(0, 100) + '...' : query;
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+                        <div class="status-kv-key">Type</div>
+                        <div class="status-kv-value">${profileType}</div>
+                        ${queryPreview ? `
+                        <div class="status-kv-key">Query</div>
+                        <div class="status-kv-value text-gray-300">"${queryPreview}"</div>
+                        ` : ''}
+                        <div class="status-kv-key">Tools</div>
+                        <div class="status-kv-value">${toolCount} available</div>
+                    </div>
+                    ${details.available_tools && details.available_tools.length > 0 ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Available Tools</summary>
+                            <div class="conv-agent-tool-tags mt-2 flex flex-wrap gap-1">
+                                ${details.available_tools.map(t => `<span class="conv-agent-tag">${t}</span>`).join('')}
+                            </div>
+                        </details>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            case 'conversation_llm_step': {
+                const stepNumber = details.step_number || '?';
+                const stepName = details.step_name || `Step ${stepNumber}`;
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                const durationMs = details.duration_ms || 0;
+                const duration = durationMs > 0 ? `${(durationMs / 1000).toFixed(2)}s` : 'N/A';
+                const provider = details.provider || state.currentProvider || 'Unknown';
+                const model = details.model || state.currentModel || 'Unknown';
+                const costUsd = details.cost_usd || null;
+
+                let costHtml = '';
+                if (costUsd !== null && costUsd !== undefined) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Step</div>
+                        <div class="status-kv-value"><code class="status-code text-indigo-300">#${stepNumber}: ${stepName}</code></div>
+                        <div class="status-kv-key">Provider</div>
+                        <div class="status-kv-value"><code class="status-code text-blue-300">${provider}</code></div>
+                        <div class="status-kv-key">Model</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${model}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-emerald-400">✓ Complete</div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                        ${costHtml}
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${duration}</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'conversation_tool_invoked': {
+                const toolName = details.tool_name || 'Unknown';
+                console.log('[LiveStatus] Rendering conversation_tool_invoked for tool:', toolName, 'details:', details);
+                let argsHtml = '';
+                if (details.arguments) {
+                    try {
+                        // Clean up runtime noise from arguments if present
+                        let cleanArgs = details.arguments;
+                        if (typeof cleanArgs === 'object' && cleanArgs.runtime) {
+                            // Extract just the meaningful parts, not the runtime internals
+                            cleanArgs = { ...cleanArgs };
+                            delete cleanArgs.runtime;
+                        }
+                        const argsStr = typeof cleanArgs === 'string' ? cleanArgs : JSON.stringify(cleanArgs, null, 2);
+                        if (argsStr && argsStr !== '{}') {
+                            argsHtml = `
+                                <details class="mt-2">
+                                    <summary class="cursor-pointer text-gray-400 hover:text-white">View Arguments</summary>
+                                    <div class="mt-1 p-2 bg-gray-900/50 rounded status-text-block whitespace-pre-wrap text-gray-300">${argsStr}</div>
+                                </details>
+                            `;
+                        }
+                    } catch (e) {
+                        argsHtml = '';
+                    }
+                }
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Tool</div>
+                        <div class="status-kv-value"><code class="status-code text-amber-300">${toolName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-amber-400">Executing...</div>
+                    </div>
+                    ${argsHtml}
+                `;
+                break;
+            }
+
+            case 'conversation_tool_completed': {
+                const toolName = details.tool_name || 'Unknown';
+                const duration = details.duration_ms ? `${(details.duration_ms / 1000).toFixed(2)}s` : 'N/A';
+                const statusText = details.success ? '✓ Success' : '✗ Failed';
+                const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
+
+                let resultHtml = '';
+                if (details.result_preview) {
+                    resultHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Result Preview</summary>
+                            <div class="mt-1 p-2 bg-gray-900/50 rounded text-gray-300 whitespace-pre-wrap">${details.result_preview}</div>
+                        </details>
+                    `;
+                }
+
+                let errorHtml = '';
+                if (details.error) {
+                    errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Tool</div>
+                        <div class="status-kv-value"><code class="status-code ${details.success ? 'text-emerald-300' : 'text-rose-300'}">${toolName}</code></div>
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass}">${statusText}</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${duration}</div>
+                    </div>
+                    ${resultHtml}
+                    ${errorHtml}
+                `;
+                break;
+            }
+
+            case 'conversation_agent_complete': {
+                const totalDuration = details.total_duration_ms ? `${(details.total_duration_ms / 1000).toFixed(2)}s` : 'N/A';
+                const toolCount = details.tools_used?.length || 0;
+                const statusText = details.success ? '✓ Complete' : '✗ Failed';
+                const statusClass = details.success ? 'text-emerald-400' : 'text-rose-400';
+                const completeProfileTag = details.profile_tag || 'CONV';
+                const completeProfileType = details.profile_type || 'conversation_with_tools';
+
+                // Token counts (if available)
+                const inputTokens = details.input_tokens;
+                const outputTokens = details.output_tokens;
+                let tokensHtml = '';
+                if (inputTokens !== undefined && outputTokens !== undefined && (inputTokens > 0 || outputTokens > 0)) {
+                    tokensHtml = `
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                    `;
+                }
+
+                // Cost (if available)
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
+                let costHtml = '';
+                if (costUsd !== null) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
+                let toolsHtml = '';
+                if (details.tools_used && details.tools_used.length > 0) {
+                    toolsHtml = `
+                        <div class="mt-2">
+                            <div class="text-gray-500 text-xs mb-1">Tools Executed:</div>
+                            <div class="conv-agent-tool-tags flex flex-wrap gap-1">
+                                ${details.tools_used.map(t => `<span class="conv-agent-tag completed">${t}</span>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                let errorHtml = '';
+                if (details.error) {
+                    errorHtml = `<div class="mt-2 p-2 bg-rose-900/30 rounded border border-rose-500/30 text-rose-300">${details.error}</div>`;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass} font-semibold">${statusText}</div>
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value">${renderProfileTag(completeProfileTag, completeProfileType)}</div>
+                        <div class="status-kv-key">Tools Used</div>
+                        <div class="status-kv-value">${toolCount}</div>
+                        <div class="status-kv-key">Total Time</div>
+                        <div class="status-kv-value">${totalDuration}</div>
+                        ${tokensHtml}
+                        ${costHtml}
+                    </div>
+                    ${toolsHtml}
+                    ${errorHtml}
+                `;
+                break;
+            }
+
+            case 'knowledge_retrieval': {
+                // Knowledge retrieval event - use blue theme (Focus profile color)
+                stepEl.classList.remove('conversation-agent-status-step');
+                stepEl.classList.add('knowledge-retrieval-status-step');
+
+                const collections = details.collections || [];
+                const chunks = details.chunks || [];
+                const documentCount = details.document_count || chunks.length;
+
+                let chunksHtml = '';
+                if (chunks.length > 0) {
+                    const chunkPreviews = chunks.map((chunk, idx) => {
+                        const similarity = chunk.similarity_score ? (chunk.similarity_score * 100).toFixed(1) : 'N/A';
+                        const content = chunk.content || '';
+                        const preview = content.length > 150 ? content.substring(0, 147) + '...' : content;
+                        const source = chunk.source || 'Unknown';
+                        return `
+                            <div class="p-2 bg-gray-900/50 rounded border border-indigo-500/30">
+                                <div class="flex justify-between items-start mb-1">
+                                    <span class="text-indigo-400 font-semibold">Chunk ${idx + 1}</span>
+                                    <span class="text-gray-500">Relevance: ${similarity}%</span>
+                                </div>
+                                <div class="text-gray-500 text-xs mb-1">Source: ${source}</div>
+                                <div class="text-gray-300 whitespace-pre-wrap">${preview}</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    chunksHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">
+                                View Retrieved Chunks (${chunks.length})
+                            </summary>
+                            <div class="space-y-2 mt-2">${chunkPreviews}</div>
+                        </details>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${collections.length > 0 ? collections.join(', ') : 'N/A'}</div>
+                        <div class="status-kv-key">Documents</div>
+                        <div class="status-kv-value">${documentCount} chunks retrieved</div>
+                    </div>
+                    ${chunksHtml}
+                `;
+
+                // Trigger the knowledge indicator
+                if (collections.length > 0) {
+                    // Only blink during live execution, not when viewing historical turns
+                    if (!state.isViewingHistoricalTurn) {
+                        blinkKnowledgeDot();
+                    }
+                    updateKnowledgeIndicator(collections, documentCount);
+                }
+                break;
+            }
+
+            case 'knowledge_retrieval_start': {
+                stepEl.classList.add('knowledge-retrieval-status-step');
+                const collections = details.collections || [];
+                const maxDocs = details.max_docs || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${collections.length > 0 ? collections.join(', ') : 'N/A'}</div>
+                        <div class="status-kv-key">Target</div>
+                        <div class="status-kv-value">Up to ${maxDocs} documents</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'knowledge_reranking_start': {
+                stepEl.classList.add('knowledge-retrieval-status-step');
+                const collection = details.collection || 'Unknown';
+                const docCount = details.document_count || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Collection</div>
+                        <div class="status-kv-value">${collection}</div>
+                        <div class="status-kv-key">Documents</div>
+                        <div class="status-kv-value">${docCount} documents to rerank</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'knowledge_reranking_complete': {
+                stepEl.classList.add('knowledge-retrieval-status-step');
+                const collection = details.collection || 'Unknown';
+                const rerankedCount = details.reranked_count || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Collection</div>
+                        <div class="status-kv-value">${collection}</div>
+                        <div class="status-kv-key">Result</div>
+                        <div class="status-kv-value text-emerald-400">${rerankedCount} documents reranked</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'knowledge_retrieval_complete': {
+                // Same styling as knowledge_retrieval
+                stepEl.classList.remove('conversation-agent-status-step');
+                stepEl.classList.add('knowledge-retrieval-status-step');
+
+                const collections = details.collections || [];
+                const chunks = details.chunks || [];
+                const documentCount = details.document_count || chunks.length;
+                const durationMs = details.duration_ms || 0;
+
+                let chunksHtml = '';
+                if (chunks.length > 0) {
+                    const chunkPreviews = chunks.map((chunk, idx) => {
+                        const similarity = chunk.similarity_score ? (chunk.similarity_score * 100).toFixed(1) : 'N/A';
+                        const content = chunk.content || '';
+                        const preview = content.length > 150 ? content.substring(0, 147) + '...' : content;
+                        const source = chunk.source || 'Unknown';
+                        return `
+                            <div class="p-2 bg-gray-900/50 rounded border border-indigo-500/30">
+                                <div class="flex justify-between items-start mb-1">
+                                    <span class="text-indigo-400 font-semibold">Chunk ${idx + 1}</span>
+                                    <span class="text-gray-500">Relevance: ${similarity}%</span>
+                                </div>
+                                <div class="text-gray-500 text-xs mb-1">Source: ${source}</div>
+                                <div class="text-gray-300 whitespace-pre-wrap">${preview}</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    chunksHtml = `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">
+                                View Retrieved Chunks (${chunks.length})
+                            </summary>
+                            <div class="space-y-2 mt-2">${chunkPreviews}</div>
+                        </details>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${collections.length > 0 ? collections.join(', ') : 'N/A'}</div>
+                        <div class="status-kv-key">Documents</div>
+                        <div class="status-kv-value">${documentCount} chunks retrieved</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${durationMs}ms</div>
+                    </div>
+                    ${chunksHtml}
+                `;
+
+                // Trigger the knowledge indicator
+                if (collections.length > 0) {
+                    // Only blink during live execution, not when viewing historical turns
+                    if (!state.isViewingHistoricalTurn) {
+                        blinkKnowledgeDot();
+                    }
+                    updateKnowledgeIndicator(collections, documentCount);
+                }
+                break;
+            }
+
+            case 'rag_llm_step': {
+                stepEl.classList.add('knowledge-retrieval-status-step');
+                const stepName = details.step_name || 'Knowledge Synthesis';
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                const durationMs = details.duration_ms || 0;
+                const model = details.model || 'Unknown';
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Step</div>
+                        <div class="status-kv-value"><code class="status-code text-indigo-300">${stepName}</code></div>
+                        <div class="status-kv-key">Model</div>
+                        <div class="status-kv-value">${model}</div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                        ${costUsd !== null ? `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                        ` : ''}
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${durationMs}ms</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'knowledge_search_complete': {
+                stepEl.classList.add('knowledge-retrieval-status-step');
+                const status = details.status || 'complete';
+                const collectionsSearched = details.collections_searched || 0;
+                const collectionNames = details.collection_names || [];
+                const docsRetrieved = details.documents_retrieved || 0;
+                const totalTimeMs = details.total_time_ms || 0;
+                const retrievalTimeMs = details.retrieval_time_ms || 0;
+                const synthesisTimeMs = details.synthesis_time_ms || 0;
+                const tokensIn = details.synthesis_tokens_in || 0;
+                const tokensOut = details.synthesis_tokens_out || 0;
+                const totalTimeSec = (totalTimeMs / 1000).toFixed(1);
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-emerald-400">✓ Complete</div>
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${collectionNames.join(', ')}</div>
+                        <div class="status-kv-key">Documents</div>
+                        <div class="status-kv-value">${docsRetrieved} retrieved</div>
+                        <div class="status-kv-key">Total Time</div>
+                        <div class="status-kv-value">${totalTimeSec}s</div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${tokensIn.toLocaleString()} in / ${tokensOut.toLocaleString()} out</div>
+                    </div>
+                    <details class="mt-2">
+                        <summary class="cursor-pointer text-gray-400 hover:text-white">Timing Breakdown</summary>
+                        <div class="status-kv-grid mt-2">
+                            <div class="status-kv-key">Retrieval</div>
+                            <div class="status-kv-value">${retrievalTimeMs}ms</div>
+                            <div class="status-kv-key">Synthesis</div>
+                            <div class="status-kv-value">${synthesisTimeMs}ms</div>
+                        </div>
+                    </details>
+                `;
+                break;
+            }
+
+            case 'session_name_generation_start': {
+                const summary = details.summary || 'Generating session name...';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-amber-400">In Progress...</div>
+                    </div>
+                `;
+                break;
+            }
+
+            case 'session_name_generation_complete': {
+                const sessionName = details.session_name || 'Unknown';
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                const costUsd = details.cost_usd || null;
+
+                let costHtml = '';
+                if (costUsd !== null && costUsd !== undefined) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Name</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${sessionName}</code></div>
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens} in / ${outputTokens} out</div>
+                        ${costHtml}
+                    </div>
+                `;
+                break;
+            }
+
+            case 'llm_execution': {
+                const profileTag = details.profile_tag || 'CHAT';
+                const profileType = details.profile_type;
+                const profileName = details.profile_name || 'Conversation';
+                const turnNumber = details.turn_number || 1;
+                const historyLength = details.history_length || 0;
+                const knowledgeEnabled = details.knowledge_enabled || false;
+                const knowledgeCollections = details.knowledge_collections || [];
+                const model = details.model || 'Unknown';
+                const userMessage = details.user_message || '';
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+
+                        <div class="status-kv-key">Mode</div>
+                        <div class="status-kv-value">Direct LLM Execution</div>
+
+                        <div class="status-kv-key">Model</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${model}</code></div>
+
+                        <div class="status-kv-key">Turn</div>
+                        <div class="status-kv-value">${turnNumber} (${historyLength} messages in history)</div>
+
+                        ${knowledgeEnabled ? `
+                            <div class="status-kv-key">Knowledge</div>
+                            <div class="status-kv-value">Enabled (${knowledgeCollections.length} ${knowledgeCollections.length === 1 ? 'collection' : 'collections'})</div>
+                        ` : ''}
+                    </div>
+
+                    ${knowledgeEnabled && knowledgeCollections.length > 0 ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Knowledge Collections</summary>
+                            <div class="conv-agent-tool-tags mt-2 flex flex-wrap gap-1">
+                                ${knowledgeCollections.map(c => `<span class="conv-agent-tag">${c}</span>`).join('')}
+                            </div>
+                        </details>
+                    ` : ''}
+
+                    ${userMessage ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Context Sent to LLM</summary>
+                            <pre class="mt-2 p-2 bg-gray-900/50 rounded text-gray-300 whitespace-pre-wrap overflow-x-auto text-sm">${userMessage}</pre>
+                        </details>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            case 'llm_execution_complete': {
+                const summary = details.summary || 'LLM execution completed';
+                const inputTokens = details.input_tokens || 0;
+                const outputTokens = details.output_tokens || 0;
+                const provider = details.provider || 'Unknown';
+                const modelName = details.model_name || 'Unknown';
+                const responseLength = details.response_length || 0;
+                const knowledgeUsed = details.knowledge_used || 0;
+                const responseText = details.response_text || '';
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Provider</div>
+                        <div class="status-kv-value"><code class="status-code text-blue-300">${provider}</code></div>
+
+                        <div class="status-kv-key">Model</div>
+                        <div class="status-kv-value"><code class="status-code text-emerald-300">${modelName}</code></div>
+
+                        <div class="status-kv-key">Input Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()}</div>
+
+                        <div class="status-kv-key">Output Tokens</div>
+                        <div class="status-kv-value">${outputTokens.toLocaleString()}</div>
+
+                        ${costUsd !== null ? `
+                            <div class="status-kv-key">Cost</div>
+                            <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                        ` : ''}
+
+                        <div class="status-kv-key">Response</div>
+                        <div class="status-kv-value">${responseLength} characters</div>
+
+                        ${knowledgeUsed > 0 ? `
+                            <div class="status-kv-key">Knowledge Used</div>
+                            <div class="status-kv-value">${knowledgeUsed} document(s)</div>
+                        ` : ''}
+                    </div>
+
+                    ${responseText ? `
+                        <details class="mt-2">
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Response Text</summary>
+                            <pre class="mt-2 p-2 bg-gray-900/50 rounded text-gray-300 whitespace-pre-wrap overflow-x-auto text-sm">${responseText}</pre>
+                        </details>
+                    ` : ''}
+                `;
+                break;
+            }
+
+            // --- Lifecycle Events for RAG-focused and other profiles ---
+            case 'execution_start': {
+                stepEl.classList.add('info');
+
+                const profileType = details.profile_type || 'unknown';
+                const profileTag = details.profile_tag || 'N/A';
+                const query = details.query || '';
+                const queryPreview = query.length > 100 ? query.substring(0, 100) + '...' : query;
+                const knowledgeCollections = details.knowledge_collections || 0;
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+                        <div class="status-kv-key">Type</div>
+                        <div class="status-kv-value">${profileType}</div>
+                        ${knowledgeCollections > 0 ? `
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${knowledgeCollections}</div>
+                        ` : ''}
+                        ${queryPreview ? `
+                        <div class="status-kv-key">Query</div>
+                        <div class="status-kv-value text-gray-300">"${queryPreview}"</div>
+                        ` : ''}
+                    </div>
+                `;
+                break;
+            }
+
+            case 'execution_complete': {
+                const profileTypeRaw = details.profile_type || 'unknown';
+                const profileTypeLower = profileTypeRaw.toLowerCase?.() || profileTypeRaw;
+
+                // Skip rendering for genie profiles - genie_coordination_complete already shows this info
+                if (profileTypeLower === 'genie') {
+                    console.log('[_renderConversationAgentStep:switch] Skipping redundant execution_complete for genie profile');
+                    return null;
+                }
+
+                stepEl.classList.add('success');
+
+                const profileTag = details.profile_tag || 'N/A';
+                const success = details.success !== false;
+                const statusText = success ? 'Success' : 'Failed';
+                const statusClass = success ? 'text-emerald-400' : 'text-rose-400';
+
+                // Profile-specific details
+                let profileDetailsHtml = '';
+                if (details.collections_searched !== undefined) {
+                    // RAG focused profile
+                    const docsRetrieved = details.documents_retrieved || 0;
+                    const collectionsSearched = details.collections_searched || 0;
+                    // Use total_duration_ms if available, otherwise calculate from retrieval + synthesis
+                    const totalDuration = details.total_duration_ms ||
+                        ((details.retrieval_duration_ms || 0) + (details.synthesis_duration_ms || 0));
+                    const totalSeconds = (totalDuration / 1000).toFixed(1);
+                    profileDetailsHtml = `
+                        <div class="status-kv-key">Collections</div>
+                        <div class="status-kv-value">${collectionsSearched} searched</div>
+                        <div class="status-kv-key">Documents</div>
+                        <div class="status-kv-value">${docsRetrieved} retrieved</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${totalSeconds}s</div>
+                    `;
+                } else if (details.phases_executed !== undefined || details.duration_ms !== undefined) {
+                    // Tool enabled (Optimizer) profile
+                    const phasesExecuted = details.phases_executed || 0;
+                    const durationMs = details.duration_ms || 0;
+                    const durationSec = (durationMs / 1000).toFixed(1);
+                    profileDetailsHtml = `
+                        <div class="status-kv-key">Phases</div>
+                        <div class="status-kv-value">${phasesExecuted} executed</div>
+                        <div class="status-kv-key">Duration</div>
+                        <div class="status-kv-value">${durationSec}s</div>
+                    `;
+                }
+
+                const inputTokens = details.total_input_tokens || 0;
+                const outputTokens = details.total_output_tokens || 0;
+
+                // Cost (if available)
+                const costUsd = details.cost_usd != null ? parseFloat(details.cost_usd) : null;
+                let costHtml = '';
+                if (costUsd !== null) {
+                    costHtml = `
+                        <div class="status-kv-key">Cost</div>
+                        <div class="status-kv-value text-amber-300">$${costUsd.toFixed(6)}</div>
+                    `;
+                }
+
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value ${statusClass}">${statusText}</div>
+                        <div class="status-kv-key">Profile</div>
+                        <div class="status-kv-value">${renderProfileTag(profileTag, profileType)}</div>
+                        ${profileDetailsHtml}
+                        <div class="status-kv-key">Tokens</div>
+                        <div class="status-kv-value">${inputTokens.toLocaleString()} in / ${outputTokens.toLocaleString()} out</div>
+                        ${costHtml}
+                    </div>
+                `;
+                break;
+            }
+
+            default:
+                // Generic fallback with JSON display
+                try {
+                    const jsonStr = JSON.stringify(details, null, 2);
+                    detailsEl.innerHTML = `
+                        <details>
+                            <summary class="cursor-pointer text-gray-400 hover:text-white">View Details</summary>
+                            <pre class="mt-1 p-2 bg-gray-900/50 rounded text-gray-400 overflow-x-auto">${jsonStr}</pre>
+                        </details>
+                    `;
+                } catch (e) {
+                    detailsEl.innerHTML = `<span class="text-gray-500">[Unable to display details]</span>`;
+                }
+        }
+
+        stepEl.appendChild(detailsEl);
+    }
+
+    parentContainer.appendChild(stepEl);
+
+    // Auto-scroll to latest step (skip during historical replay to keep scroll at top)
+    if (!state.isViewingHistoricalTurn) {
+        stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // Reset conversation agent state on completion
+    if (type === 'conversation_agent_complete') {
+        state.isConversationAgentActive = false;
+    }
+}
+
+/**
+ * Exported wrapper for rendering conversation agent events during session reload.
+ * Uses the same rendering logic as live execution for consistent UX.
+ */
+export function renderConversationAgentStepForReload(eventData, parentContainer, isFinal = false, filterCategory = null) {
+    if (filterCategory) eventData._filterCategory = filterCategory;
+    _renderConversationAgentStep(eventData, parentContainer, isFinal);
+}
+
+/**
+ * Renders details for optimization events (workaround, plan_optimization).
+ * Handles both string payloads and structured objects with summary/correction_type/etc.
+ */
+function _renderOptimizationDetails(details) {
+    // String details — display as clean text
+    if (typeof details === 'string') {
+        return `<div class="text-xs text-gray-300 mt-1">${details}</div>`;
+    }
+
+    if (typeof details !== 'object' || details === null) return null;
+
+    const summary = details.summary || '';
+    let html = '';
+
+    // Primary: summary text
+    if (summary) {
+        html += `<div class="text-xs text-gray-300 mt-1">${summary}</div>`;
+    }
+
+    // Metadata KV pairs
+    const kvPairs = [];
+
+    if (details.correction_type) {
+        kvPairs.push(['Type', `<code class="status-code">${details.correction_type}</code>`]);
+    }
+    if (details.stripped_arguments) {
+        kvPairs.push(['Stripped', details.stripped_arguments.map(a => `<code class="status-code">${a}</code>`).join(', ')]);
+    }
+    if (details.pruned_arguments) {
+        const pruned = Array.isArray(details.pruned_arguments) ? details.pruned_arguments : [details.pruned_arguments];
+        kvPairs.push(['Pruned', pruned.map(a => `<code class="status-code">${a}</code>`).join(', ')]);
+    }
+    if (details.collapsed_phases) {
+        kvPairs.push(['Collapsed Phases', details.collapsed_phases.join(', ')]);
+    }
+    if (details.from !== undefined && details.to !== undefined) {
+        const fmtVal = (v) => typeof v === 'object' ? JSON.stringify(v) : String(v);
+        kvPairs.push(['From', `<code class="status-code">${fmtVal(details.from)}</code>`]);
+        kvPairs.push(['To', `<code class="status-code">${fmtVal(details.to)}</code>`]);
+    }
+    if (details.phase_number !== undefined) {
+        kvPairs.push(['Phase', String(details.phase_number)]);
+    }
+
+    if (kvPairs.length > 0) {
+        html += '<div class="status-kv-grid mt-1">';
+        for (const [key, value] of kvPairs) {
+            html += `<div class="status-kv-key">${key}</div><div class="status-kv-value">${value}</div>`;
+        }
+        html += '</div>';
+    }
+
+    // Complex nested objects in collapsible sections
+    const complexFields = [];
+    if (details.original_plan) complexFields.push(['Original Plan', details.original_plan]);
+    if (details.correction?.added_phase) complexFields.push(['Added Phase', details.correction.added_phase]);
+    // Self-correction events have nested `details` object (different from outer `details`)
+    if (details.details && typeof details.details === 'object') complexFields.push(['Details', details.details]);
+
+    for (const [label, obj] of complexFields) {
+        const jsonStr = JSON.stringify(obj, null, 2);
+        html += `
+            <details class="text-xs mt-1">
+                <summary class="cursor-pointer text-gray-400 hover:text-white">View ${label}</summary>
+                <div class="mt-2 p-2 status-text-block whitespace-pre-wrap">${jsonStr}</div>
+            </details>
+        `;
+    }
+
+    return html || null;
+}
+
+/**
+ * Renders details for context optimization events (document_truncation, context_distillation, report_distillation).
+ */
+function _renderContextOptimizationDetails(details) {
+    if (typeof details === 'string') return `<div class="text-xs text-gray-300 mt-1">${details}</div>`;
+    if (typeof details !== 'object' || details === null) return null;
+
+    const summary = details.summary || '';
+    let html = '';
+    if (summary) html += `<div class="text-xs text-gray-300 mt-1">${summary}</div>`;
+
+    const kvPairs = [];
+    if (details.subtype === 'document_truncation') {
+        if (details.filename) kvPairs.push(['File', `<code class="status-code">${details.filename}</code>`]);
+        if (details.original_chars) kvPairs.push(['Original', `${details.original_chars.toLocaleString()} chars`]);
+        if (details.truncated_to_chars) kvPairs.push(['Truncated to', `${details.truncated_to_chars.toLocaleString()} chars`]);
+        if (details.reason === 'total_context_limit') {
+            kvPairs.push(['Documents', `${details.documents_loaded} of ${details.documents_total} loaded`]);
+            kvPairs.push(['Limit', `${(details.limit_chars || 0).toLocaleString()} chars`]);
+        }
+    } else if (details.subtype === 'context_distillation') {
+        kvPairs.push(['Rows', (details.row_count || 0).toLocaleString()]);
+        kvPairs.push(['Size', `${(details.char_count || 0).toLocaleString()} chars`]);
+        if (details.columns && details.columns.length) {
+            kvPairs.push(['Columns', details.columns.slice(0, 5).map(c => `<code class="status-code">${c}</code>`).join(', ')
+                + (details.columns.length > 5 ? ` +${details.columns.length - 5} more` : '')]);
+        }
+    } else if (details.subtype === 'report_distillation') {
+        kvPairs.push(['Original', `${(details.original_chars || 0).toLocaleString()} chars`]);
+        kvPairs.push(['Distilled', `${(details.distilled_chars || 0).toLocaleString()} chars`]);
+        kvPairs.push(['Reduction', `${details.reduction_pct || 0}%`]);
+        kvPairs.push(['Level', String(details.level || 1)]);
+    }
+
+    if (kvPairs.length > 0) {
+        html += '<div class="status-kv-grid mt-1">';
+        for (const [key, value] of kvPairs) {
+            html += `<div class="status-kv-key">${key}</div><div class="status-kv-value">${value}</div>`;
+        }
+        html += '</div>';
+    }
+    return html || null;
+}
+
+// ── Extension Renderer (compact, amber-accented) ────────────────────────────
+// Matches the historical reload style from _renderExtensionEventsForReload().
+// Extension events are visually distinct from the main execution pipeline.
+
+let _extensionDividerAdded = false;
+let _skillDividerAdded = false;
+
+function _ensureExtensionDivider(parentContainer) {
+    if (_extensionDividerAdded) return;
+    const divider = document.createElement('div');
+    divider.className = 'px-4 py-2 mt-2 border-t';
+    divider.style.borderColor = 'rgba(251, 191, 36, 0.3)';
+    divider.dataset.filterCategory = 'system';
+    if (!isFilterCategoryEnabled('system')) {
+        divider.classList.add('event-filtered-hidden');
+    }
+    divider.innerHTML = `<span class="text-xs font-semibold uppercase tracking-wider" style="color: #fbbf24;">Extensions</span>`;
+    parentContainer.appendChild(divider);
+    _extensionDividerAdded = true;
+}
+
+function _renderExtensionStep(eventData, parentContainer) {
+    const { step, details, type } = eventData;
+
+    _ensureExtensionDivider(parentContainer);
+
+    // Helper: tag extension step elements with filter category
+    const _tagFilterCategory = (el) => {
+        if (eventData._filterCategory) {
+            el.dataset.filterCategory = eventData._filterCategory;
+            if (!isFilterCategoryEnabled(eventData._filterCategory)) {
+                el.classList.add('event-filtered-hidden');
+            }
+        }
+    };
+
+    if (type === 'extension_running') {
+        // Start event — amber play icon
+        const payload = typeof details === 'string' ? {} : (details || {});
+        const stepEl = document.createElement('div');
+        stepEl.className = 'px-4 py-2 status-step';
+        _tagFilterCategory(stepEl);
+        stepEl.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="text-xs" style="color: #fbbf24;">&#9654;</span>
+                <span class="text-xs text-gray-300">${step || 'Running extension'}</span>
+            </div>`;
+        parentContainer.appendChild(stepEl);
+    } else if (type === 'extension_complete') {
+        // Complete event — green check or red X, with optional token/cost metrics
+        const payload = typeof details === 'object' ? (details || {}) : {};
+        const success = typeof details === 'string' ? details !== 'Failed' : true;
+        const icon = success ? '&#10003;' : '&#10007;';
+        const color = success ? 'text-green-400' : 'text-red-400';
+
+        // Build metrics string for LLM extensions (tokens, cost, time)
+        let metricsHtml = '';
+        const inputTokens = payload.input_tokens;
+        const outputTokens = payload.output_tokens;
+        const costUsd = payload.cost_usd;
+        const execTimeMs = payload.execution_time_ms;
+
+        if (inputTokens || outputTokens) {
+            const parts = [];
+            parts.push(`${(inputTokens || 0).toLocaleString()} in / ${(outputTokens || 0).toLocaleString()} out`);
+            if (costUsd !== undefined && costUsd > 0) {
+                parts.push(`$${parseFloat(costUsd).toFixed(6)}`);
+            }
+            if (execTimeMs) {
+                parts.push(`${execTimeMs}ms`);
+            }
+            metricsHtml = `<span class="text-xs text-gray-500 ml-auto">${parts.join(' · ')}</span>`;
+        } else if (execTimeMs) {
+            metricsHtml = `<span class="text-xs text-gray-500 ml-auto">${execTimeMs}ms</span>`;
+        }
+
+        const stepEl = document.createElement('div');
+        stepEl.className = 'px-4 py-2 status-step';
+        _tagFilterCategory(stepEl);
+        stepEl.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="${color} text-xs">${icon}</span>
+                <span class="text-xs text-gray-300">${step || 'Extension'}</span>
+                ${metricsHtml}
+            </div>`;
+        parentContainer.appendChild(stepEl);
+    } else if (type === 'extension_results') {
+        // Combined results — show output previews for silent extensions
+        const results = typeof details === 'object' ? details : {};
+        for (const [name, result] of Object.entries(results)) {
+            const target = result?.output_target || 'silent';
+            if (target === 'chat_append') continue; // already visible in chat
+
+            if (result?.success && result?.content) {
+                const contentPreview = typeof result.content === 'object'
+                    ? JSON.stringify(result.content, null, 2).substring(0, 300)
+                    : String(result.content).substring(0, 300);
+
+                const resultEl = document.createElement('div');
+                resultEl.className = 'px-4 py-2';
+                resultEl.innerHTML = `
+                    <details class="group">
+                        <summary class="text-xs cursor-pointer hover:text-amber-200" style="color: #fbbf24;">
+                            &#9660; !${name} output <span class="text-gray-500">(${result.content_type || 'application/json'})</span>
+                        </summary>
+                        <pre class="mt-1 text-xs text-gray-400 bg-gray-800/50 rounded p-2 overflow-auto max-h-48 whitespace-pre-wrap">${contentPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                    </details>`;
+                parentContainer.appendChild(resultEl);
+            }
+        }
+    }
+}
+
+// ── Skill Step Renderer (emerald green, pre-processing transparency) ──────────
+
+function _ensureSkillDivider(parentContainer) {
+    if (_skillDividerAdded) return;
+    const divider = document.createElement('div');
+    divider.className = 'px-4 py-2 mt-2 border-t';
+    divider.style.borderColor = 'rgba(52, 211, 153, 0.3)';
+    divider.dataset.filterCategory = 'system';
+    if (!isFilterCategoryEnabled('system')) {
+        divider.classList.add('event-filtered-hidden');
+    }
+    divider.innerHTML = `<span class="text-xs font-semibold uppercase tracking-wider" style="color: #34d399;">Skills</span>`;
+    parentContainer.appendChild(divider);
+    _skillDividerAdded = true;
+}
+
+function _renderSkillStep(eventData, parentContainer) {
+    const { details } = eventData;
+    const payload = typeof details === 'object' ? (details || {}) : {};
+    const skills = payload.skills || [];
+    const totalTokens = payload.total_estimated_tokens || 0;
+
+    if (skills.length === 0) return;
+
+    _ensureSkillDivider(parentContainer);
+
+    // Render each skill as a compact row
+    skills.forEach(skill => {
+        const nameDisplay = skill.param ? `#${skill.name}:${skill.param}` : `#${skill.name}`;
+        const target = skill.injection_target === 'user_context' ? 'user context' : 'system prompt';
+        const tokens = skill.estimated_tokens || 0;
+
+        const stepEl = document.createElement('div');
+        stepEl.className = 'px-4 py-2 status-step';
+        // Tag with filter category for event filter chips
+        if (eventData._filterCategory) {
+            stepEl.dataset.filterCategory = eventData._filterCategory;
+            if (!isFilterCategoryEnabled(eventData._filterCategory)) {
+                stepEl.classList.add('event-filtered-hidden');
+            }
+        }
+        stepEl.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="text-xs" style="color: #34d399;">&#10038;</span>
+                <span class="text-xs text-gray-300"><span class="font-medium" style="color: #34d399;">${nameDisplay}</span> &rarr; ${target}</span>
+                <span class="text-xs text-gray-500 ml-auto">~${tokens.toLocaleString()} tokens</span>
+            </div>`;
+        parentContainer.appendChild(stepEl);
+    });
+
+    // Total overhead summary
+    if (skills.length > 1) {
+        const totalEl = document.createElement('div');
+        totalEl.className = 'px-4 py-1';
+        totalEl.innerHTML = `<span class="text-xs text-gray-500">Skill context: ~${totalTokens.toLocaleString()} tokens added to prompt</span>`;
+        parentContainer.appendChild(totalEl);
+    }
+}
+
+function _renderStandardStep(eventData, parentContainer, isFinal = false) {
+    const { step, details, type } = eventData;
+
+    // --- UX ENHANCEMENT ---
+    // The "Calling LLM" step is transient; it shouldn't stay active.
+    // We mark it as 'final' so it renders as completed immediately.
+    // The subsequent "Plan Generated" step will become the active one.
+    if (step?.startsWith("Calling LLM for")) {
+        isFinal = true;
+    }
+    // --- END ENHANCEMENT ---
+
+    let lastStep = document.getElementById(`status-step-${state.currentStatusId}`);
+
+    // FALLBACK: If no ID-based step found, try class selector
+    // This handles steps created by _renderConversationAgentStep which don't use ID system
+    // (e.g., execution_start lifecycle events that don't have numbered IDs)
+    if (!lastStep && parentContainer) {
+        lastStep = parentContainer.querySelector('.status-step.active');
+    }
+
+    if (lastStep && lastStep.classList.contains('active') && parentContainer && parentContainer.contains(lastStep)) {
+        lastStep.classList.remove('active');
+        lastStep.classList.add('completed');
+        // Remove progress indicator when phase completes (Phase 1: Terminology Harmonization)
+        const progressIndicator = lastStep.querySelector('.progress-indicator');
+        if (progressIndicator) {
+            progressIndicator.remove();
+        }
+        if (state.isInFastPath && !lastStep.classList.contains('plan-optimization')) {
+            lastStep.classList.add('plan-optimization');
+        }
+    }
+
+    if (type !== 'plan_optimization') {
+        state.isInFastPath = false;
+    } else {
+        state.isInFastPath = true;
+    }
+
+    state.currentStatusId++;
+    const stepEl = document.createElement('div');
+    stepEl.id = `status-step-${state.currentStatusId}`;
+    stepEl.className = 'status-step p-3 rounded-md mb-2'; // Added mb-2 for spacing
+
+    // Tag with filter category for event filter chips
+    if (eventData._filterCategory) {
+        stepEl.dataset.filterCategory = eventData._filterCategory;
+        if (!isFilterCategoryEnabled(eventData._filterCategory)) {
+            stepEl.classList.add('event-filtered-hidden');
+        }
+    }
+
+    // Apply depth-based indentation for sub-executor events
+    const depth = eventData.metadata?.execution_depth || eventData.details?.execution_depth || 0;
+    if (depth > 0) {
+        stepEl.style.marginLeft = `${depth * 16}px`;
+        stepEl.style.borderLeft = '2px solid rgba(139, 92, 246, 0.3)';
+    }
+
+    const depthPrefix = depth > 0 ? '↳ '.repeat(depth) : '';
+    const stepTitle = document.createElement('h4');
+    stepTitle.className = 'font-bold text-sm text-white mb-2';
+    stepTitle.textContent = depthPrefix + (step || (type === 'tool_result' ? 'Result' : (type === 'error' ? 'Error' : 'Details')));
+
+    // Add progress indicator for active phases (Phase 1: Terminology Harmonization)
+    if (type === 'phase_start' && !isFinal) {
+        const progressLabel = document.createElement('span');
+        progressLabel.className = 'text-amber-400 text-xs ml-2 progress-indicator';
+        progressLabel.textContent = 'Processing...';
+        stepTitle.appendChild(progressLabel);
+    }
+
+    stepEl.appendChild(stepTitle);
+
+    const metricsEl = document.createElement('div');
+    metricsEl.className = 'per-call-metrics text-xs text-gray-400 mb-2 hidden';
+
+    if (typeof details === 'object' && details !== null && details.call_id) {
+        metricsEl.dataset.callId = details.call_id;
+    }
+    
+    if (typeof details === 'object' && details !== null) {
+        // Check for planner tokens (at the root of 'details')
+        const planner_input = details.input_tokens;
+        const planner_output = details.output_tokens;
+        
+        // Check for tool tokens (inside 'details.metadata')
+        const tool_input = details.metadata?.input_tokens;
+        const tool_output = details.metadata?.output_tokens;
+
+        if (planner_input !== undefined && planner_output !== undefined) {
+            let metricsText = `(LLM Call: ${planner_input.toLocaleString()} in / ${planner_output.toLocaleString()} out`;
+            if (details.cost_usd !== undefined && details.cost_usd !== null) {
+                metricsText += ` · $${parseFloat(details.cost_usd).toFixed(6)}`;
+            }
+            metricsText += ')';
+            metricsEl.innerHTML = metricsText;
+            metricsEl.classList.remove('hidden');
+        } else if (tool_input !== undefined && tool_output !== undefined) {
+            let metricsText = `(LLM Call: ${tool_input.toLocaleString()} in / ${tool_output.toLocaleString()} out`;
+            const toolCost = details.metadata?.cost_usd;
+            if (toolCost !== undefined && toolCost !== null) {
+                metricsText += ` · $${parseFloat(toolCost).toFixed(6)}`;
+            }
+            metricsText += ')';
+            metricsEl.innerHTML = metricsText;
+            metricsEl.classList.remove('hidden');
+        }
+    }
+
+    stepEl.appendChild(metricsEl);
+
+    if (details) {
+        let customRenderedHtml = null;
+        let detailsString = '';
+
+        if (type === 'context_window_snapshot' && typeof details === 'string') {
+            // Context window snapshot details are pre-rendered HTML from renderContextWindowSnapshot()
+            customRenderedHtml = details;
+        } else if (typeof details === 'object' && details !== null) {
+            if (step?.startsWith("Calling LLM for")) {
+                customRenderedHtml = _renderPlanningDetails(details);
+            } else if (type === "plan_generated") {
+                customRenderedHtml = _renderMetaPlanDetails(details);
+            } else if (type === "tool_intent") {
+                customRenderedHtml = _renderToolIntentDetails(details);
+            } else if (type === "knowledge_retrieval") {
+                customRenderedHtml = _renderKnowledgeRetrievalDetails(details);
+                // Trigger the indicator blink when rendering knowledge retrieval event
+                if (details.collections && details.collections.length > 0) {
+                    // Only blink during live execution, not when viewing historical turns
+                    if (!state.isViewingHistoricalTurn) {
+                        blinkKnowledgeDot();
+                    }
+                    updateKnowledgeIndicator(details.collections, details.document_count || 0);
+                }
+            } else if (type === "session_name_generation_start") {
+                customRenderedHtml = _renderSessionNameStartDetails(details);
+            } else if (type === "session_name_generation_complete") {
+                customRenderedHtml = _renderSessionNameCompleteDetails(details);
+            } else if (type === "execution_start") {
+                customRenderedHtml = _renderExecutionStartDetails(details);
+            } else if (type === "execution_complete") {
+                customRenderedHtml = _renderExecutionCompleteDetails(details);
+            } else if (type === "workaround" || type === "plan_optimization") {
+                customRenderedHtml = _renderOptimizationDetails(details);
+            } else if (type === "context_optimization") {
+                customRenderedHtml = _renderContextOptimizationDetails(details);
+            } else {
+                try {
+                    const cache = new Set();
+                    detailsString = JSON.stringify(details, (key, value) => {
+                        if (typeof value === 'object' && value !== null) {
+                            if (cache.has(value)) {
+                                return '[Circular Reference]';
+                            }
+                            cache.add(value);
+                        }
+                        return value;
+                    }, 2);
+                } catch (e) {
+                    detailsString = "[Could not stringify details]";
+                    console.error("Error stringifying details:", e, details);
+                }
+            }
+        } else {
+            detailsString = String(details);
+        }
+
+        if (customRenderedHtml) {
+            const detailsContainer = document.createElement('div');
+            detailsContainer.innerHTML = customRenderedHtml;
+            stepEl.appendChild(detailsContainer);
+        } else if (detailsString) {
+            const characterThreshold = 300;
+            if (detailsString.length > characterThreshold) {
+                const detailsEl = document.createElement('details');
+                detailsEl.className = 'text-xs';
+
+                const summaryEl = document.createElement('summary');
+                summaryEl.className = 'cursor-pointer text-gray-400 hover:text-white';
+
+                let summaryText = `Details (${detailsString.length} chars)`;
+                if ((step?.includes('Tool Execution Result') || step?.includes('Tool Execution Error') || step?.includes('LLM Synthesis Results')) && typeof details === 'object' && details !== null) {
+                    if (details.results) {
+                        const itemCount = Array.isArray(details.results) ? details.results.length : (details.results ? 1 : 0);
+                        const status = details.status || 'unknown';
+                        summaryText = `Result (${status}, ${itemCount} items)`;
+                    } else if (details.type === 'chart') {
+                        summaryText = 'Chart Specification';
+                    }
+                } else if (step?.includes('Final Answer')) {
+                    summaryText = `Final Answer Summary`;
+                } else if (type === 'cancelled') {
+                    summaryText = 'Cancellation Details';
+                } else if (type === 'error') {
+                    summaryText = 'Error Details';
+                }
+
+                summaryEl.textContent = `${summaryText} - Click to expand`;
+                detailsEl.appendChild(summaryEl);
+
+                const pre = document.createElement('pre');
+                pre.className = 'mt-2 p-2 bg-gray-900/70 rounded-md text-gray-300 overflow-x-auto whitespace-pre-wrap';
+                pre.textContent = detailsString;
+                detailsEl.appendChild(pre);
+                stepEl.appendChild(detailsEl);
+            } else {
+                const pre = document.createElement('pre');
+                pre.className = 'p-2 bg-gray-900/70 rounded-md text-xs text-gray-300 overflow-x-auto whitespace-pre-wrap';
+                pre.textContent = detailsString;
+                stepEl.appendChild(pre);
+            }
+        }
+    }
+
+    parentContainer.appendChild(stepEl);
+
+    if (type === 'workaround') {
+        stepEl.classList.add('workaround');
+    } else if (type === 'error') {
+        stepEl.classList.add('error');
+    } else if (type === 'cancelled') {
+        stepEl.classList.add('cancelled');
+    } else if (state.isInFastPath) {
+        stepEl.classList.add('plan-optimization');
+    }
+
+    if (!isFinal) {
+        stepEl.classList.add('active');
+    } else {
+        stepEl.classList.remove('active');
+        if (!stepEl.classList.contains('error') && !stepEl.classList.contains('cancelled')) {
+            stepEl.classList.add('completed');
+        }
+    }
+
+    // Add category class for background color
+    const category = getEventCategory(type);
+    stepEl.classList.add(category);
+}
+
+/**
+ * Resets the status window and its related state variables for a new execution.
+ */
+export function resetStatusWindowForNewTask() {
+    DOM.statusWindowContent.innerHTML = '';
+    _extensionDividerAdded = false; // Reset extension divider flag for new task
+    _skillDividerAdded = false; // Reset skill divider flag for new task
+    // Remove any existing scroll spacer
+    const existingSpacer = document.getElementById('status-scroll-spacer');
+    if (existingSpacer) existingSpacer.remove();
+
+    // Hide knowledge banner when starting a new task
+    const knowledgeBanner = document.getElementById('knowledge-banner');
+    if (knowledgeBanner) {
+        knowledgeBanner.classList.add('hidden');
+    }
+
+    state.currentStatusId = 0;
+    state.isRestTaskActive = false;
+    state.activeRestTaskId = null;
+    state.currentPhaseContainerEl = null;
+    state.phaseContainerStack = [];
+    state.pendingSubtaskPlanningEvents = [];
+    state.isInFastPath = false;
+    setThinkingIndicator(false);
+    // Title is NOT reset here — it is managed by lifecycle events (execution_start)
+    // and profile-specific source handlers (genie, conversation_agent, rest).
+    // Each caller sets the appropriate branded title after calling this function.
+}
+
+/**
+ * Map profile types to branded agent names (IFOC methodology)
+ */
+function _getBrandedAgentName(profileType) {
+    switch (profileType) {
+        case 'conversation_with_tools':
+        case 'llm_only':
+            return 'Ideate Agent';
+        case 'rag_focused':
+            return 'Focus Agent';
+        case 'tool_enabled':
+            return 'Optimize Agent';
+        case 'genie':
+            return 'Coordinate Agent';
+        default:
+            return 'Agent';
+    }
+}
+
+/**
+ * Format the Live Status title with branded agent name and turn number.
+ * @param {string} profileType - Profile type for branding
+ * @param {boolean} isLive - true for live execution prefix, false for completed
+ * @returns {string} Formatted title
+ */
+function _formatStatusTitle(profileType, isLive = true) {
+    const brandedName = _getBrandedAgentName(profileType);
+    const turnSuffix = state.currentTurnNumber ? ` - Turn ${state.currentTurnNumber}` : '';
+    if (isLive) {
+        return `Live Status - ${brandedName}${turnSuffix}`;
+    }
+    return `${brandedName}${turnSuffix}`;
+}
+
+export function updateStatusWindow(eventData, isFinal = false, source = 'interactive', taskId = null) {
+    const { step, details, type, metadata } = eventData;
+
+    // Compute and attach filter category for DOM tagging by renderers
+    eventData._filterCategory = getFilterCategory(source, type);
+
+    const statusTitle = DOM.statusTitle || document.getElementById('status-title');
+
+    if (source === 'rest' && taskId) {
+        // Check if this is the first event for a new or different REST task
+        if (!state.isRestTaskActive || taskId !== state.activeRestTaskId) {
+            // Don't clear if there are existing steps (e.g., session name generation) UNLESS switching tasks
+            const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
+            const isSwitchingTasks = state.isRestTaskActive && taskId !== state.activeRestTaskId;
+            if (!hasExistingSteps || isSwitchingTasks) {
+                resetStatusWindowForNewTask(); // Use the centralized reset function
+            }
+            state.isRestTaskActive = true; // Set REST-specific state after reset
+            state.activeRestTaskId = taskId;
+            updateTaskIdDisplay(taskId); // Display the task ID
+        }
+        statusTitle.textContent = _formatStatusTitle('tool_enabled');
+    } else if (source === 'genie') {
+        // Genie coordination events
+        if (!state.isGenieCoordinationActive) {
+            // Don't clear status window if there are already steps (e.g., session name generation)
+            // Only reset if window is empty or has placeholder text
+            const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
+            if (!hasExistingSteps) {
+                resetStatusWindowForNewTask();
+            }
+            state.isGenieCoordinationActive = true;
+            state.isRestTaskActive = false;
+            updateTaskIdDisplay(null);
+        }
+        statusTitle.textContent = _formatStatusTitle('genie');
+        // Render genie events using custom renderer
+        _renderGenieStep(eventData, DOM.statusWindowContent, isFinal);
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'conversation_agent') {
+        // Conversation agent tool execution events
+        if (!state.isConversationAgentActive) {
+            // Only reset if there's no pending knowledge retrieval event AND no existing steps (e.g., session name generation)
+            // (knowledge_retrieval arrives before conversation_agent_start for conversation_with_tools)
+            const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
+            if (!state.pendingKnowledgeRetrievalEvent && !hasExistingSteps) {
+                resetStatusWindowForNewTask();
+            }
+            state.isConversationAgentActive = true;
+            state.isRestTaskActive = false;
+            state.isGenieCoordinationActive = false;
+            updateTaskIdDisplay(null);
+        }
+        // Extract profile_type from event details if available (conversation_agent_start event)
+        const profileType = details?.profile_type || 'conversation_with_tools';
+        // Capture turn number from conversation_agent_start (replaces lifecycle execution_start)
+        if (type === 'conversation_agent_start' && details?.turn_id) {
+            state.currentTurnNumber = details.turn_id;
+        }
+        // On completion, transition title from "Live Status - ..." to "<Brand> - Turn X"
+        // (replaces lifecycle execution_complete title transition)
+        const isLive = type !== 'conversation_agent_complete';
+        statusTitle.textContent = _formatStatusTitle(profileType, isLive);
+        // Render conversation agent events using custom renderer
+        _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'knowledge_retrieval') {
+        // Knowledge retrieval events (arrives before conversation_agent_start for conversation_with_tools)
+        // Reset the status window if no agent execution is active yet AND no existing steps (e.g., session name generation)
+        if (!state.isConversationAgentActive && !state.isGenieCoordinationActive && !state.isRestTaskActive) {
+            const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
+            if (!hasExistingSteps) {
+                resetStatusWindowForNewTask();
+                updateTaskIdDisplay(null);
+            }
+        }
+        statusTitle.textContent = _formatStatusTitle('rag_focused');
+        // Render knowledge retrieval using the conversation agent renderer (same styling)
+        _renderConversationAgentStep(eventData, DOM.statusWindowContent, false);
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'session_name') {
+        // Session name generation events - route to conversation agent renderer
+        // Don't change status title — session name generation is a background activity
+        // that shouldn't override the current execution context title
+        _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'skills') {
+        // Skill events — emerald green renderer for pre-processing transparency
+        _renderSkillStep(eventData, DOM.statusWindowContent);
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'extension') {
+        // Extension events — use dedicated compact renderer (amber-accented, matches reload style)
+        _renderExtensionStep(eventData, DOM.statusWindowContent);
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'lifecycle') {
+        // Lifecycle events (execution_start, execution_complete, etc.) for all profile types
+
+        // Capture turn number from execution_start for title display
+        if (type === 'execution_start' && details?.turn_id) {
+            state.currentTurnNumber = details.turn_id;
+        }
+
+        // Reset status window if no active execution
+        if (!state.isConversationAgentActive && !state.isGenieCoordinationActive && !state.isRestTaskActive) {
+            const hasExistingSteps = DOM.statusWindowContent.querySelector('.status-step');
+            if (!hasExistingSteps) {
+                resetStatusWindowForNewTask();
+                updateTaskIdDisplay(null);
+                // Use branded title from execution_start payload if available,
+                // so the correct agent name appears immediately (no brief "Live Status" gap)
+                if (type === 'execution_start' && details?.profile_type) {
+                    statusTitle.textContent = _formatStatusTitle(details.profile_type, true);
+                } else {
+                    statusTitle.textContent = 'Live Status';
+                }
+            }
+            // When existing steps are present, preserve the current title —
+            // the profile-specific execution (Genie, Conversation, etc.) already set it.
+        }
+
+        // On execution_complete: transition from "Live Status - ..." to "<Brand> - Turn X"
+        if (type === 'execution_complete' && details?.profile_type) {
+            statusTitle.textContent = _formatStatusTitle(details.profile_type, false);
+        }
+
+        // For tool_enabled profiles during live execution, route lifecycle events
+        // through _renderStandardStep so they integrate visually with optimizer steps.
+        // Detect optimizer context by checking for existing standard (non-conversation-agent) steps.
+        const hasStandardSteps = DOM.statusWindowContent.querySelector(
+            '.status-step:not(.conversation-agent-status-step):not(.knowledge-retrieval-status-step)'
+        );
+
+        if (hasStandardSteps && (type === 'execution_start' || type === 'execution_complete' ||
+            type === 'execution_error' || type === 'execution_cancelled')) {
+            // Sub-executor lifecycle events render inside the active phase container
+            // so they appear nested within the parent's phase (not at top level).
+            const lifecycleDepth = metadata?.execution_depth || 0;
+            const lifecycleTarget = lifecycleDepth > 0 && state.currentPhaseContainerEl
+                ? state.currentPhaseContainerEl.querySelector('.status-phase-content') || DOM.statusWindowContent
+                : DOM.statusWindowContent;
+            _renderStandardStep(eventData, lifecycleTarget, isFinal);
+        } else {
+            _renderConversationAgentStep(eventData, DOM.statusWindowContent, isFinal);
+        }
+
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    } else if (source === 'interactive') {
+        // If the last active view was a REST task or agent execution, reset the view
+        // BUT: Don't reset if genie/conversation agent is CURRENTLY active - let them finish!
+        // Only reset when switching FROM those modes TO interactive mode.
+        if ((state.isRestTaskActive || state.isConversationAgentActive) && !state.isGenieCoordinationActive) {
+            resetStatusWindowForNewTask();
+            updateTaskIdDisplay(null); // Hide the task ID
+        }
+        // Title is NOT reset here — it is managed by lifecycle events (execution_start)
+        // and profile-specific source handlers (genie, conversation_agent, rest).
+        // Resetting here would overwrite the branded title on every tool_enabled event.
+    }
+
+    const execution_depth_from_details = details?.execution_depth ?? 0;
+    const execution_depth_from_metadata = metadata?.execution_depth ?? 0;
+    const execution_depth = Math.max(execution_depth_from_details, execution_depth_from_metadata);
+
+    const isPlanningEvent = step?.startsWith("Calling LLM for") || type === "plan_generated";
+
+    if (isPlanningEvent && execution_depth > 0 && type !== 'phase_start') {
+        state.pendingSubtaskPlanningEvents.push(eventData);
+        return;
+    }
+
+    if (!step && type !== 'phase_start' && type !== 'phase_end') {
+        if (type !== 'tool_result' && type !== 'tool_error') {
+            return;
+        }
+    }
+
+    if (type === 'phase_start') {
+        const { phase_num, total_phases, goal } = details;
+
+        while (state.phaseContainerStack.length > execution_depth) {
+            const oldContainer = state.phaseContainerStack.pop();
+            if (oldContainer) {
+                oldContainer.classList.add('completed');
+            }
+        }
+
+        const parentContainer = state.phaseContainerStack.length > 0 ? state.phaseContainerStack[state.phaseContainerStack.length - 1].querySelector('.status-phase-content') : DOM.statusWindowContent;
+
+        const lastStep = Array.from(parentContainer.querySelectorAll(':scope > .status-step')).pop();
+        if (lastStep && lastStep.classList.contains('active')) {
+            lastStep.classList.remove('active');
+            if (!lastStep.classList.contains('plan-optimization')) {
+                 lastStep.classList.add('completed');
+            }
+        }
+
+        const phaseContainer = document.createElement('details');
+        phaseContainer.className = 'status-phase-container';
+        phaseContainer.dataset.filterCategory = 'planning';
+        if (!isFilterCategoryEnabled('planning')) {
+            phaseContainer.classList.add('event-filtered-hidden');
+        }
+        // Collapsed by default — user can expand to inspect details
+        phaseContainer.open = false;
+
+        const phaseHeader = document.createElement('summary');
+        phaseHeader.className = 'status-phase-header phase-start';
+
+        let depthIndicator = '';
+        if (execution_depth > 0) {
+            depthIndicator = '↳ '.repeat(execution_depth);
+        }
+
+        phaseHeader.innerHTML = `
+            <span class="font-bold flex-shrink-0">${depthIndicator}Phase ${phase_num}/${total_phases}</span>
+            <span class="text-gray-400 text-xs truncate ml-2">${goal}</span>
+        `;
+
+        phaseContainer.appendChild(phaseHeader);
+
+        const phaseContent = document.createElement('div');
+        phaseContent.className = 'status-phase-content';
+        phaseContainer.appendChild(phaseContent);
+
+        if (execution_depth > 0 && state.pendingSubtaskPlanningEvents.length > 0) {
+            state.pendingSubtaskPlanningEvents.forEach(event => {
+                _renderStandardStep(event, phaseContent, false);
+            });
+            state.pendingSubtaskPlanningEvents = [];
+        }
+
+        parentContainer.appendChild(phaseContainer);
+        state.phaseContainerStack.push(phaseContainer);
+        state.currentPhaseContainerEl = phaseContainer;
+
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    }
+
+    if (type === 'phase_end') {
+        const containerToEnd = state.phaseContainerStack.pop();
+        if (containerToEnd) {
+            const phaseContent = containerToEnd.querySelector('.status-phase-content');
+            if (phaseContent) {
+                const lastStepInPhase = Array.from(phaseContent.childNodes).filter(node => node.classList && node.classList.contains('status-step')).pop();
+                if (lastStepInPhase && lastStepInPhase.classList.contains('active')) {
+                    lastStepInPhase.classList.remove('active');
+                    lastStepInPhase.classList.add('completed');
+                }
+            }
+
+            const { phase_num, total_phases, status, execution_depth } = details;
+            const depthFromDetails = execution_depth ?? 0;
+
+            let depthIndicator = '';
+            if (depthFromDetails > 0) {
+                depthIndicator = '↳ '.repeat(depthFromDetails);
+            }
+
+            const phaseFooter = document.createElement('div');
+            phaseFooter.className = 'status-phase-header phase-end';
+            phaseFooter.innerHTML = `<span class="font-bold">${depthIndicator}Phase ${phase_num}/${total_phases} Completed</span>`;
+
+            if (status === 'skipped') {
+                phaseFooter.classList.add('skipped');
+                phaseFooter.innerHTML = `<span class="font-bold">${depthIndicator}Phase ${phase_num}/${total_phases} Skipped</span>`;
+            } else {
+                containerToEnd.classList.add('completed');
+            }
+
+            containerToEnd.appendChild(phaseFooter);
+        }
+        state.currentPhaseContainerEl = state.phaseContainerStack.length > 0 ? state.phaseContainerStack[state.phaseContainerStack.length - 1] : null;
+        state.isInFastPath = false;
+        if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
+            DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
+        }
+        return;
+    }
+
+    const parentEl = state.currentPhaseContainerEl ? state.currentPhaseContainerEl.querySelector('.status-phase-content') : DOM.statusWindowContent;
+    _renderStandardStep(eventData, parentEl, isFinal);
+
+    // Breathing space handled via CSS padding-bottom; avoid DOM spacers to prevent layout jumps.
+
+    // Simplified and user-friendly auto-scroll:
+    // - Attach a scroll listener once to detect manual scroll-up and pause auto-stick.
+    // - Only stick to bottom when auto-scroll is enabled (user near bottom).
+    const container = DOM.statusWindowContent;
+    if (!state._statusScrollInitialized) {
+        state._statusAutoScrollEnabled = true; // assume start near bottom
+        container.addEventListener('scroll', () => {
+            const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
+            // If user moves away from bottom beyond threshold, disable auto-scroll
+            if (dist > 40) {
+                state._statusAutoScrollEnabled = false;
+            } else {
+                // Near bottom again -> re-enable
+                state._statusAutoScrollEnabled = true;
+            }
+        }, { passive: true });
+        state._statusScrollInitialized = true;
+    }
+
+    // If the container is at the very top (e.g., after plan reload), do not auto-stick.
+    if (container.scrollTop === 0) {
+        state._statusAutoScrollEnabled = false;
+    }
+
+    if (state._statusAutoScrollEnabled && !state.isViewingHistoricalTurn) {
+        // Use rAF to ensure layout finalized before scrolling
+        requestAnimationFrame(() => {
+            const lastStep = parentEl.querySelector(':scope > .status-step:last-of-type')
+                || container.querySelector('.status-step:last-of-type');
+            if (lastStep && typeof lastStep.scrollIntoView === 'function') {
+                lastStep.scrollIntoView({ behavior: 'auto', block: 'end' });
+            } else {
+                container.scrollTop = container.scrollHeight;
+            }
+        });
+    }
+}
+
+/**
+ * Updates the display of the current task ID in the status window header.
+ * Includes functionality to copy the task ID to the clipboard.
+ * @param {string|null} taskId - The task ID to display, or null to hide the display.
+ */
+export function updateTaskIdDisplay(taskId) {
+    if (DOM.taskIdDisplay && DOM.taskIdValue && DOM.copyTaskIdButton) {
+        if (taskId) {
+            DOM.taskIdValue.textContent = `Task ID: ${taskId.substring(0, 8)}...`;
+            DOM.taskIdDisplay.classList.remove('hidden');
+
+            // Remove any existing event listener to prevent duplicates
+            DOM.copyTaskIdButton.onclick = null; 
+            DOM.copyTaskIdButton.onclick = () => {
+                navigator.clipboard.writeText(taskId).then(() => {
+                    // Provide visual feedback
+                    const originalIcon = DOM.copyTaskIdButton.innerHTML;
+                    DOM.copyTaskIdButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
+                    setTimeout(() => {
+                        DOM.copyTaskIdButton.innerHTML = originalIcon;
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy task ID: ', err);
+                });
+            };
+        } else {
+            DOM.taskIdDisplay.classList.add('hidden');
+            DOM.taskIdValue.textContent = '';
+            DOM.copyTaskIdButton.onclick = null; // Clear event listener
+        }
+    }
+}
+
+/**
+ * Provides a visual cue on a session in the list to show it has new, unseen activity.
+ * @param {string} sessionId The ID of the session to highlight.
+ */
+export function highlightSession(sessionId) {
+    const sessionItem = document.getElementById(`session-${sessionId}`);
+    if (sessionItem && !sessionItem.classList.contains('active')) {
+        const nameSpan = sessionItem.querySelector('.session-name-span');
+        if (nameSpan) {
+            nameSpan.classList.add('font-bold', 'text-teradata-orange');
+        }
+        // Add a blinking dot or similar indicator
+        let indicator = sessionItem.querySelector('.new-activity-indicator');
+        if (!indicator) {
+            indicator = document.createElement('span');
+            indicator.className = 'new-activity-indicator';
+            sessionItem.querySelector('.flex').prepend(indicator);
+        }
+    }
+}
+
+/**
+ * Moves a session item to the top of the session list.
+ * For Genie slave sessions, maintains hierarchical order by moving after the last sibling slave.
+ * @param {string} sessionId - The ID of the session to move.
+ */
+export function moveSessionToTop(sessionId) {
+    const sessionItem = document.getElementById(`session-${sessionId}`);
+    if (!sessionItem || !DOM.sessionList) return;
+
+    // CRITICAL: Check if session has a wrapper (for tree structure)
+    // If it does, move the wrapper instead of the session item
+    const wrapper = sessionItem.closest('.genie-wrapper');
+    const elementToMove = wrapper || sessionItem;
+
+    // Check if this is a Genie slave session (check wrapper first, fallback to item)
+    const isGenieSlave = wrapper ? wrapper.dataset.parentId : sessionItem.dataset.genieParentId;
+    const parentSessionId = wrapper ? wrapper.dataset.parentId : sessionItem.dataset.genieParentId;
+
+    if (isGenieSlave && parentSessionId) {
+        // For slave sessions, maintain hierarchical order
+        // Find the parent wrapper or parent element
+        const parentWrapper = document.querySelector(`.genie-wrapper[data-session-id="${parentSessionId}"]`);
+        const parentElement = parentWrapper || document.getElementById(`session-${parentSessionId}`);
+
+        if (!parentElement) {
+            // Parent not found, fallback to top
+            elementToMove.remove();
+            DOM.sessionList.prepend(elementToMove);
+            return;
+        }
+
+        // Find all sibling wrappers (same parent)
+        const allSiblingWrappers = Array.from(DOM.sessionList.querySelectorAll(`.genie-wrapper[data-parent-id="${parentSessionId}"]`))
+            .filter(el => el.dataset.sessionId !== sessionId);
+
+        // Remove the element from its current position
+        elementToMove.remove();
+
+        if (allSiblingWrappers.length === 0) {
+            // No other siblings, insert directly after parent
+            parentElement.insertAdjacentElement('afterend', elementToMove);
+        } else {
+            // Insert after the last sibling
+            const lastSibling = allSiblingWrappers[allSiblingWrappers.length - 1];
+            lastSibling.insertAdjacentElement('afterend', elementToMove);
+        }
+    } else {
+        // Regular session (not a slave) - move to top
+        elementToMove.remove();
+        DOM.sessionList.prepend(elementToMove);
+    }
+}
+
+
+export function updateTokenDisplay(data, isHistorical = false) {
+    const normalDisplay = document.getElementById('token-normal-display');
+    const awsMessage = document.getElementById('token-aws-message');
+
+    // Update turn label based on whether this is a historical view
+    const turnLabel = document.getElementById('turn-token-label');
+    if (turnLabel) {
+        turnLabel.textContent = isHistorical ? 'Reloaded Turn' : 'Last Turn';
+    }
+
+    // Check if we have token data (for any provider including Amazon)
+    const hasTokenData = (data.statement_input > 0 || data.statement_output > 0 ||
+                         data.turn_input > 0 || data.turn_output > 0 ||
+                         data.total_input > 0 || data.total_output > 0);
+
+    // Check if this is an AWS model that doesn't support token counting
+    // Only Cohere, Mistral, and AI21 don't provide token counts
+    const isUnsupportedAwsModel = state.currentProvider === 'Amazon' &&
+        state.currentModel && (
+            state.currentModel.toLowerCase().includes('cohere') ||
+            state.currentModel.toLowerCase().includes('mistral') ||
+            state.currentModel.toLowerCase().includes('ai21')
+        );
+
+    if (isUnsupportedAwsModel && !hasTokenData) {
+        // Only show warning message for Cohere/Mistral/AI21 without token data
+        normalDisplay.classList.add('hidden');
+        awsMessage.classList.remove('hidden');
+        return;
+    }
+
+    // Show normal display for all other cases (including Nova, Titan, Llama, Claude)
+    normalDisplay.classList.remove('hidden');
+    awsMessage.classList.add('hidden');
+
+    // ========== TOKEN DISPLAY LOGIC WITH TERMINAL EVENT PROTECTION ==========
+    // Get token display elements
+    const stmtInEl = document.getElementById('statement-input-tokens');
+    const stmtOutEl = document.getElementById('statement-output-tokens');
+    const turnInEl = document.getElementById('turn-input-tokens');
+    const turnOutEl = document.getElementById('turn-output-tokens');
+    const totalInEl = document.getElementById('total-input-tokens');
+    const totalOutEl = document.getElementById('total-output-tokens');
+
+    // CRITICAL FIX: Skip token updates if ALL token fields are undefined
+    // Events like genie_llm_step and session_name_generation_complete only have cost data, no tokens
+    // If we process these with undefined tokens, they get converted to 0 and reset the display
+    const allTokenFieldsUndefined = (
+        data.statement_input === undefined &&
+        data.statement_output === undefined &&
+        data.turn_input === undefined &&
+        data.turn_output === undefined &&
+        data.total_input === undefined &&
+        data.total_output === undefined
+    );
+
+    // Debug logging for ALL token updates (live and historical)
+    console.log(`%c[Token Display] 🎯 updateTokenDisplay called`, 'background: #00ffff; color: #000; font-weight: bold;');
+    console.log(`  isHistorical: ${isHistorical}`);
+    console.log(`  allTokenFieldsUndefined: ${allTokenFieldsUndefined}`);
+    console.log(`  data:`, {
+        statement: `${data.statement_input} in / ${data.statement_output} out`,
+        turn: `${data.turn_input} in / ${data.turn_output} out`,
+        total: `${data.total_input} in / ${data.total_output} out`,
+        cost: data.cost_usd || 0
+    });
+
+    if (allTokenFieldsUndefined && !isHistorical) {
+        console.log('%c[Token Display] ⚠️ SKIPPING TOKEN UPDATE - All token fields undefined (cost-only event)', 'background: #ff6600; color: #fff; font-weight: bold;');
+        // Skip to cost processing only (don't reset tokens to 0)
+        // Fall through to cost updates below line 3978
+    } else {
+        // CRITICAL: Detect terminal token_update events (statement tokens are 0 but turn/total tokens present)
+        // These events are sent by the backend to update cumulative turn/total tokens without new statement data
+        // If we overwrite statement tokens with 0, users see blank counters even though LLM calls happened
+        const isTerminalEvent = (
+            !isHistorical &&  // Only applies to live execution
+            (data.statement_input === 0 || data.statement_input === undefined) &&
+            (data.statement_output === 0 || data.statement_output === undefined) &&
+            (data.turn_input !== undefined || data.total_input !== undefined)  // Has turn/total data
+        );
+
+        console.log(`  isTerminalEvent: ${isTerminalEvent}`);
+
+    if (isTerminalEvent) {
+        console.log('%c[Token Display] ⚠️ TERMINAL EVENT - Will preserve statement tokens, only update turn/total if > 0', 'background: #ffff00; color: #000;');
+
+        // Preserve statement tokens (don't overwrite with 0)
+        // Only update turn and total tokens if they're NON-ZERO (preserve existing display if 0)
+        // This prevents terminal events with all zeros (e.g., session load initialization) from resetting display to 0
+        if (data.turn_input !== undefined && data.turn_input > 0 && turnInEl) {
+            turnInEl.textContent = data.turn_input.toLocaleString();
+        }
+        if (data.turn_output !== undefined && data.turn_output > 0 && turnOutEl) {
+            turnOutEl.textContent = data.turn_output.toLocaleString();
+        }
+        if (data.total_input !== undefined && data.total_input > 0 && totalInEl) {
+            totalInEl.textContent = data.total_input.toLocaleString();
+        }
+        if (data.total_output !== undefined && data.total_output > 0 && totalOutEl) {
+            totalOutEl.textContent = data.total_output.toLocaleString();
+        }
+
+        // Skip statement token update - preserve existing display
+        // Continue with cost updates below...
+    } else {
+        // Normal update - set all token fields
+        console.log('%c[Token Display] ✅ NORMAL UPDATE - Setting all token displays', 'background: #00ff00; color: #000;');
+        console.log(`  Setting STMT: ${data.statement_input || 0} in / ${data.statement_output || 0} out`);
+        console.log(`  Setting TURN: ${data.turn_input || 0} in / ${data.turn_output || 0} out`);
+        console.log(`  Setting TOTAL: ${data.total_input || 0} in / ${data.total_output || 0} out`);
+
+        if (stmtInEl) stmtInEl.textContent = (data.statement_input || 0).toLocaleString();
+        if (stmtOutEl) stmtOutEl.textContent = (data.statement_output || 0).toLocaleString();
+        if (turnInEl) turnInEl.textContent = (data.turn_input || 0).toLocaleString();
+        if (turnOutEl) turnOutEl.textContent = (data.turn_output || 0).toLocaleString();
+        if (totalInEl) totalInEl.textContent = (data.total_input || 0).toLocaleString();
+        if (totalOutEl) totalOutEl.textContent = (data.total_output || 0).toLocaleString();
+    }
+    }  // Close outer else block (allTokenFieldsUndefined check)
+
+    // ========== COST TRACKING (Dual-Model Feature) ==========
+    // Initialize cost accumulator if not exists
+    if (!window.sessionCostAccumulator) {
+        window.sessionCostAccumulator = {
+            turn: 0,
+            session: 0,
+            strategic: 0,
+            tactical: 0,
+            // Per-model turn-level tracking
+            strategicTurnIn: 0, strategicTurnOut: 0, strategicTurnCost: 0,
+            tacticalTurnIn: 0,  tacticalTurnOut: 0,  tacticalTurnCost: 0,
+            // Per-model session-level token tracking
+            strategicSessionIn: 0, strategicSessionOut: 0,
+            tacticalSessionIn: 0,  tacticalSessionOut: 0,
+            // Last statement model info
+            lastStmtPhase: null,
+            // Turn/session tracking for proper reset detection
+            lastTurnNumber: null,     // Track last turn number to detect new turns
+            sessionId: null,           // Track session ID to validate accumulator
+        };
+    }
+
+    // ========== COST DISPLAY LOGIC ==========
+    const acc = window.sessionCostAccumulator;
+
+    if (isHistorical) {
+        // Historical reload - use backend-provided costs (authoritative)
+        if (data.turn_cost !== undefined && data.turn_cost !== null) {
+            acc.turn = parseFloat(data.turn_cost);
+            console.log(`[Historical] Turn cost from backend: $${acc.turn.toFixed(6)}`);
+        } else if (data.cost_usd !== undefined && data.cost_usd !== null) {
+            // Fallback: old field name (for backwards compatibility)
+            acc.turn = parseFloat(data.cost_usd);
+            console.warn('[Historical] Using legacy cost_usd field for turn cost');
+        } else {
+            // Fallback: Calculate from tokens (should rarely happen if backend works correctly)
+            console.warn('[Historical] Backend did not provide turn_cost, estimating from tokens');
+            acc.turn = _estimateCostFromTokens(data.turn_input || 0, data.turn_output || 0);
+        }
+
+        if (data.session_cost_usd !== undefined && data.session_cost_usd !== null) {
+            acc.session = parseFloat(data.session_cost_usd);
+            console.log(`[Historical] Session cost from backend: $${acc.session.toFixed(6)}`);
+        } else {
+            // Fallback: Calculate from session token totals
+            console.warn('[Historical] Backend did not provide session_cost_usd, estimating from tokens');
+            acc.session = _estimateCostFromTokens(data.total_input || 0, data.total_output || 0);
+        }
+
+        // Populate per-model breakdown if provided
+        if (data.perModelBreakdown) {
+            const pm = data.perModelBreakdown;
+            acc.strategicTurnIn = pm.strategicIn || 0;
+            acc.strategicTurnOut = pm.strategicOut || 0;
+            acc.strategicTurnCost = pm.strategicCost || 0;
+            acc.tacticalTurnIn = pm.tacticalIn || 0;
+            acc.tacticalTurnOut = pm.tacticalOut || 0;
+            acc.tacticalTurnCost = pm.tacticalCost || 0;
+            acc.strategic = pm.strategicCost || 0;
+            acc.tactical = pm.tacticalCost || 0;
+            acc.strategicSessionIn = pm.strategicIn || 0;
+            acc.strategicSessionOut = pm.strategicOut || 0;
+            acc.tacticalSessionIn = pm.tacticalIn || 0;
+            acc.tacticalSessionOut = pm.tacticalOut || 0;
+            acc.lastStmtPhase = pm.strategicCost > 0 ? 'strategic' : (pm.tacticalCost > 0 ? 'tactical' : null);
+        }
+
+    } else {
+        // Live execution - accumulate costs as events arrive
+        if (data.cost_usd !== undefined && data.cost_usd !== null) {
+            const callCost = parseFloat(data.cost_usd) || 0;
+            const stmtIn = data.statement_input || 0;
+            const stmtOut = data.statement_output || 0;
+
+            // CRITICAL: Detect new turn by turn_id change (reliable method)
+            // Backend sends 'turn_id' in execution_start, stored in state.currentTurnNumber
+            // Cost events don't have turn_id, so we use the captured state value
+
+            // UNCONDITIONAL DEBUG - ALWAYS log to diagnose turn tracking issue
+            console.log(`%c[DEBUG TURN] 🔍 COST EVENT RECEIVED`, 'background: #ffff00; color: #000; font-weight: bold;');
+            console.log(`  data.turn_id: ${data.turn_id}`);
+            console.log(`  data.turn_number: ${data.turn_number}`);
+            console.log(`  data.turn: ${data.turn}`);
+            console.log(`  state object exists: ${typeof state !== 'undefined'}`);
+            if (typeof state !== 'undefined') {
+                console.log(`  state.currentTurnNumber: ${state.currentTurnNumber}`);
+            }
+            console.log(`  acc.lastTurnNumber: ${acc.lastTurnNumber}`);
+            console.log(`  event_type: ${data.type || 'unknown'}`);
+            console.log(`  planning_phase: ${data.planning_phase || 'none'}`);
+
+            const currentTurnNumber = data.turn_id || data.turn_number || data.turn || state.currentTurnNumber || null;
+            const isNewTurn = (
+                currentTurnNumber !== null &&
+                acc.lastTurnNumber !== null &&
+                currentTurnNumber > acc.lastTurnNumber
+            );
+
+            console.log(`  → currentTurnNumber resolved to: ${currentTurnNumber}`);
+            console.log(`  → isNewTurn: ${isNewTurn}`);
+            console.log(`%c────────────────────────────────────────`, 'color: #888;');
+
+            // Reset turn cost on new turn start
+            if (isNewTurn) {
+                console.log(`%c[Live] 🔄 NEW TURN DETECTED: Turn ${acc.lastTurnNumber} → Turn ${currentTurnNumber} - RESETTING TURN COST`, 'background: #ff0000; color: #fff; font-weight: bold; padding: 2px 5px;');
+                acc.turn = 0;
+                acc.strategicTurnIn = 0; acc.strategicTurnOut = 0; acc.strategicTurnCost = 0;
+                acc.tacticalTurnIn = 0;  acc.tacticalTurnOut = 0;  acc.tacticalTurnCost = 0;
+            }
+
+            // Update last turn number
+            if (currentTurnNumber !== null) {
+                acc.lastTurnNumber = currentTurnNumber;
+            }
+
+            // Accumulate costs
+            acc.turn += callCost;
+            acc.session += callCost;
+            console.log(`[Live] Accumulated cost: +$${callCost.toFixed(6)} → Turn: $${acc.turn.toFixed(6)}, Session: $${acc.session.toFixed(6)}`);
+
+            // Track strategic vs tactical
+            const planningPhase = data.planning_phase;
+            if (planningPhase === 'strategic') {
+                acc.strategic += callCost;
+                acc.strategicTurnIn += stmtIn;
+                acc.strategicTurnOut += stmtOut;
+                acc.strategicTurnCost += callCost;
+                acc.strategicSessionIn += stmtIn;
+                acc.strategicSessionOut += stmtOut;
+                acc.lastStmtPhase = 'strategic';
+            } else {
+                // Tactical + untagged calls (session name gen, etc.) — all non-strategic
+                acc.tactical += callCost;
+                acc.tacticalTurnIn += stmtIn;
+                acc.tacticalTurnOut += stmtOut;
+                acc.tacticalTurnCost += callCost;
+                acc.tacticalSessionIn += stmtIn;
+                acc.tacticalSessionOut += stmtOut;
+                acc.lastStmtPhase = planningPhase ? 'tactical' : null;
+            }
+        }
+    }
+
+    // Display costs (always show current accumulator values)
+    const costSection = document.getElementById('cost-display-section');
+    const turnCostEl = document.getElementById('turn-cost-value');
+    const sessionCostEl = document.getElementById('session-cost-value');
+
+    if (costSection && turnCostEl && sessionCostEl) {
+        costSection.classList.remove('hidden');
+        turnCostEl.textContent = `$${acc.turn.toFixed(6)}`;
+        sessionCostEl.textContent = `$${acc.session.toFixed(6)}`;
+    }
+
+    // ========== DUAL-MODEL TOOLTIPS ==========
+    _updateDualModelTooltips();
+}
+
+/**
+ * Estimates cost from token counts using fallback default pricing.
+ * This is only used as fallback when backend doesn't provide costs.
+ * Actual pricing varies by provider/model - this is a rough estimate.
+ *
+ * @param {number} inputTokens - Number of input tokens
+ * @param {number} outputTokens - Number of output tokens
+ * @returns {number} Estimated cost in USD
+ */
+function _estimateCostFromTokens(inputTokens, outputTokens) {
+    // Fallback default pricing (rough average across providers)
+    // Only used when backend doesn't provide costs
+    const INPUT_COST_PER_1M = 0.10;   // $0.10 per 1M input tokens
+    const OUTPUT_COST_PER_1M = 0.40;  // $0.40 per 1M output tokens
+
+    const inputCost = (inputTokens / 1_000_000) * INPUT_COST_PER_1M;
+    const outputCost = (outputTokens / 1_000_000) * OUTPUT_COST_PER_1M;
+    const totalCost = inputCost + outputCost;
+
+    console.warn(`[Fallback] Estimated cost from ${inputTokens} in / ${outputTokens} out: $${totalCost.toFixed(6)}`);
+    return totalCost;
+}
+
+/**
+ * Updates dual-model breakdown tooltips on the 5 header metric cards.
+ * Only shows tooltips when dual-model mode is active (state.currentDualModelInfo set).
+ */
+function _updateDualModelTooltips() {
+    const cardIds = ['metric-card-statement', 'metric-card-turn', 'metric-card-session',
+                     'metric-card-turn-cost', 'metric-card-session-cost'];
+
+    if (!state.currentDualModelInfo || !window.sessionCostAccumulator) {
+        // Clear tooltips when not in dual-model mode
+        cardIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.removeAttribute('data-tooltip-html');
+        });
+        return;
+    }
+
+    const dmi = state.currentDualModelInfo;
+    const acc = window.sessionCostAccumulator;
+    const sModel = dmi.strategicModel || 'Strategic';
+    const tModel = dmi.tacticalModel || 'Tactical';
+
+    // Helper: build a tooltip row for one model
+    // showCost=false for token cards, showCost=true for cost cards
+    const row = (label, cssClass, inTk, outTk, cost, showCost) =>
+        `<div class="dm-tooltip-row">` +
+        `<span class="dm-tooltip-label ${cssClass}">${label}</span>` +
+        `<span class="dm-tooltip-values">${inTk.toLocaleString()} in / ${outTk.toLocaleString()} out` +
+        (showCost && cost > 0 ? ` &middot; $${cost.toFixed(6)}` : '') +
+        `</span></div>`;
+
+    // Last Stmt: which model was used for this call
+    const stmtCard = document.getElementById('metric-card-statement');
+    if (stmtCard) {
+        if (acc.lastStmtPhase) {
+            const label = acc.lastStmtPhase === 'strategic' ? sModel : tModel;
+            const cls = acc.lastStmtPhase === 'strategic' ? 'dm-tooltip-strategic' : 'dm-tooltip-tactical';
+            stmtCard.setAttribute('data-tooltip-html',
+                `<span class="${cls}" style="font-weight:600">${label}</span>`);
+        } else {
+            stmtCard.removeAttribute('data-tooltip-html');
+        }
+    }
+
+    // Last Turn: strategic + tactical token split (no cost)
+    const turnCard = document.getElementById('metric-card-turn');
+    if (turnCard) {
+        if (acc.strategicTurnIn > 0 || acc.tacticalTurnIn > 0) {
+            turnCard.setAttribute('data-tooltip-html',
+                row(sModel, 'dm-tooltip-strategic', acc.strategicTurnIn, acc.strategicTurnOut, 0, false) +
+                row(tModel, 'dm-tooltip-tactical', acc.tacticalTurnIn, acc.tacticalTurnOut, 0, false));
+        } else {
+            turnCard.removeAttribute('data-tooltip-html');
+        }
+    }
+
+    // Session Total: strategic + tactical token split (no cost)
+    const sessCard = document.getElementById('metric-card-session');
+    if (sessCard) {
+        if (acc.strategicSessionIn > 0 || acc.tacticalSessionIn > 0) {
+            sessCard.setAttribute('data-tooltip-html',
+                row(sModel, 'dm-tooltip-strategic', acc.strategicSessionIn, acc.strategicSessionOut, 0, false) +
+                row(tModel, 'dm-tooltip-tactical', acc.tacticalSessionIn, acc.tacticalSessionOut, 0, false));
+        } else {
+            sessCard.removeAttribute('data-tooltip-html');
+        }
+    }
+
+    // Turn Cost: strategic + tactical cost split (with cost)
+    const turnCostCard = document.getElementById('metric-card-turn-cost');
+    if (turnCostCard) {
+        if (acc.strategicTurnCost > 0 || acc.tacticalTurnCost > 0) {
+            turnCostCard.setAttribute('data-tooltip-html',
+                row(sModel, 'dm-tooltip-strategic', acc.strategicTurnIn, acc.strategicTurnOut, acc.strategicTurnCost, true) +
+                row(tModel, 'dm-tooltip-tactical', acc.tacticalTurnIn, acc.tacticalTurnOut, acc.tacticalTurnCost, true));
+        } else {
+            turnCostCard.removeAttribute('data-tooltip-html');
+        }
+    }
+
+    // Session Cost: strategic + tactical cost split (with cost)
+    const sessCostCard = document.getElementById('metric-card-session-cost');
+    if (sessCostCard) {
+        if (acc.strategic > 0 || acc.tactical > 0) {
+            sessCostCard.setAttribute('data-tooltip-html',
+                row(sModel, 'dm-tooltip-strategic', acc.strategicSessionIn, acc.strategicSessionOut, acc.strategic, true) +
+                row(tModel, 'dm-tooltip-tactical', acc.tacticalSessionIn, acc.tacticalSessionOut, acc.tactical, true));
+        } else {
+            sessCostCard.removeAttribute('data-tooltip-html');
+        }
+    }
+}
+
+// --- MODIFICATION START: Add function to refresh all feedback button states ---
+/**
+ * Refreshes all feedback button states based on current state.feedbackByTurn.
+ * Should be called after loading a session to restore visual feedback state.
+ */
+export function refreshFeedbackButtons() {
+    // Find all feedback wrappers in the chat
+    const feedbackWrappers = document.querySelectorAll('[data-turn-id]');
+    
+    feedbackWrappers.forEach(wrapper => {
+        const turnId = parseInt(wrapper.dataset.turnId);
+        if (isNaN(turnId)) return;
+        
+        const upBtn = wrapper.querySelector('[data-vote="up"]');
+        const downBtn = wrapper.querySelector('[data-vote="down"]');
+        
+        if (!upBtn || !downBtn) return;
+        
+        const current = state.feedbackByTurn[turnId] || 'none';
+        
+        // Update active states
+        upBtn.classList.toggle('active', current === 'up');
+        downBtn.classList.toggle('active', current === 'down');
+        
+        // Update aria attributes
+        upBtn.setAttribute('aria-pressed', current === 'up' ? 'true' : 'false');
+        downBtn.setAttribute('aria-pressed', current === 'down' ? 'true' : 'false');
+        
+        // Update visual styling
+        if (current === 'up') {
+            upBtn.classList.remove('text-gray-300');
+            upBtn.classList.add('text-[#F15F22]', 'bg-gray-800/60');
+            downBtn.classList.add('text-gray-300');
+            downBtn.classList.remove('text-[#F15F22]', 'bg-gray-800/60');
+        } else if (current === 'down') {
+            downBtn.classList.remove('text-gray-300');
+            downBtn.classList.add('text-[#F15F22]', 'bg-gray-800/60');
+            upBtn.classList.add('text-gray-300');
+            upBtn.classList.remove('text-[#F15F22]', 'bg-gray-800/60');
+        } else {
+            upBtn.classList.add('text-gray-300');
+            upBtn.classList.remove('text-[#F15F22]', 'bg-gray-800/60');
+            downBtn.classList.add('text-gray-300');
+            downBtn.classList.remove('text-[#F15F22]', 'bg-gray-800/60');
+        }
+    });
+}
+// --- MODIFICATION END ---
+
+export function setThinkingIndicator(isThinking) {
+    // Just toggle the small spinning gear icon next to "Configuration" label
+    // Keep the model configuration display always visible
+    if (isThinking) {
+        DOM.thinkingIndicator.classList.remove('hidden');
+    } else {
+        DOM.thinkingIndicator.classList.add('hidden');
+    }
+}
+
+export function updateStatusPromptName(provider = null, model = null, isHistorical = false, dualModelInfo = null) {
+    const promptNameDiv = document.getElementById('prompt-name-display');
+
+    // Use the provided args, or fall back to the global state
+    const providerToShow = provider || state.currentProvider;
+    const modelToShow = model || state.currentModel;
+    const dualModelInfoToShow = dualModelInfo || state.currentDualModelInfo;
+
+    if (providerToShow && modelToShow) {
+        const isCustom = isPromptCustomForModel(providerToShow, modelToShow);
+        const promptType = isPrivilegedUser() ? (isCustom ? 'Custom' : 'Default') : 'Default (Server-Side)';
+
+        // Add a visual indicator if we are showing a *historical* turn's model
+        const historicalIndicator = isHistorical ? ' (History)' : '';
+
+        // Check if dual-model is active (strategic != tactical)
+        console.log('[updateStatusPromptName] dualModelInfo:', dualModelInfoToShow);
+        const isDualModel = dualModelInfoToShow &&
+                          dualModelInfoToShow.strategicProvider &&
+                          dualModelInfoToShow.tacticalProvider &&
+                          (dualModelInfoToShow.strategicProvider !== dualModelInfoToShow.tacticalProvider ||
+                           dualModelInfoToShow.strategicModel !== dualModelInfoToShow.tacticalModel);
+        console.log('[updateStatusPromptName] isDualModel:', isDualModel);
+
+        let modelDisplay = '';
+        if (isDualModel) {
+            // Show dual-model badge with strategic/tactical breakdown (compact vertical layout)
+            const strategicShort = `${dualModelInfoToShow.strategicProvider}/${getNormalizedModelId(dualModelInfoToShow.strategicModel)}`;
+            const tacticalShort = `${dualModelInfoToShow.tacticalProvider}/${getNormalizedModelId(dualModelInfoToShow.tacticalModel)}`;
+            modelDisplay = `
+                <div class="flex flex-col gap-0.5">
+                    <div class="flex items-center gap-1.5">
+                        <svg class="w-3 h-3 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        <span class="text-xs text-gray-400">Strategic:</span>
+                        <span class="font-mono text-blue-300 text-xs truncate">${strategicShort}</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 pl-4">
+                        <span class="text-xs text-gray-400">Tactical:</span>
+                        <span class="font-mono text-emerald-300 text-xs truncate">${tacticalShort}</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Standard single-model display
+            modelDisplay = `<span class="font-mono text-teradata-orange text-xs">${providerToShow}/${getNormalizedModelId(modelToShow)}</span>`;
+        }
+
+        promptNameDiv.innerHTML = `
+            <span class="font-semibold text-gray-300">${promptType} Prompt${historicalIndicator}</span>
+            <span class="text-gray-500">/</span>
+            ${modelDisplay}
+        `;
+    } else {
+        promptNameDiv.innerHTML = '<span>No Model/Prompt Loaded</span>';
+    }
+}
+
+
+export function createResourceItem(resource, type) {
+    const detailsEl = document.createElement('details');
+    detailsEl.id = `resource-${type}-${resource.name}`;
+    detailsEl.className = 'resource-item bg-gray-800/50 rounded-lg border border-gray-700/60';
+
+    if (resource.disabled) {
+        detailsEl.classList.add('opacity-60');
+        detailsEl.title = `This ${type.slice(0, -1)} is disabled and will not be used by the agent.`;
+    }
+
+    const toggleIcon = resource.disabled ?
+        `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074L3.707 2.293zM10 12a2 2 0 110-4 2 2 0 010 4z" clip-rule="evenodd" /><path d="M2 10s3.939 4 8 4 8-4 8-4-3.939-4-8-4-8 4-8 4zm13.707 4.293a1 1 0 00-1.414-1.414L12.586 14.6A8.007 8.007 0 0110 16c-4.478 0-8.268-2.943-9.542-7 .946-2.317 2.83-4.224 5.166-5.447L2.293 1.293A1 1 0 00.879 2.707l14 14a1 1 0 001.414 0z" /></svg>` :
+        `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" /></svg>`;
+
+    let argsHTML = '';
+    if (resource.arguments && resource.arguments.length > 0) {
+        argsHTML += `<div class="mt-4 pt-3 border-t border-gray-700/60">
+                                <h5 class="font-semibold text-sm text-white mb-2">Parameters</h5>
+                                <ul class="space-y-2 text-xs">`;
+        resource.arguments.forEach(arg => {
+            const requiredText = arg.required ? '<span class="text-rose-400 font-bold">Required</span>' : '<span class="text-gray-400">Optional</span>';
+            const typeText = arg.type && arg.type !== 'unknown' ? `<span class="font-mono text-xs text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded-md">${arg.type}</span>` : '';
+
+            argsHTML += `<li class="p-2 bg-black/20 rounded-md">
+                                    <div class="flex justify-between items-center">
+                                        <div class="flex items-center gap-x-2">
+                                            <code class="font-semibold text-teradata-orange">${arg.name}</code>
+                                            ${typeText}
+                                        </div>
+                                        ${requiredText}
+                                    </div>
+                                    <p class="text-gray-400 mt-1">${arg.description}</p>
+                                 </li>`;
+        });
+        argsHTML += `</ul></div>`;
+    }
+
+    let contentHTML = '';
+    if (type === 'prompts') {
+        const runButtonDisabledAttr = ''; // Always enabled
+        const runButtonTitle = 'Run this prompt.'; // Always use this title
+
+        contentHTML = `
+            <div class="p-3 pt-2 text-sm text-gray-300 space-y-3">
+                <p>${resource.description}</p>
+                ${argsHTML}
+                <div class="flex justify-end items-center gap-x-2 pt-3 border-t border-gray-700/60">
+                    <button class="prompt-toggle-button p-1.5 text-gray-300 hover:text-white hover:bg-white/10 rounded-md transition-colors">${toggleIcon}</button>
+                    <button class="view-prompt-button px-3 py-1 bg-gray-600 text-white text-xs font-semibold rounded-md hover:bg-gray-500 transition-colors">Prompt</button>
+                    <button class="run-prompt-button px-3 py-1 bg-teradata-orange text-white text-xs font-semibold rounded-md hover:bg-teradata-orange-dark transition-colors" ${runButtonDisabledAttr} title="${runButtonTitle}">Run</button>
+                </div>
+            </div>`;
+    } else if (type === 'tools') {
+        contentHTML = `
+            <div class="p-3 pt-2 text-sm text-gray-300 space-y-3">
+                <p>${resource.description}</p>
+                ${argsHTML}
+                <div class="flex justify-end items-center pt-3 border-t border-gray-700/60">
+                    <button class="tool-toggle-button p-1.5 text-gray-300 hover:text-white hover:bg-white/10 rounded-md transition-colors">${toggleIcon}</button>
+                </div>
+            </div>`;
+    } else { // For resources
+        contentHTML = `
+            <div class="p-3 pt-2 text-sm text-gray-300 border-t border-gray-700/60 flex justify-between items-center">
+                <p>${resource.description}</p>
+            </div>`;
+    }
+
+    detailsEl.innerHTML = `
+        <summary class="flex justify-between items-center p-3 font-semibold text-white hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer">
+            <span>${resource.name}</span>
+            <svg class="chevron w-5 h-5 text-[#F15F22] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+        </summary>
+        ${contentHTML}
+    `;
+
+    return detailsEl;
+}
+
+export function updatePromptsTabCounter() {
+    const tabButton = document.querySelector('.resource-tab[data-type="prompts"]');
+    if (!tabButton || !state.resourceData.prompts) return;
+    let totalCount = 0;
+    let disabledCount = 0;
+    Object.values(state.resourceData.prompts).forEach(items => {
+        totalCount += items.length;
+        disabledCount += items.filter(item => item.disabled).length;
+    });
+    const disabledIndicator = disabledCount > 0 ? '*' : '';
+    tabButton.textContent = `Prompts (${totalCount})${disabledIndicator}`;
+}
+
+export function updateToolsTabCounter() {
+    const tabButton = document.querySelector('.resource-tab[data-type="tools"]');
+    if (!tabButton || !state.resourceData.tools) return;
+    let totalCount = 0;
+    let disabledCount = 0;
+    Object.values(state.resourceData.tools).forEach(items => {
+        totalCount += items.length;
+        disabledCount += items.filter(item => item.disabled).length;
+    });
+    const disabledIndicator = disabledCount > 0 ? '*' : '';
+    tabButton.textContent = `Tools (${totalCount})${disabledIndicator}`;
+}
+
+export function highlightResource(resourceName, type) {
+    if (state.currentlySelectedResource) {
+        state.currentlySelectedResource.classList.remove('resource-selected');
+    }
+
+    let resourceCategory = null;
+    if (state.resourceData[type]) {
+        for (const category in state.resourceData[type]) {
+            if (state.resourceData[type][category].some(r => r.name === resourceName)) {
+                resourceCategory = category;
+                break;
+            }
+        }
+    }
+
+
+    if (resourceCategory) {
+        const resourceTab = document.querySelector(`.resource-tab[data-type="${type}"]`);
+        if (resourceTab) resourceTab.click();
+
+        const categoryTab = document.querySelector(`.category-tab[data-type="${type}"][data-category="${resourceCategory}"]`);
+        if(categoryTab) categoryTab.click();
+
+        const resourceElement = document.getElementById(`resource-${type}-${resourceName}`);
+        if (resourceElement) {
+            resourceElement.open = true;
+            resourceElement.classList.add('resource-selected');
+            state.currentlySelectedResource = resourceElement;
+
+            setTimeout(() => {
+                resourceElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 350);
+        }
+    } else {
+    }
+}
+
+export function addSessionToList(session, isActive = false, isLastChild = false) {
+    const sessionItem = document.createElement('div');
+    sessionItem.id = `session-${session.id}`;
+    sessionItem.dataset.sessionId = session.id;
+    sessionItem.dataset.isTemporary = session.is_temporary ? 'true' : 'false';
+    sessionItem.dataset.archived = session.archived ? 'true' : 'false';
+    sessionItem.className = 'session-item w-full text-left p-3 rounded-lg hover:bg-white/10 transition-colors cursor-pointer';
+    
+    // Add purple left border for utility sessions
+    if (session.is_temporary) {
+        sessionItem.style.borderLeft = '3px solid rgba(139, 92, 246, 0.6)';
+        sessionItem.style.paddingLeft = '0.625rem'; // Adjust padding to compensate for border
+    }
+
+    // Add gray styling for archived sessions
+    if (session.archived) {
+        sessionItem.style.opacity = '0.5';
+        sessionItem.style.borderLeft = '3px solid rgba(156, 163, 175, 0.4)';
+        sessionItem.style.paddingLeft = '0.625rem'; // Adjust padding to compensate for border
+    }
+
+    // Check for Genie slave session metadata
+    const genieMetadata = session.genie_metadata || {};
+    const isGenieSlave = genieMetadata.is_genie_slave || false;
+    const genieParentSessionId = genieMetadata.parent_session_id;
+
+    // Extract hierarchy metadata (needed for badges even if not slave)
+    const nestingLevel = genieMetadata.nesting_level || 0;
+    const slaveSequence = genieMetadata.slave_sequence_number || 0;
+
+    // Prefer metadata value over parameter (backend now sets this)
+    isLastChild = genieMetadata.is_last_child || isLastChild;
+
+    // Check if this session is a genie master (has slave sessions pointing to it)
+    // This is set by markGenieMasterSessions() after all sessions are loaded
+    const isGenieMaster = session._isGenieMaster || false;
+
+    // Simplified: Use wrapper div for indentation (guaranteed to work with any CSS)
+    // Wrapper approach bypasses overflow:hidden and Tailwind conflicts
+    if (isGenieSlave) {
+        sessionItem.classList.add('genie-slave-session');
+        sessionItem.dataset.genieParentId = genieParentSessionId || '';
+
+        // Create wrapper div using data-level attribute (CSS handles spacing and colors)
+        const wrapper = document.createElement('div');
+        wrapper.className = 'genie-wrapper';
+        wrapper.dataset.level = nestingLevel;              // Used by CSS for indentation and color
+        wrapper.dataset.sessionId = session.id;            // For path highlighting
+        wrapper.dataset.parentId = genieParentSessionId;   // For lineage traversal
+        wrapper.dataset.sequence = slaveSequence;          // For stagger animation
+
+        // Add last-child class for connector styling (└ vs ├)
+        if (isLastChild) {
+            wrapper.classList.add('last-child');
+        }
+
+        // Check if slaves should be hidden (parent is collapsed)
+        const collapseState = getGenieCollapseState();
+        if (collapseState[genieParentSessionId]) {
+            sessionItem.classList.add('genie-slave-hidden');
+        }
+
+        // Store original sessionItem for later unwrapping if needed
+        wrapper._originalSession = sessionItem;
+        sessionItem._wrapper = wrapper;
+    }
+
+    // Mark genie master sessions for later identification
+    if (isGenieMaster) {
+        sessionItem.classList.add('genie-master-session');
+        sessionItem.dataset.isGenieMaster = 'true';
+    }
+
+    if (isActive) {
+        document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
+        sessionItem.classList.add('active');
+    }
+
+    const contentWrapper = document.createElement('div');
+    contentWrapper.className = 'w-full flex flex-col';
+
+    const topRow = document.createElement('div');
+    topRow.className = 'flex justify-between items-center';
+
+    const nameContainer = document.createElement('div');
+    nameContainer.className = 'flex-1 min-w-0 flex items-center gap-2';
+    
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'session-name-span font-semibold text-sm text-white truncate block';
+    nameSpan.textContent = session.name;
+    nameSpan.dataset.fullName = session.name;  // For tooltip on truncation
+
+    // Add text level badge for child sessions (industrial blueprint style)
+    if (isGenieSlave) {
+        const levelBadge = document.createElement('span');
+        levelBadge.className = `level-badge level-badge-l${Math.min(nestingLevel, 3)}`;
+        levelBadge.textContent = `L${nestingLevel}`;
+        levelBadge.title = `Level ${nestingLevel} child session`;
+
+        // Insert badge before name span
+        nameContainer.appendChild(levelBadge);
+    }
+
+    nameContainer.appendChild(nameSpan);
+    
+    // Add utility indicator badge for temporary sessions
+    if (session.is_temporary) {
+        const utilityBadge = document.createElement('span');
+        utilityBadge.className = 'inline-flex items-center gap-1 mt-0.5 text-xs text-indigo-400';
+        utilityBadge.innerHTML = `
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span class="truncate">${session.temporary_purpose || 'utility'}</span>
+        `;
+        utilityBadge.title = session.temporary_purpose || 'Utility session';
+        nameContainer.appendChild(utilityBadge);
+    }
+
+    // REMOVED: Genie child indicator badge - using CSS-only tree visualization for minimal screen estate
+    // CSS classes (genie-child-l0/l1/l2) are still applied above for tree connector styling
+    // Tree structure rendered via CSS ::before and ::after pseudo-elements in main.css
+
+    // Add Genie master indicator badge - L0 (consistent with child badges L1/L2/L3)
+    if (isGenieMaster) {
+        // Check current collapse state
+        const collapseState = getGenieCollapseState();
+        const isCollapsed = collapseState[session.id] || false;
+
+        // Create level badge matching child style
+        const levelBadge = document.createElement('span');
+        levelBadge.className = 'level-badge level-badge-l0';
+        levelBadge.textContent = 'L0';
+        levelBadge.title = 'Level 0 parent session';
+
+        // Container for badge + collapse toggle
+        const genieMasterBadge = document.createElement('span');
+        genieMasterBadge.className = 'genie-master-badge inline-flex items-center gap-2 mt-1 cursor-pointer';
+        genieMasterBadge.appendChild(levelBadge);
+
+        // Collapse toggle with smooth animation
+        const toggle = document.createElement('span');
+        toggle.className = 'genie-collapse-toggle';
+        toggle.style.cssText = `
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            color: #F15F22;
+            background: rgba(241, 95, 34, 0.15);
+            border-radius: 4px;
+            border: 1px solid rgba(241, 95, 34, 0.3);
+            transition: all 0.2s ease;
+            font-size: 10px;
+            transform: ${isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)'};
+        `;
+        toggle.textContent = '▼';
+
+        toggle.addEventListener('mouseenter', () => {
+            toggle.style.background = 'rgba(241, 95, 34, 0.3)';
+            toggle.style.borderColor = '#F15F22';
+        });
+        toggle.addEventListener('mouseleave', () => {
+            toggle.style.background = 'rgba(241, 95, 34, 0.15)';
+            toggle.style.borderColor = 'rgba(241, 95, 34, 0.3)';
+        });
+
+        genieMasterBadge.appendChild(toggle);
+
+        genieMasterBadge.title = 'Click to collapse/expand child sessions';
+
+        // Add click handler to toggle child sessions visibility with animation
+        genieMasterBadge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleGenieSlaveVisibility(session.id);
+
+            // Animate the toggle icon
+            const newState = !isCollapsed;
+            toggle.style.transform = newState ? 'rotate(-90deg)' : 'rotate(0deg)';
+        });
+
+        nameContainer.appendChild(genieMasterBadge);
+    }
+
+    topRow.appendChild(nameContainer);
+    contentWrapper.appendChild(topRow);
+
+    const lastUpdatedSpan = document.createElement('span');
+    lastUpdatedSpan.className = 'session-last-updated text-xs text-gray-300 mt-1';
+    if (session.last_updated && session.last_updated !== "Unknown") {
+        lastUpdatedSpan.textContent = `Updated: ${new Date(session.last_updated).toLocaleString()}`;
+    } else {
+        lastUpdatedSpan.textContent = 'Updated: Unknown';
+    }
+    contentWrapper.appendChild(lastUpdatedSpan);
+
+    // Display profile tags (preferred) or fall back to models_used
+    const tagsDiv = document.createElement('div');
+    tagsDiv.className = 'session-models text-xs text-gray-400 mt-1 flex flex-wrap gap-1';
+
+    // Render profile tag badges with proper colors
+    if (session.profile_tags_used && Array.isArray(session.profile_tags_used) && session.profile_tags_used.length > 0) {
+        // Use badge components with profile type colors
+        const badgesHtml = session.profile_tags_used.map(tag => {
+            return renderProfileTag(tag, session.profile_type);
+        }).join('');
+        tagsDiv.innerHTML = badgesHtml;
+    } else if (session.models_used && Array.isArray(session.models_used) && session.models_used.length > 0) {
+        // Fallback to models_used for backwards compatibility (plain text)
+        const textSpan = document.createElement('span');
+        textSpan.className = 'text-xs font-mono text-muted';
+        textSpan.textContent = session.models_used.join(' · ');
+        tagsDiv.appendChild(textSpan);
+    }
+    contentWrapper.appendChild(tagsDiv);
+
+    sessionItem.appendChild(contentWrapper);
+
+    // Create action buttons toolbar (positioned absolutely at bottom right)
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'session-actions';
+    actionsDiv.style.position = 'absolute';
+    actionsDiv.style.bottom = '0.5rem';
+    actionsDiv.style.right = '0.5rem';
+    actionsDiv.style.display = 'flex';
+    actionsDiv.style.gap = '0.5rem';
+    actionsDiv.style.alignItems = 'center';
+    actionsDiv.style.zIndex = '10';
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'session-action-button session-edit-button';
+    editButton.title = 'Rename session';
+    editButton.dataset.action = 'edit';
+    editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-11.202 11.202a.5.5 0 01-.293.146H3.5a.5.5 0 01-.5-.5v-1.414a.5.5 0 01.146-.293l11.202-11.202zM15.707 2.293a1 1 0 010 1.414L5.414 14H4v-1.414L14.293 2.293a1 1 0 011.414 0z" /></svg>`;
+    actionsDiv.appendChild(editButton);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'session-action-button session-delete-button';
+    deleteButton.title = 'Delete session';
+    deleteButton.dataset.action = 'delete';
+    deleteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2H6zm2 3a1 1 0 11-2 0 1 1 0 012 0zm4 0a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd" /></svg>`;
+    actionsDiv.appendChild(deleteButton);
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'session-action-button session-copy-button';
+    copyButton.title = 'Copy session ID';
+    copyButton.dataset.action = 'copy';
+    copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+    actionsDiv.appendChild(copyButton);
+
+    const analyticsButton = document.createElement('button');
+    analyticsButton.type = 'button';
+    analyticsButton.className = 'session-action-button session-analytics-button';
+    analyticsButton.title = 'Context Window Analytics';
+    analyticsButton.dataset.action = 'analytics';
+    analyticsButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>`;
+    actionsDiv.appendChild(analyticsButton);
+
+    sessionItem.appendChild(actionsDiv);
+
+    // If this is a child session with a wrapper, append sessionItem to wrapper and return wrapper
+    if (sessionItem._wrapper) {
+        const wrapper = sessionItem._wrapper;
+        wrapper.appendChild(sessionItem);
+        return wrapper;
+    }
+
+    return sessionItem;
+}
+
+/**
+ * Updates the displayed name of a session item in the history list.
+ * @param {string} sessionId - The ID of the session to update.
+ * @param {string} newName - The new name for the session.
+ */
+export function updateSessionListItemName(sessionId, newName) {
+    const sessionItem = document.getElementById(`session-${sessionId}`);
+    if (sessionItem) {
+        const nameSpan = sessionItem.querySelector('.session-name-span');
+        if (nameSpan) {
+            nameSpan.textContent = newName;
+        } else {
+        }
+    } else {
+    }
+}
+
+export function updateSessionModels(sessionId, models_used, profile_tags_used = null) {
+    const sessionItem = document.getElementById(`session-${sessionId}`);
+    if (sessionItem) {
+        let tagsDiv = sessionItem.querySelector('.session-models');
+        if (!tagsDiv) {
+            tagsDiv = document.createElement('div');
+            tagsDiv.className = 'session-models text-xs text-gray-400 mt-1 flex flex-wrap gap-1';
+            const contentWrapper = sessionItem.querySelector('.w-full');
+            if(contentWrapper) {
+                contentWrapper.appendChild(tagsDiv);
+            }
+        }
+        tagsDiv.innerHTML = ''; // Clear existing tags/models
+
+        // Render profile tag badges with proper colors (matching addSessionToList)
+        if (profile_tags_used && Array.isArray(profile_tags_used) && profile_tags_used.length > 0) {
+            const badgesHtml = profile_tags_used.map(tag => {
+                return renderProfileTag(tag);
+            }).join('');
+            tagsDiv.innerHTML = badgesHtml;
+        } else if (models_used && Array.isArray(models_used) && models_used.length > 0) {
+            // Fallback to models_used for backwards compatibility (plain text)
+            const textSpan = document.createElement('span');
+            textSpan.className = 'text-xs font-mono text-muted';
+            textSpan.textContent = models_used.join(' · ');
+            tagsDiv.appendChild(textSpan);
+        }
+
+        if (state.currentSessionId === sessionId) {
+            document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
+            sessionItem.classList.add('active');
+        }
+    }
+}
+
+// --- NEW: Update the active session title in the header ---
+export function updateActiveSessionTitle(newName) {
+    const titleEl = document.getElementById('active-session-title');
+    const wrapperEl = document.getElementById('active-session-title-wrapper');
+    
+    if (titleEl) {
+        titleEl.textContent = newName || 'Unnamed Session';
+    }
+    
+    // Show the wrapper when we have a session loaded (after configuration)
+    if (wrapperEl) {
+        if (newName) {
+            wrapperEl.classList.remove('hidden');
+        } else {
+            wrapperEl.classList.add('hidden');
+        }
+    }
+}
+
+// --- NEW: Enter edit mode for active session title ---
+export function enterActiveSessionTitleEdit() {
+    const titleEl = document.getElementById('active-session-title');
+    if (!titleEl) return;
+    // Prevent multiple edit inputs
+    if (document.getElementById('active-session-title-input')) return;
+
+    const currentName = titleEl.textContent.trim();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'active-session-title-input';
+    input.className = 'bg-gray-700 text-white px-2 py-1 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teradata-orange w-64';
+    input.value = currentName;
+    input.dataset.originalName = currentName;
+
+    // Replace span with input
+    titleEl.replaceWith(input);
+    if (DOM.activeSessionTitleEditingHint) {
+        DOM.activeSessionTitleEditingHint.classList.remove('hidden');
+    }
+    input.focus();
+
+    // Only allow one handler to run (blur or keydown)
+    let finished = false;
+    function finishEdit(action, value) {
+        if (finished) return;
+        finished = true;
+        if (action === 'save') {
+            saveActiveSessionTitleEdit(value);
+        } else {
+            cancelActiveSessionTitleEdit();
+        }
+    }
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const newName = input.value.trim();
+            if (!newName) {
+                finishEdit('cancel');
+                return;
+            }
+            finishEdit('save', newName);
+        } else if (e.key === 'Escape') {
+            finishEdit('cancel');
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        const newName = input.value.trim();
+        if (newName && newName !== input.dataset.originalName) {
+            finishEdit('save', newName);
+        } else {
+            finishEdit('cancel');
+        }
+    });
+}
+
+// --- NEW: Cancel editing of active session title ---
+export function cancelActiveSessionTitleEdit() {
+    const input = document.getElementById('active-session-title-input');
+    if (!input || !input.parentNode) return;
+    const originalName = input.dataset.originalName || 'Unnamed Session';
+    const span = document.createElement('span');
+    span.id = 'active-session-title';
+    span.className = 'text-lg font-semibold text-white cursor-pointer';
+    span.textContent = originalName;
+    input.replaceWith(span);
+    if (DOM.activeSessionTitleEditingHint) {
+        DOM.activeSessionTitleEditingHint.classList.add('hidden');
+    }
+}
+
+// --- NEW: Save editing of active session title ---
+export function saveActiveSessionTitleEdit(newName) {
+    const input = document.getElementById('active-session-title-input');
+    if (!input || !input.parentNode) return;
+    const span = document.createElement('span');
+    span.id = 'active-session-title';
+    span.className = 'text-lg font-semibold text-white cursor-pointer';
+    span.textContent = newName;
+    input.replaceWith(span);
+    if (DOM.activeSessionTitleEditingHint) {
+        DOM.activeSessionTitleEditingHint.classList.add('hidden');
+    }
+    // Fire custom event to trigger rename logic elsewhere (decouple UI and logic)
+    const renameEvent = new CustomEvent('activeSessionTitleRenamed', { detail: { newName } });
+    document.dispatchEvent(renameEvent);
+}
+
+export function updateSessionTimestamp(sessionId, last_updated) {
+    const sessionItem = document.getElementById(`session-${sessionId}`);
+    if (sessionItem) {
+        let lastUpdatedSpan = sessionItem.querySelector('.session-last-updated');
+        if (!lastUpdatedSpan) {
+            lastUpdatedSpan = document.createElement('span');
+            lastUpdatedSpan.className = 'session-last-updated text-xs text-gray-300';
+            const infoDiv = sessionItem.querySelector('.flex-col');
+            if (infoDiv) {
+                const nameSpan = infoDiv.querySelector('.session-name-span');
+                if (nameSpan) {
+                    nameSpan.after(lastUpdatedSpan);
+                } else {
+                    infoDiv.prepend(lastUpdatedSpan);
+                }
+            }
+        }
+        lastUpdatedSpan.textContent = `Updated: ${new Date(last_updated).toLocaleString()}`;
+    }
+}
+
+/**
+ * Removes a session item from the history list in the DOM.
+ * @param {string} sessionId - The ID of the session to remove.
+ */
+export function removeSessionFromList(sessionId) {
+    const sessionItem = document.getElementById(`session-${sessionId}`);
+    if (sessionItem) {
+        // If wrapped in a genie-wrapper, remove the wrapper instead
+        const wrapper = sessionItem.closest('.genie-wrapper');
+        if (wrapper && wrapper.dataset.sessionId === sessionId) {
+            wrapper.remove();
+        } else {
+            sessionItem.remove();
+        }
+    }
+}
+
+/**
+ * Removes a session and all its descendant child sessions from the DOM.
+ * Used when deleting a Genie parent to cascade-remove children.
+ * @param {string} sessionId - The parent session ID to remove.
+ * @param {string[]} childIds - Array of child session IDs to remove.
+ */
+export function removeSessionAndDescendantsFromList(sessionId, childIds) {
+    // Remove child sessions first
+    if (childIds && childIds.length > 0) {
+        for (const childId of childIds) {
+            removeSessionFromList(childId);
+        }
+    }
+    // Remove the parent session
+    removeSessionFromList(sessionId);
+}
+
+
+/**
+ * Switches a session list item's name span to an input field for editing.
+ * @param {HTMLButtonElement} editButton - The edit button element that was clicked.
+ */
+export function enterSessionEditMode(editButton) {
+    const sessionItem = editButton.closest('.session-item');
+    if (!sessionItem || sessionItem.querySelector('.session-edit-input')) {
+        return;
+    }
+
+    const spanElement = sessionItem.querySelector('.session-name-span');
+    const actionsDiv = sessionItem.querySelector('.session-actions');
+    if (!spanElement || !actionsDiv) return;
+
+    const currentName = spanElement.textContent;
+    const inputElement = document.createElement('input');
+    inputElement.type = 'text';
+    inputElement.value = currentName;
+    inputElement.dataset.originalName = currentName;
+    inputElement.className = 'session-edit-input flex-grow min-w-0 w-full p-1 bg-gray-800 border border-gray-600 rounded-md text-sm text-white'; // Added flex-grow and adjusted colors
+
+    spanElement.style.display = 'none';
+    actionsDiv.style.display = 'none';
+
+    const topRow = sessionItem.querySelector('.flex.justify-between.items-center');
+    if (!topRow) return; // Should not happen if addSessionToList creates it correctly
+
+    // Ensure the topRow is a flex container that allows the input to grow
+    topRow.classList.add('flex', 'items-center'); // Ensure flex properties are present
+    spanElement.replaceWith(inputElement);
+
+    inputElement.focus();
+    inputElement.select();
+
+    inputElement.addEventListener('blur', handleSessionRenameSave);
+    inputElement.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleSessionRenameSave(e);
+        } else if (e.key === 'Escape') {
+            handleSessionRenameCancel(e);
+        }
+    });
+}
+
+/**
+ * Switches a session list item back from input mode to display mode.
+ * @param {HTMLInputElement} inputElement - The input element currently being edited.
+ * @param {string} finalName - The name to display in the span (either original or new).
+ */
+export function exitSessionEditMode(inputElement, finalName) {
+    const sessionItem = inputElement.closest('.session-item');
+    if (!sessionItem) return;
+
+    // Create a new span element to replace the input field
+    const newSpanElement = document.createElement('span');
+    newSpanElement.className = 'session-name-span text-white text-sm font-semibold truncate'; // Ensure original classes are applied
+    newSpanElement.textContent = finalName;
+
+    // Replace the input element with the new span element
+    inputElement.replaceWith(newSpanElement);
+
+    const actionsDiv = sessionItem.querySelector('.session-actions');
+    if (actionsDiv) {
+        actionsDiv.style.display = ''; // Show actions div again
+    }
+
+    inputElement.removeEventListener('blur', handleSessionRenameSave);
+}
+
+
+export function updateConfigButtonState() {
+    // This function is obsolete with the new configuration UI
+    // The old config modal elements (configActionButton, configActionButtonText, configForm) no longer exist
+    // Keeping the function for backwards compatibility but making it a no-op
+    return;
+}
+
+export function showConfirmation(title, body, onConfirm) {
+    DOM.confirmModalTitle.textContent = title;
+    DOM.confirmModalBody.innerHTML = body;
+
+    DOM.confirmModalOverlay.classList.remove('hidden', 'opacity-0');
+    DOM.confirmModalContent.classList.remove('scale-95', 'opacity-0');
+
+    // If no confirm callback, this is an alert - hide Confirm button and change Cancel to "OK"
+    const isAlertMode = !onConfirm;
+    if (isAlertMode) {
+        DOM.confirmModalConfirm.classList.add('hidden');
+        DOM.confirmModalCancel.textContent = 'OK';
+    } else {
+        DOM.confirmModalConfirm.classList.remove('hidden');
+        DOM.confirmModalCancel.textContent = 'Cancel';
+    }
+
+    const confirmHandler = () => {
+        if (onConfirm) onConfirm();
+        closeConfirmation();
+    };
+
+    const cancelHandler = () => {
+        closeConfirmation();
+    };
+
+    const closeConfirmation = () => {
+        DOM.confirmModalOverlay.classList.add('opacity-0');
+        DOM.confirmModalContent.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => DOM.confirmModalOverlay.classList.add('hidden'), 300);
+        DOM.confirmModalConfirm.removeEventListener('click', confirmHandler);
+        DOM.confirmModalCancel.removeEventListener('click', cancelHandler);
+        // Reset button states for next use
+        DOM.confirmModalConfirm.classList.remove('hidden');
+        DOM.confirmModalCancel.textContent = 'Cancel';
+    };
+
+    DOM.confirmModalConfirm.addEventListener('click', confirmHandler, { once: true });
+    DOM.confirmModalCancel.addEventListener('click', cancelHandler, { once: true });
+}
+
+export function updatePromptEditorState() {
+    const hasChanged = DOM.promptEditorTextarea.value.trim() !== DOM.promptEditorTextarea.dataset.initialValue.trim();
+    DOM.promptEditorSave.disabled = !hasChanged;
+
+    let statusText = isPromptCustomForModel(state.currentProvider, state.currentModel) ? 'Custom' : 'Default';
+    let statusClass = 'text-sm text-gray-400';
+
+    if (hasChanged) {
+        statusText = 'Unsaved Changes';
+        statusClass = 'text-sm text-yellow-400';
+    }
+
+    DOM.promptEditorStatus.textContent = statusText;
+    DOM.promptEditorStatus.className = statusClass;
+}
+
+export function addMessageToModal(role, content) {
+    const messageEl = document.createElement('div');
+    messageEl.className = `p-3 rounded-lg max-w-xs ${role === 'user' ? 'bg-blue-600 self-end' : 'bg-gray-600 self-start'}`;
+    messageEl.textContent = content;
+    DOM.chatModalLog.appendChild(messageEl);
+    DOM.chatModalLog.scrollTop = DOM.chatModalLog.scrollHeight;
+}
+
+export function updateHintAndIndicatorState() {
+    const hintTextSpan = DOM.inputHint.querySelector('span:first-child');
+    const hintTooltipSpan = DOM.inputHint.querySelector('.tooltip');
+
+    if (state.isLastTurnModeLocked) {
+        hintTextSpan.innerHTML = `<strong>Turn Summaries Context:</strong> <span class="text-amber-400 font-semibold">Locked</span>`;
+        hintTooltipSpan.innerHTML = `'Turn Summaries' context is locked on. Press <kbd>Shift</kbd> + <kbd>Alt</kbd> to switch back to the default 'Full Session Context'.`;
+        DOM.contextStatusDot.className = 'connection-dot context-last-turn-locked';
+        DOM.sendIcon.classList.remove('flipped');
+    } else if (state.isTempLastTurnMode) {
+        hintTextSpan.innerHTML = `<strong>Context:</strong> <span class="text-yellow-400 font-semibold">Turn Summaries</span>`;
+        hintTooltipSpan.innerHTML = `Temporarily using 'Turn Summaries' context for this query.`;
+        DOM.contextStatusDot.className = 'connection-dot context-last-turn-temp';
+        DOM.sendIcon.classList.remove('flipped');
+    } else {
+        hintTextSpan.innerHTML = `<strong>Full Session Context:</strong> <span class="text-emerald-400 font-semibold">On</span>`;
+        hintTooltipSpan.innerHTML = `Full session context is the default. Hold <kbd>Alt</kbd> to temporarily use 'Turn Summaries' context. Press <kbd>Shift</kbd> + <kbd>Alt</kbd> to lock 'Turn Summaries' context on.`;
+        DOM.contextStatusDot.className = 'connection-dot idle';
+        DOM.sendIcon.classList.add('flipped');
+    }
+}
+
+export function updateVoiceModeUI() {
+    const isActive = state.isVoiceModeLocked || state.isTempVoiceMode || state.ttsState === 'AWAITING_OBSERVATION_CONFIRMATION';
+
+    if (isActive) {
+        DOM.voiceInputButton.classList.remove('bg-gray-600');
+        DOM.voiceInputButton.classList.add('bg-[#F15F22]');
+    } else {
+        DOM.voiceInputButton.classList.add('bg-gray-600');
+        DOM.voiceInputButton.classList.remove('bg-[#F15F22]');
+    }
+
+    let tooltipText = "Voice Conversation";
+    if (state.ttsState === 'AWAITING_OBSERVATION_CONFIRMATION') {
+        tooltipText += " (Listening for confirmation)";
+    } else if (state.isVoiceModeLocked) {
+        tooltipText += " (Locked On)";
+    } else if (state.isTempVoiceMode) {
+        tooltipText += " (Active)";
+    } else {
+        tooltipText += " (Hold Ctrl)";
+    }
+    DOM.voiceInputButton.title = tooltipText;
+
+    if (isActive) {
+    } else {
+    }
+}
+
+export function updateKeyObservationsModeUI() {
+    DOM.observationsAutoplayOffIcon.classList.add('hidden');
+    DOM.observationsAutoplayOnIcon.classList.add('hidden');
+    DOM.observationsOffIcon.classList.add('hidden');
+    DOM.keyObservationsToggleButton.classList.remove('autoplay-on', 'off');
+
+    switch (state.keyObservationsMode) {
+        case 'autoplay-on':
+            DOM.observationsAutoplayOnIcon.classList.remove('hidden');
+            DOM.keyObservationsToggleButton.title = 'Key Observations - Autoplay On';
+            DOM.keyObservationsToggleButton.classList.add('autoplay-on');
+            break;
+        case 'off':
+            DOM.observationsOffIcon.classList.remove('hidden');
+            DOM.keyObservationsToggleButton.title = 'Key Observations - Off';
+            DOM.keyObservationsToggleButton.classList.add('off');
+            break;
+        case 'autoplay-off':
+        default:
+            DOM.observationsAutoplayOffIcon.classList.remove('hidden');
+            DOM.keyObservationsToggleButton.title = 'Key Observations - Autoplay Off';
+            break;
+    }
+}
+
+// export function closeConfigModal() {
+//     DOM.configModalOverlay.classList.add('opacity-0');
+//     DOM.configModalContent.classList.add('scale-95', 'opacity-0');
+//     setTimeout(() => DOM.configModalOverlay.classList.add('hidden'), 300);
+// }
+
+export function closePromptModal() {
+    DOM.promptModalOverlay.classList.add('opacity-0');
+    DOM.promptModalContent.classList.add('scale-95', 'opacity-0');
+    setTimeout(() => DOM.promptModalOverlay.classList.add('hidden'), 300);
+}
+
+export function closeViewPromptModal() {
+    DOM.viewPromptModalOverlay.classList.add('opacity-0');
+    DOM.viewPromptModalContent.classList.add('scale-95', 'opacity-0');
+    setTimeout(() => DOM.viewPromptModalOverlay.classList.add('hidden'), 300);
+}
+
+/**
+ * Displays the RAG Case modal with the provided case data.
+ * @param {object} caseData - The full RAG case data to display.
+ */
+export function showRagCaseModal(caseData) {
+    if (!DOM.ragCaseModalOverlay || !DOM.ragCaseModalContent || !DOM.ragCaseIdDisplay || !DOM.ragCaseModalJson) {
+        console.error("RAG Case modal DOM elements not found.");
+        return;
+    }
+
+    DOM.ragCaseIdDisplay.textContent = caseData.case_id || 'N/A';
+    DOM.ragCaseModalJson.textContent = JSON.stringify(caseData.full_case_data, null, 2);
+
+    DOM.ragCaseModalOverlay.classList.remove('hidden');
+    // Trigger reflow to ensure transition plays
+    void DOM.ragCaseModalOverlay.offsetWidth;
+    DOM.ragCaseModalOverlay.classList.remove('opacity-0');
+    DOM.ragCaseModalContent.classList.remove('scale-95', 'opacity-0');
+}
+
+/**
+ * Hides the RAG Case modal.
+ */
+export function closeRagCaseModal() {
+    if (!DOM.ragCaseModalOverlay || !DOM.ragCaseModalContent) {
+        console.error("RAG Case modal DOM elements not found.");
+        return;
+    }
+
+    DOM.ragCaseModalOverlay.classList.add('opacity-0');
+    DOM.ragCaseModalContent.classList.add('scale-95', 'opacity-0');
+    setTimeout(() => DOM.ragCaseModalOverlay.classList.add('hidden'), 300);
+}
+
+/**
+ * Provides brief visual feedback on the context status dot by making it blink.
+ */
+export function blinkContextDot() {
+    if (!DOM.contextStatusDot) return;
+
+    DOM.contextStatusDot.classList.add('blinking-white');
+
+    setTimeout(() => {
+        DOM.contextStatusDot.classList.remove('blinking-white');
+    }, 1500); // 0.5s animation * 3 iterations
+}
+
+/**
+ * Provides brief visual feedback on the CCR (Champion Case Retrieval) status dot by making it blink yellow.
+ */
+export function blinkCcrDot() {
+    if (!DOM.ccrStatusDot) return;
+
+    // Ensure it's in the 'connected' state before blinking
+    if (!DOM.ccrStatusDot.classList.contains('connected')) {
+        DOM.ccrStatusDot.classList.add('connected');
+    }
+
+    DOM.ccrStatusDot.classList.add('blinking-yellow');
+
+    // The animation runs for 1.5s (0.5s * 3 iterations)
+    setTimeout(() => {
+        DOM.ccrStatusDot.classList.remove('blinking-yellow');
+    }, 1500);
+}
+
+/**
+ * Provides brief visual feedback on the Knowledge status dot by making it blink yellow.
+ */
+export function blinkKnowledgeDot() {
+    const knowledgeDot = document.getElementById('knowledge-status-dot');
+    if (!knowledgeDot) return;
+
+    // Ensure it's in the 'knowledge-configured' state before blinking
+    if (!knowledgeDot.classList.contains('knowledge-configured')) {
+        knowledgeDot.classList.remove('knowledge-idle', 'knowledge-active');
+        knowledgeDot.classList.add('knowledge-configured');
+    }
+
+    knowledgeDot.classList.add('blinking-yellow');
+
+    // The animation runs for 1.5s (0.5s * 3 iterations)
+    setTimeout(() => {
+        knowledgeDot.classList.remove('blinking-yellow');
+    }, 1500);
+}
+
+/**
+ * Updates knowledge indicator and banner when knowledge repositories are accessed.
+ * @param {Array<string>} collections - List of collection names accessed
+ * @param {number} documentCount - Number of documents retrieved
+ */
+export function updateKnowledgeIndicator(collections, documentCount) {
+    const knowledgeDot = document.getElementById('knowledge-status-dot');
+    const knowledgeBanner = document.getElementById('knowledge-banner');
+    const collectionsList = document.getElementById('knowledge-collections-list');
+
+    if (!knowledgeDot || !knowledgeBanner || !collectionsList) {
+        console.warn('[Knowledge] UI elements not found');
+        return;
+    }
+
+    console.log('[Knowledge] Updating indicator with:', { collections, documentCount });
+
+    // Show banner with collection names
+    if (collections && collections.length > 0) {
+        collectionsList.textContent = collections.join(', ') + ` (${documentCount} docs)`;
+        knowledgeBanner.classList.remove('hidden');
+    }
+
+    // Reset indicator to configured state (green) after successful retrieval
+    knowledgeDot.classList.remove('knowledge-idle', 'knowledge-active');
+    knowledgeDot.classList.add('knowledge-configured');
+
+    // Keep banner visible (removed auto-hide to maintain visibility throughout session)
+}
+
+export function closeChatModal() {
+    DOM.chatModalOverlay.classList.add('opacity-0');
+    DOM.chatModalContent.classList.add('scale-95', 'opacity-0');
+    setTimeout(() => DOM.chatModalOverlay.classList.add('hidden'), 300);
+}
+
+/**
+ * Removes the visual highlight from a session item.
+ * @param {string} sessionId The ID of the session to un-highlight.
+ */
+export function removeHighlight(sessionId) {
+    const sessionItem = document.getElementById(`session-${sessionId}`);
+    if (sessionItem) {
+        const nameSpan = sessionItem.querySelector('.session-name-span');
+        if (nameSpan) {
+            nameSpan.classList.remove('font-bold', 'text-teradata-orange');
+        }
+        const indicator = sessionItem.querySelector('.new-activity-indicator');
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+}
+
+/**
+ * Toggles the collapsed state of the main side navigation bar.
+ */
+export function toggleSideNav() {
+    // Simply toggle the 'collapsed' class - CSS handles everything
+    DOM.appSideNav.classList.toggle('collapsed');
+}
+
+/**
+ * Handles switching the main application view.
+ * @param {string} viewId - The ID of the view to switch to (e.g., 'conversation-view').
+ */
+export function handleViewSwitch(viewId) {
+    console.log('[handleViewSwitch] Switching to view:', viewId);
+    
+    // CRITICAL: Check if user is navigating away from configuration with unsaved changes
+    const currentView = document.querySelector('.app-view.active');
+    const isLeavingConfiguration = currentView?.id === 'credentials-view' && viewId !== 'credentials-view';
+    
+    if (isLeavingConfiguration) {
+        // Import dirty state tracker dynamically to avoid circular dependencies
+        import('./configDirtyState.js').then(({ canNavigateAway }) => {
+            if (!canNavigateAway(viewId)) {
+                console.log('[handleViewSwitch] ❌ Navigation blocked - unsaved configuration changes');
+                return; // Block navigation
+            }
+            
+            // Navigation allowed, proceed
+            performViewSwitch(viewId);
+        });
+        return; // Exit early, will be called again if navigation is allowed
+    }
+    
+    // Not leaving configuration or no unsaved changes - proceed normally
+    performViewSwitch(viewId);
+}
+
+/**
+ * Internal function to perform the actual view switch
+ * Separated to allow dirty state checking to interrupt the flow
+ */
+function performViewSwitch(viewId) {
+    // 1. Log all app views found
+    const appViews = document.querySelectorAll('.app-view');
+
+    // 2. Hide all views
+    appViews.forEach(view => {
+        view.classList.remove('active');
+    });
+
+    // 3. Show the selected view
+    const viewToShow = document.getElementById(viewId);
+    if (viewToShow) {
+        viewToShow.classList.add('active');
+    } else {
+        console.error(`[UI DEBUG] View with ID '${viewId}' not found!`);
+    }
+    
+    // 4a. Lazy-load components when entering Components view
+    if (viewId === 'components-view') {
+        import('./handlers/componentHandler.js').then(({ loadComponentsView }) => {
+            loadComponentsView();
+        });
+    }
+
+    // 4. Initialize dirty tracking when entering configuration view
+    if (viewId === 'credentials-view') {
+        import('./configDirtyState.js').then(({ initializeConfigDirtyTracking }) => {
+            initializeConfigDirtyTracking();
+        });
+    }
+    
+    // 5. Reset dirty tracking when leaving configuration view (after successful save)
+    const previousView = document.querySelector('.app-view.active');
+    if (previousView?.id === 'credentials-view' && viewId !== 'credentials-view') {
+        import('./configDirtyState.js').then(({ resetConfigDirtyTracking }) => {
+            resetConfigDirtyTracking();
+        });
+    }
+
+    // 4. Update the active state of the menu buttons
+    if (DOM.viewSwitchButtons) {
+        DOM.viewSwitchButtons.forEach(button => {
+            const isActive = button.dataset.view === viewId;
+            button.classList.toggle('active', isActive);
+        });
+    } else {
+    }
+    
+    // 4b. Ensure Planner Repository navigation state is maintained
+    if (typeof window.updatePlannerRepositoryNavigation === 'function') {
+        console.log('[handleViewSwitch] Calling updatePlannerRepositoryNavigation after view switch to:', viewId);
+        window.updatePlannerRepositoryNavigation();
+    } else {
+        console.warn('[handleViewSwitch] updatePlannerRepositoryNavigation function not available');
+    }
+
+    // 5. Final check
+    setTimeout(() => {
+        const activeViews = document.querySelectorAll('.app-view.active');
+        if (activeViews.length > 1) {
+        } else if (activeViews.length === 0) {
+        } else if (activeViews[0].id !== viewId) {
+            console.error(`[UI DEBUG] WRONG VIEW IS ACTIVE! Expected ${viewId}, but found ${activeViews[0].id}`);
+        }
+    }, 100); // Use a small delay to catch any subsequent changes
+
+    // 6. If switching to Intelligence, load collections and calculate KPIs
+    if (viewId === 'rag-maintenance-view') {
+        loadRagCollections();
+        // Calculate and display RAG impact KPIs
+        if (window.ragCollectionManagement && window.ragCollectionManagement.calculateRagImpactKPIs) {
+            window.ragCollectionManagement.calculateRagImpactKPIs();
+            
+            // Start auto-refresh for Intelligence KPIs
+            if (window.ragCollectionManagement.startAutoRefresh) {
+                window.ragCollectionManagement.startAutoRefresh();
+            }
+        }
+    } else {
+        // Stop Intelligence auto-refresh when leaving the view
+        if (window.ragCollectionManagement && window.ragCollectionManagement.stopAutoRefresh) {
+            window.ragCollectionManagement.stopAutoRefresh();
+        }
+    }
+    
+    // 6b. If switching to Marketplace, refresh marketplace collections
+    if (viewId === 'rag-marketplace-view') {
+        if (window.refreshMarketplace) {
+            window.refreshMarketplace();
+        }
+    }
+    
+    // 7. If switching to Executions view, initialize dashboard
+    if (viewId === 'executions-view') {
+        if (window.executionDashboard) {
+            // Initialize once, then always refresh when entering the view
+            if (!window.executionDashboard._isInitialized) {
+                window.executionDashboard.initialize();
+                window.executionDashboard._isInitialized = true;
+            } else {
+                // Refresh data and restart auto-refresh when re-entering the view
+                window.executionDashboard.refreshDashboard();
+                window.executionDashboard.startAutoRefresh();
+            }
+        } else {
+            console.error('[UI DEBUG] ExecutionDashboard not initialized');
+        }
+    } else {
+        // Stop Executions auto-refresh when leaving the view
+        if (window.executionDashboard && window.executionDashboard.stopAutoRefresh) {
+            window.executionDashboard.stopAutoRefresh();
+        }
+    }
+    
+    // 8. If switching to Admin view, load users and features
+    if (viewId === 'admin-view') {
+        if (window.AdminManager) {
+            window.AdminManager.loadUsers();
+            window.AdminManager.loadFeatures();
+        } else {
+            console.error('[UI DEBUG] AdminManager not initialized');
+        }
+    }
+    
+    // 9. If switching to Conversation view, initialize panels based on admin settings
+    if (viewId === 'conversation-view') {
+        console.log('[handleViewSwitch] Conversation view detected, checking for initializePanels:', typeof window.initializePanels);
+        if (window.initializePanels) {
+            console.log('[handleViewSwitch] Calling initializePanels()');
+            window.initializePanels();
+        } else {
+            console.error('[UI DEBUG] initializePanels not available yet - will retry');
+            // Retry after a short delay to allow main.js to finish loading
+            setTimeout(() => {
+                if (window.initializePanels) {
+                    console.log('[handleViewSwitch] Calling initializePanels() after delay');
+                    window.initializePanels();
+                } else {
+                    console.error('[UI DEBUG] initializePanels still not available after delay');
+                }
+            }, 500);
+        }
+        
+        // Check if application is initialized before loading sessions
+        // SKIP this check if we're already in the middle of initialization (reconnectAndLoad handles it)
+        if (state.sessionLoaded) {
+            console.log('[handleViewSwitch] Session already loaded, skipping initialization check');
+            return;
+        }
+        
+        checkServerStatus().then(async (status) => {
+            if (!status.isConfigured) {
+                // Application not configured - show welcome screen
+                console.log('[handleViewSwitch] Application not configured, showing welcome screen');
+                if (window.showWelcomeScreen) {
+                    window.showWelcomeScreen();
+                }
+                return;
+            }
+            
+            // Application is configured - but check if conversation mode has been initialized
+            // Import conversationInitializer to check initialization state
+            const { getInitializationState } = await import('./conversationInitializer.js');
+            const initState = getInitializationState();
+            
+            if (!initState.initialized) {
+                // Not yet initialized - show welcome screen with "Start Conversation" button
+                console.log('[handleViewSwitch] Application configured but conversation not initialized, showing welcome screen');
+                if (window.showWelcomeScreen) {
+                    window.showWelcomeScreen();
+                }
+                return;
+            }
+            
+            // Application is configured AND initialized - proceed with session loading if needed
+            console.log('[handleViewSwitch] Application configured and initialized, no session loaded, checking for session to load');
+            
+            // Dynamically import sessionManagement to load session
+            const { handleLoadSession } = await import('./handlers/sessionManagement.js?v=3.6');
+            try {
+                // If we have a session ID in state (restored from localStorage), load it
+                if (state.currentSessionId) {
+                    console.log('[handleViewSwitch] Session ID exists in state, loading session:', state.currentSessionId);
+                    await handleLoadSession(state.currentSessionId);
+                } else {
+                    // No session ID in state - fetch sessions and load most recent
+                    console.log('[handleViewSwitch] No session ID in state, fetching sessions');
+                    const result = await loadSessions(0, 0); // Load all sessions (limit=0)
+                    const sessions = result.sessions || [];
+                    const activeSessions = sessions ? sessions.filter(s => !s.archived) : [];
+
+                    if (activeSessions && activeSessions.length > 0) {
+                        // Sessions exist - load the most recent one (first in array)
+                        console.log('[handleViewSwitch] Found', activeSessions.length, 'existing sessions, loading most recent');
+                        await handleLoadSession(activeSessions[0].id);
+                    } else {
+                        // No sessions exist - show welcome screen
+                        console.log('[handleViewSwitch] No existing sessions, showing welcome screen');
+                        if (window.showWelcomeScreen) {
+                            window.showWelcomeScreen();
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('[handleViewSwitch] Error loading sessions:', error);
+                // Fallback to welcome screen on error
+                if (window.showWelcomeScreen) {
+                    window.showWelcomeScreen();
+                }
+            }
+        }).catch(error => {
+            console.error('[handleViewSwitch] Error checking server status:', error);
+            // On error, show welcome screen as fallback
+            if (window.showWelcomeScreen) {
+                window.showWelcomeScreen();
+            }
+        });
+    }
+}
+
+/**
+ * Fetches ChromaDB collections from the backend and renders them as cards.
+ */
+export async function loadRagCollections() {
+    if (!DOM.ragMaintenanceCollectionsContainer) return;
+    try {
+        if (DOM.ragMaintenanceEmptyHint) {
+            DOM.ragMaintenanceEmptyHint.textContent = 'Loading collections...';
+        }
+        // Get authentication token
+        const token = localStorage.getItem('tda_auth_token');
+        const res = await fetch('/api/v1/rag/collections', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        const data = await res.json();
+        let collections = (data && data.collections) ? data.collections : [];
+        
+        // Separate collections by repository type
+        const plannerCollections = collections.filter(c => c.repository_type === 'planner');
+        const knowledgeCollections = collections.filter(c => c.repository_type === 'knowledge');
+        
+        // Sort collections: Default Collection first, then by ID
+        const sortCollections = (arr) => {
+            return arr.sort((a, b) => {
+                const aIsDefault = a.name.includes('Default Collection');
+                const bIsDefault = b.name.includes('Default Collection');
+                if (aIsDefault && !bIsDefault) return -1;
+                if (!aIsDefault && bIsDefault) return 1;
+                return a.id - b.id;
+            });
+        };
+        
+        sortCollections(plannerCollections);
+        sortCollections(knowledgeCollections);
+
+        // Update tab counters
+        const plannerTabBtn = document.getElementById('planner-repo-tab');
+        if (plannerTabBtn) {
+            plannerTabBtn.textContent = `Planner Repositories (${plannerCollections.length})`;
+        }
+        const knowledgeTabBtn = document.getElementById('knowledge-repo-tab');
+        if (knowledgeTabBtn) {
+            knowledgeTabBtn.textContent = `Knowledge Repositories (${knowledgeCollections.length})`;
+        }
+
+        // Update Knowledge Graphs tab counter (load in background — don't block rendering)
+        import('./handlers/knowledgeGraphPanelHandler.js').then(mod => {
+            if (typeof mod.loadKnowledgeGraphsIntelligenceTab === 'function') {
+                mod.loadKnowledgeGraphsIntelligenceTab();
+            }
+        }).catch(() => { /* non-critical */ });
+
+        // Render Planner repositories (grouped by agent pack)
+        DOM.ragMaintenanceCollectionsContainer.innerHTML = '';
+        if (!plannerCollections.length) {
+            const emptyMsg = document.createElement('div');
+            emptyMsg.className = 'col-span-full text-gray-400 text-sm';
+            emptyMsg.textContent = 'No planner repositories found.';
+            DOM.ragMaintenanceCollectionsContainer.appendChild(emptyMsg);
+        } else {
+            const { packGroups: plannerPacks, ungrouped: plannerUngrouped } = groupByAgentPack(plannerCollections);
+            for (const [, group] of plannerPacks) {
+                if (group.resources.length === 1) {
+                    DOM.ragMaintenanceCollectionsContainer.appendChild(createCollectionCard(group.resources[0]));
+                } else {
+                    const containerEl = createPackContainerCardDOM(group.pack, group.resources, 'planner');
+                    const childGrid = containerEl.querySelector('.pack-children-grid');
+                    group.resources.forEach(col => childGrid.appendChild(createCollectionCard(col)));
+                    DOM.ragMaintenanceCollectionsContainer.appendChild(containerEl);
+                }
+            }
+            plannerUngrouped.forEach(col => DOM.ragMaintenanceCollectionsContainer.appendChild(createCollectionCard(col)));
+            attachPackContainerHandlers(DOM.ragMaintenanceCollectionsContainer);
+        }
+        
+        // Render Knowledge repositories (grouped by agent pack)
+        if (DOM.knowledgeRepositoriesContainer) {
+            DOM.knowledgeRepositoriesContainer.innerHTML = '';
+            if (!knowledgeCollections.length) {
+                const emptyMsg = document.createElement('div');
+                emptyMsg.className = 'col-span-full text-gray-400 text-sm';
+                emptyMsg.textContent = 'No knowledge repositories found.';
+                DOM.knowledgeRepositoriesContainer.appendChild(emptyMsg);
+            } else {
+                const { packGroups: knowledgePacks, ungrouped: knowledgeUngrouped } = groupByAgentPack(knowledgeCollections);
+                for (const [, group] of knowledgePacks) {
+                    if (group.resources.length === 1) {
+                        DOM.knowledgeRepositoriesContainer.appendChild(createKnowledgeRepositoryCard(group.resources[0]));
+                    } else {
+                        const containerEl = createPackContainerCardDOM(group.pack, group.resources, 'knowledge');
+                        const childGrid = containerEl.querySelector('.pack-children-grid');
+                        group.resources.forEach(col => childGrid.appendChild(createKnowledgeRepositoryCard(col)));
+                        DOM.knowledgeRepositoriesContainer.appendChild(containerEl);
+                    }
+                }
+                knowledgeUngrouped.forEach(col => DOM.knowledgeRepositoriesContainer.appendChild(createKnowledgeRepositoryCard(col)));
+                attachPackContainerHandlers(DOM.knowledgeRepositoriesContainer);
+                updatePackContainerDocCounts(DOM.knowledgeRepositoriesContainer);
+            }
+        }
+    } catch (err) {
+        console.error('Failed to load RAG collections:', err);
+        DOM.ragMaintenanceCollectionsContainer.innerHTML = '';
+        const errMsg = document.createElement('div');
+        errMsg.className = 'col-span-full text-rose-400 text-sm';
+        errMsg.textContent = `Error loading collections: ${err.message}`;
+        DOM.ragMaintenanceCollectionsContainer.appendChild(errMsg);
+    }
+}
+
+// Make loadRagCollections globally available for marketplace handler
+window.loadRagCollections = loadRagCollections;
+
+function createKnowledgeRepositoryCard(col) {
+    const card = document.createElement('div');
+    card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-teradata-orange transition-colors';
+    card.dataset.repoId = col.id;
+
+    // Header with title and status badge
+    const header = document.createElement('div');
+    header.className = 'flex items-start justify-between gap-2';
+    
+    const titleSection = document.createElement('div');
+    titleSection.className = 'flex-1';
+    
+    const title = document.createElement('h2');
+    title.className = 'text-lg font-semibold text-white';
+    title.textContent = col.name || col.collection_name;
+    
+    const collectionId = document.createElement('p');
+    collectionId.className = 'text-xs text-gray-500';
+    collectionId.textContent = `Collection ID: ${col.id}`;
+    
+    titleSection.appendChild(title);
+    titleSection.appendChild(collectionId);
+    
+    // Status and indicator badges container
+    const badgesContainer = document.createElement('div');
+    badgesContainer.className = 'flex flex-col gap-1 items-end';
+    
+    // Active/Disabled badge
+    const statusBadge = document.createElement('span');
+    statusBadge.className = col.enabled 
+        ? 'px-2 py-1 text-xs rounded-full bg-green-500/20 text-emerald-400' 
+        : 'px-2 py-1 text-xs rounded-full bg-gray-500/20 text-gray-400';
+    statusBadge.textContent = col.enabled ? 'Active' : 'Disabled';
+    badgesContainer.appendChild(statusBadge);
+    
+    // Ownership/Subscription indicators
+    const indicatorsRow = document.createElement('div');
+    indicatorsRow.className = 'flex gap-1';
+    
+    // Owner indicator (if user owns this collection)
+    if (col.is_owned) {
+        const ownerBadge = document.createElement('span');
+        ownerBadge.className = 'px-2 py-1 text-xs rounded-full bg-blue-500/20 text-blue-400 flex items-center gap-1';
+        ownerBadge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> Owner`;
+        ownerBadge.title = 'You own this collection';
+        indicatorsRow.appendChild(ownerBadge);
+    }
+
+    // Subscribed indicator (if user is subscribed but doesn't own it)
+    if (col.is_subscribed && !col.is_owned) {
+        const subscribedBadge = document.createElement('span');
+        subscribedBadge.className = 'px-2 py-1 text-xs rounded-full bg-blue-500/20 text-blue-400 flex items-center gap-1';
+        subscribedBadge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg> Subscribed`;
+        subscribedBadge.title = 'You are subscribed to this collection';
+        indicatorsRow.appendChild(subscribedBadge);
+    }
+
+    // Published to marketplace indicator
+    if (col.is_marketplace_listed) {
+        const publishedBadge = document.createElement('span');
+        publishedBadge.className = 'px-2 py-1 text-xs rounded-full bg-orange-500/20 text-amber-400 flex items-center gap-1';
+        const visibilityIcon = col.visibility === 'public'
+            ? '<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>'
+            : '<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>';
+        publishedBadge.innerHTML = `${visibilityIcon} ${col.visibility === 'public' ? 'Public' : 'Unlisted'}`;
+        publishedBadge.title = `Published to marketplace (${col.visibility})`;
+        indicatorsRow.appendChild(publishedBadge);
+    }
+    
+    if (indicatorsRow.children.length > 0) {
+        badgesContainer.appendChild(indicatorsRow);
+    }
+    
+    header.appendChild(titleSection);
+    header.appendChild(badgesContainer);
+    
+    // Description (if exists)
+    const desc = col.description ? (() => {
+        const d = document.createElement('p');
+        d.className = 'text-xs text-gray-400';
+        d.textContent = col.description;
+        return d;
+    })() : null;
+    
+    // Metadata (ChromaDB name and chunking info)
+    const meta = document.createElement('p');
+    meta.className = 'text-xs text-gray-500';
+    const chunkInfo = col.chunking_strategy ? ` | ${col.chunking_strategy} chunking` : '';
+    meta.textContent = `ChromaDB: ${col.collection_name}${chunkInfo}`;
+
+    // Embedding model info
+    const embeddingInfo = document.createElement('p');
+    embeddingInfo.className = 'text-xs text-gray-400';
+    const embeddingModel = col.embedding_model || 'all-MiniLM-L6-v2';
+    embeddingInfo.innerHTML = `<span class="text-gray-500">Embedding Model:</span> ${embeddingModel}`;
+
+    // Document and chunk counts for Knowledge repositories
+    const countsInfo = document.createElement('p');
+    countsInfo.className = 'text-xs text-gray-400';
+    const docCount = col.document_count || '?';
+    const chunkCount = col.count || col.example_count || 0;
+    countsInfo.textContent = `${docCount} documents • ${chunkCount} chunks`;
+
+    card.appendChild(header);
+    if (desc) card.appendChild(desc);
+    card.appendChild(meta);
+    card.appendChild(embeddingInfo);
+    card.appendChild(countsInfo);
+    
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'mt-2 flex gap-2 flex-wrap';
+    
+    // Toggle enable/disable button
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = col.enabled
+        ? 'card-btn card-btn--warning'
+        : 'card-btn card-btn--success';
+    toggleBtn.textContent = col.enabled ? 'Disable' : 'Enable';
+    toggleBtn.addEventListener('click', () => {
+        if (window.ragCollectionManagement) {
+            window.ragCollectionManagement.toggleRagCollection(col.id, col.enabled);
+        }
+    });
+
+    // Inspect button
+    const inspectBtn = document.createElement('button');
+    inspectBtn.type = 'button';
+    inspectBtn.className = 'card-btn card-btn--primary';
+    inspectBtn.textContent = 'Inspect';
+    inspectBtn.addEventListener('click', () => {
+        // Use the shared collection inspection view
+        openCollectionInspection(col.id, col.name, 'knowledge', col);
+    });
+
+    // Edit button
+    const isManaged = col.is_subscribed && !col.is_owned;
+    const managedBy = (col.agent_packs || []).map(p => p.name).join(', ') || 'external source';
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    if (isManaged) {
+        editBtn.className = 'card-btn';
+        editBtn.disabled = true;
+        editBtn.title = `Managed by: ${managedBy} — uninstall the pack(s) to edit`;
+    } else {
+        editBtn.className = 'card-btn card-btn--info';
+    }
+    editBtn.textContent = 'Edit';
+    if (!isManaged) {
+        editBtn.addEventListener('click', () => {
+            if (window.ragCollectionManagement) {
+                window.ragCollectionManagement.openEditCollectionModal(col);
+            }
+        });
+    }
+
+    // Upload button (Knowledge repositories only)
+    const uploadBtn = document.createElement('button');
+    uploadBtn.type = 'button';
+    if (isManaged) {
+        uploadBtn.className = 'card-btn';
+        uploadBtn.disabled = true;
+        uploadBtn.title = `Managed by: ${managedBy} — uninstall the pack(s) to upload`;
+    } else {
+        uploadBtn.className = 'card-btn card-btn--info';
+    }
+    uploadBtn.innerHTML = '<span style="font-size: 14px;">+</span> Upload';
+    if (!isManaged) {
+        uploadBtn.addEventListener('click', () => {
+            if (window.knowledgeRepositoryHandler && window.knowledgeRepositoryHandler.openUploadDocumentsModal) {
+                window.knowledgeRepositoryHandler.openUploadDocumentsModal(col.id, col.name, col);
+            }
+        });
+    }
+
+    // Export button (Knowledge repositories only)
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.className = 'card-btn card-btn--cyan';
+    exportBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+    </svg>Export`;
+    exportBtn.addEventListener('click', () => {
+        if (exportKnowledgeRepository) {
+            exportKnowledgeRepository(col.id, col.name || col.collection_name);
+        }
+    });
+
+    // Reset button (only for owned knowledge repositories)
+    if (col.is_owned) {
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        if (isManaged) {
+            resetBtn.className = 'card-btn';
+            resetBtn.disabled = true;
+            resetBtn.title = `Managed by: ${managedBy} — uninstall the pack(s) to reset`;
+        } else {
+            resetBtn.className = 'card-btn card-btn--warning';
+        }
+        resetBtn.textContent = 'Reset';
+        if (!isManaged) {
+            resetBtn.addEventListener('click', () => {
+                if (window.knowledgeRepositoryHandler && window.knowledgeRepositoryHandler.resetKnowledgeRepository) {
+                    window.knowledgeRepositoryHandler.resetKnowledgeRepository(col.id, col.name);
+                }
+            });
+        }
+        actions.appendChild(resetBtn);
+    }
+
+    // Delete/Unsubscribe button for Knowledge repositories
+    if (col.is_subscribed && !col.is_owned) {
+        // Subscribed collection - show Unsubscribe button
+        const unsubscribeBtn = document.createElement('button');
+        unsubscribeBtn.type = 'button';
+        unsubscribeBtn.className = 'card-btn card-btn--warning';
+        unsubscribeBtn.textContent = 'Unsubscribe';
+        unsubscribeBtn.addEventListener('click', async () => {
+            if (window.marketplaceHandler && window.marketplaceHandler.unsubscribeFromCollection) {
+                await window.marketplaceHandler.unsubscribeFromCollection(col.subscription_id, col.name);
+            } else {
+                console.error('Marketplace handler not available for unsubscribe');
+            }
+        });
+        actions.appendChild(unsubscribeBtn);
+    } else {
+        // Owned collection - show Delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'card-btn card-btn--danger';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', () => {
+            if (window.knowledgeRepositoryHandler) {
+                window.knowledgeRepositoryHandler.deleteKnowledgeRepository(col.id, col.name);
+            }
+        });
+        actions.appendChild(deleteBtn);
+    }
+    
+    actions.appendChild(toggleBtn);
+    actions.appendChild(inspectBtn);
+    actions.appendChild(editBtn);
+    actions.appendChild(uploadBtn);
+    actions.appendChild(exportBtn);
+    // Delete/Unsubscribe button already appended above
+    
+    card.appendChild(actions);
+    
+    // Load document count asynchronously
+    loadKnowledgeRepositoryDocCount(col.id);
+    
+    return card;
+}
+
+function createCollectionCard(col) {
+    const card = document.createElement('div');
+    card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-teradata-orange transition-colors';
+    card.dataset.repoId = col.id;
+            
+            // Header with title and status badge
+            const header = document.createElement('div');
+            header.className = 'flex items-start justify-between gap-2';
+            
+            const titleSection = document.createElement('div');
+            titleSection.className = 'flex-1';
+            
+            const title = document.createElement('h2');
+            title.className = 'text-lg font-semibold text-white';
+            title.textContent = col.name;
+
+            // Agent pack badges
+            if (col.agent_packs?.length) {
+                col.agent_packs.forEach(p => {
+                    const badge = document.createElement('span');
+                    badge.className = 'agent-pack-badge';
+                    badge.innerHTML = `<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>${escapeHtml(p.name)}`;
+                    title.appendChild(document.createTextNode(' '));
+                    title.appendChild(badge);
+                });
+            }
+
+            const collectionId = document.createElement('p');
+            collectionId.className = 'text-xs text-gray-500';
+            collectionId.textContent = `Collection ID: ${col.id}`;
+
+            titleSection.appendChild(title);
+            titleSection.appendChild(collectionId);
+            
+            // Status and indicator badges container
+            const badgesContainer = document.createElement('div');
+            badgesContainer.className = 'flex flex-col gap-1 items-end';
+            
+            // Active/Disabled badge
+            const statusBadge = document.createElement('span');
+            statusBadge.className = col.enabled 
+                ? 'px-2 py-1 text-xs rounded-full bg-green-500/20 text-emerald-400' 
+                : 'px-2 py-1 text-xs rounded-full bg-gray-500/20 text-gray-400';
+            statusBadge.textContent = col.enabled ? 'Active' : 'Disabled';
+            badgesContainer.appendChild(statusBadge);
+            
+            // Ownership/Subscription indicators
+            const indicatorsRow = document.createElement('div');
+            indicatorsRow.className = 'flex gap-1';
+            
+            // Owner indicator (if user owns this collection)
+            if (col.is_owned) {
+                const ownerBadge = document.createElement('span');
+                ownerBadge.className = 'px-2 py-1 text-xs rounded-full bg-blue-500/20 text-blue-400 flex items-center gap-1';
+                ownerBadge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> Owner`;
+                ownerBadge.title = 'You own this collection';
+                indicatorsRow.appendChild(ownerBadge);
+            }
+
+            // Subscribed indicator (if user is subscribed but doesn't own it)
+            if (col.is_subscribed && !col.is_owned) {
+                const subscribedBadge = document.createElement('span');
+                subscribedBadge.className = 'px-2 py-1 text-xs rounded-full bg-blue-500/20 text-blue-400 flex items-center gap-1';
+                subscribedBadge.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg> Subscribed`;
+                subscribedBadge.title = 'You are subscribed to this collection';
+                indicatorsRow.appendChild(subscribedBadge);
+            }
+
+            // Published to marketplace indicator
+            if (col.is_marketplace_listed) {
+                const publishedBadge = document.createElement('span');
+                publishedBadge.className = 'px-2 py-1 text-xs rounded-full bg-orange-500/20 text-amber-400 flex items-center gap-1';
+                const visibilityIcon = col.visibility === 'public'
+                    ? '<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>'
+                    : '<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>';
+                publishedBadge.innerHTML = `${visibilityIcon} ${col.visibility === 'public' ? 'Public' : 'Unlisted'}`;
+                publishedBadge.title = `Published to marketplace (${col.visibility})`;
+                indicatorsRow.appendChild(publishedBadge);
+            }
+            
+            if (indicatorsRow.children.length > 0) {
+                badgesContainer.appendChild(indicatorsRow);
+            }
+            
+            header.appendChild(titleSection);
+            header.appendChild(badgesContainer);
+            
+            // MCP Server info - look up name from ID using window.configState
+            const mcpInfo = document.createElement('p');
+            mcpInfo.className = 'text-sm text-gray-300';
+            let mcpServerDisplay = 'None';
+            if (col.mcp_server_id && window.configState && window.configState.mcpServers) {
+                const mcpServer = window.configState.mcpServers.find(s => s.id === col.mcp_server_id);
+                mcpServerDisplay = mcpServer ? mcpServer.name : 'Unknown';
+            }
+            mcpInfo.innerHTML = `<span class="text-gray-500">MCP Server:</span> ${mcpServerDisplay}`;
+            
+            // Description (if exists)
+            const desc = col.description ? (() => {
+                const d = document.createElement('p');
+                d.className = 'text-xs text-gray-400';
+                d.textContent = col.description;
+                return d;
+            })() : null;
+            
+            // Metadata (collection_name from ChromaDB)
+            const meta = document.createElement('p');
+            meta.className = 'text-xs text-gray-500';
+            meta.textContent = `ChromaDB: ${col.collection_name}`;
+
+            // Embedding model info
+            const embeddingInfo = document.createElement('p');
+            embeddingInfo.className = 'text-xs text-gray-400';
+            const embeddingModel = col.embedding_model || 'all-MiniLM-L6-v2';
+            embeddingInfo.innerHTML = `<span class="text-gray-500">Embedding Model:</span> ${embeddingModel}`;
+
+            // Actions
+            const actions = document.createElement('div');
+            actions.className = 'mt-2 flex gap-2 flex-wrap';
+            
+            // Toggle enable/disable button
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.className = col.enabled
+                ? 'card-btn card-btn--warning'
+                : 'card-btn card-btn--success';
+            toggleBtn.textContent = col.enabled ? 'Disable' : 'Enable';
+            toggleBtn.addEventListener('click', () => {
+                if (window.ragCollectionManagement) {
+                    window.ragCollectionManagement.toggleRagCollection(col.id, col.enabled);
+                }
+            });
+
+            // Inspect button
+            const inspectBtn = document.createElement('button');
+            inspectBtn.type = 'button';
+            inspectBtn.className = 'card-btn card-btn--primary';
+            inspectBtn.textContent = 'Inspect';
+            inspectBtn.addEventListener('click', () => {
+                openCollectionInspection(col.id, col.name, col.repository_type);
+            });
+
+            // Edit button
+            const isPlannerManaged = col.is_subscribed && !col.is_owned;
+            const plannerManagedBy = (col.agent_packs || []).map(p => p.name).join(', ') || 'external source';
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            if (isPlannerManaged) {
+                editBtn.className = 'card-btn';
+                editBtn.disabled = true;
+                editBtn.title = `Managed by: ${plannerManagedBy} — uninstall the pack(s) to edit`;
+            } else {
+                editBtn.className = 'card-btn card-btn--info';
+            }
+            editBtn.textContent = 'Edit';
+            if (!isPlannerManaged) {
+                editBtn.addEventListener('click', () => {
+                    if (window.ragCollectionManagement) {
+                        window.ragCollectionManagement.openEditCollectionModal(col);
+                    }
+                });
+            }
+            
+            // Export button (only for owned collections)
+            if (col.is_owned) {
+                const exportBtn = document.createElement('button');
+                exportBtn.type = 'button';
+                exportBtn.className = 'card-btn card-btn--cyan';
+                exportBtn.innerHTML = `
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    Export
+                `;
+                exportBtn.addEventListener('click', async () => {
+                    try {
+                        await exportKnowledgeRepository(col.id, col.name);
+                    } catch (error) {
+                        console.error('Export failed:', error);
+                    }
+                });
+                actions.appendChild(exportBtn);
+            }
+
+            // Reset button (only for owned collections)
+            if (col.is_owned) {
+                const isResetPackManaged = col.agent_packs?.length > 0;
+                const resetPackNames = isResetPackManaged ? col.agent_packs.map(p => p.name).join(', ') : '';
+                const resetBtn = document.createElement('button');
+                resetBtn.type = 'button';
+                if (isResetPackManaged) {
+                    resetBtn.className = 'card-btn';
+                    resetBtn.disabled = true;
+                    resetBtn.title = `Managed by: ${resetPackNames} — uninstall the pack(s) to reset`;
+                } else if (col.id === 0) {
+                    resetBtn.className = 'card-btn';
+                    resetBtn.disabled = true;
+                } else {
+                    resetBtn.className = 'card-btn card-btn--warning';
+                }
+                resetBtn.textContent = 'Reset';
+                if (!isResetPackManaged && col.id !== 0) {
+                    resetBtn.addEventListener('click', () => {
+                        if (window.ragCollectionManagement && window.ragCollectionManagement.resetRagCollection) {
+                            window.ragCollectionManagement.resetRagCollection(col.id, col.name);
+                        }
+                    });
+                }
+                actions.appendChild(resetBtn);
+            }
+
+            // Delete/Unsubscribe button
+            if (col.is_subscribed && !col.is_owned) {
+                // Subscribed collection - show Unsubscribe button
+                const unsubscribeBtn = document.createElement('button');
+                unsubscribeBtn.type = 'button';
+                unsubscribeBtn.className = 'card-btn card-btn--warning';
+                unsubscribeBtn.textContent = 'Unsubscribe';
+                unsubscribeBtn.addEventListener('click', async () => {
+                    if (window.marketplaceHandler && window.marketplaceHandler.unsubscribeFromCollection) {
+                        await window.marketplaceHandler.unsubscribeFromCollection(col.subscription_id, col.name);
+                    } else {
+                        console.error('Marketplace handler not available for unsubscribe');
+                    }
+                });
+                actions.appendChild(unsubscribeBtn);
+            } else {
+                // Owned collection - show Delete button (disabled for ID 0 or pack-managed)
+                const isPackManaged = col.agent_packs?.length > 0;
+                const packNames = isPackManaged ? col.agent_packs.map(p => p.name).join(', ') : '';
+                const deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button';
+                if (isPackManaged) {
+                    deleteBtn.className = 'card-btn';
+                    deleteBtn.disabled = true;
+                    deleteBtn.title = `Managed by: ${packNames} — uninstall the pack(s) to remove`;
+                } else if (col.id === 0) {
+                    deleteBtn.className = 'card-btn';
+                    deleteBtn.disabled = true;
+                } else {
+                    deleteBtn.className = 'card-btn card-btn--danger';
+                }
+                deleteBtn.textContent = 'Delete';
+                if (!isPackManaged && col.id !== 0) {
+                    deleteBtn.addEventListener('click', () => {
+                        if (window.ragCollectionManagement) {
+                            window.ragCollectionManagement.deleteRagCollection(col.id, col.name);
+                        }
+                    });
+                }
+                actions.appendChild(deleteBtn);
+            }
+            
+            actions.appendChild(toggleBtn);
+            actions.appendChild(inspectBtn);
+            actions.appendChild(editBtn);
+            // Delete/Unsubscribe button already appended above
+
+    card.appendChild(header);
+    if (desc) card.appendChild(desc);
+    card.appendChild(mcpInfo);
+    card.appendChild(meta);
+    card.appendChild(embeddingInfo);
+    card.appendChild(actions);
+    
+    return card;
+}
+
+// --- RAG Collection Inspection Logic ---
+export async function openCollectionInspection(collectionId, collectionName, repositoryType = 'planner', repositoryMeta = null) {
+    if (collectionId === undefined) return;
+    state.currentInspectedCollectionId = collectionId;
+    state.currentInspectedCollectionName = collectionName;
+    state.currentInspectedRepositoryType = repositoryType;
+    state.currentInspectedRepositoryMeta = repositoryMeta;
+    
+    if (DOM.ragCollectionInspectTitle) {
+        DOM.ragCollectionInspectTitle.textContent = `Inspect: ${collectionName}`;
+    }
+    
+    // Show repository metadata for knowledge repositories
+    if (repositoryType === 'knowledge' && repositoryMeta) {
+        displayKnowledgeRepositoryMetadata(repositoryMeta);
+    } else {
+        // Hide metadata section for planner repositories
+        hideKnowledgeRepositoryMetadata();
+    }
+    
+    handleViewSwitch('rag-collection-inspect-view');
+    await fetchAndRenderCollectionRows({ collectionId: collectionId, refresh: true });
+    wireCollectionInspectionEvents();
+}
+
+function wireCollectionInspectionEvents() {
+    if (DOM.ragCollectionInspectBack) {
+        DOM.ragCollectionInspectBack.onclick = () => {
+            state.currentInspectedCollectionId = null;
+            state.currentInspectedCollectionName = null;
+            handleViewSwitch('rag-maintenance-view');
+        };
+    }
+    if (DOM.ragCollectionRefreshButton) {
+        DOM.ragCollectionRefreshButton.onclick = () => {
+            if (state.currentInspectedCollectionId !== null && state.currentInspectedCollectionId !== undefined) {
+                fetchAndRenderCollectionRows({ collectionId: state.currentInspectedCollectionId, refresh: true });
+            }
+        };
+    }
+    if (DOM.ragCollectionSearchInput && !DOM.ragCollectionSearchInput.dataset._wired) {
+        let debounceTimer = null;
+        DOM.ragCollectionSearchInput.addEventListener('input', () => {
+            const term = DOM.ragCollectionSearchInput.value.trim();
+            state.ragCollectionSearchTerm = term;
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                if (state.currentInspectedCollectionId !== null && state.currentInspectedCollectionId !== undefined) {
+                    fetchAndRenderCollectionRows({ collectionId: state.currentInspectedCollectionId, query: term });
+                }
+            }, 300);
+        });
+        DOM.ragCollectionSearchInput.dataset._wired = 'true';
+    }
+    
+    // Wire infinite scroll pagination on table
+    const tableContainer = document.querySelector('#rag-collection-table-body')?.closest('.overflow-auto');
+    if (tableContainer && !tableContainer.dataset._scrollWired) {
+        let isLoading = false;
+        tableContainer.addEventListener('scroll', () => {
+            // Check if scrolled near bottom (within 200px)
+            if (tableContainer.scrollHeight - tableContainer.scrollTop - tableContainer.clientHeight < 200) {
+                // Only load more if we haven't already and there are more rows
+                if (!isLoading && state.ragCollectionHasMore && state.currentInspectedCollectionId !== null) {
+                    isLoading = true;
+                    console.log('[InfiniteScroll] Loading next segment...');
+                    fetchAndRenderCollectionRows({ 
+                        collectionId: state.currentInspectedCollectionId, 
+                        query: state.ragCollectionSearchTerm || ''
+                    }).finally(() => {
+                        isLoading = false;
+                    });
+                }
+            }
+        });
+        tableContainer.dataset._scrollWired = 'true';
+    }
+    
+    // Wire table header sorting
+    const thead = document.querySelector('#rag-collection-table-body')?.closest('table')?.querySelector('thead');
+    if (thead && !thead.dataset._sortingWired) {
+        thead.querySelectorAll('th[data-sort-key]').forEach(th => {
+            th.addEventListener('click', () => {
+                const sortKey = th.dataset.sortKey;
+                // Toggle sort direction if clicking same column
+                if (state.ragCollectionSortKey === sortKey) {
+                    state.ragCollectionSortDirection = state.ragCollectionSortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    state.ragCollectionSortKey = sortKey;
+                    state.ragCollectionSortDirection = 'asc';
+                }
+                // Fetch sorted data from server (server-side sorting) - reset pagination
+                if (state.currentInspectedCollectionId !== null && state.currentInspectedCollectionId !== undefined) {
+                    fetchAndRenderCollectionRows({ 
+                        collectionId: state.currentInspectedCollectionId, 
+                        query: state.ragCollectionSearchTerm || '',
+                        refresh: true
+                    });
+                }
+                updateSortIndicators();
+            });
+        });
+        thead.dataset._sortingWired = 'true';
+    }
+}
+
+async function fetchAndRenderCollectionRows({ collectionId, query = '', refresh = false }) {
+    if (collectionId === undefined || collectionId === null) return;
+    
+    // Reset pagination on refresh or new search
+    if (refresh || query !== state.ragCollectionSearchTerm) {
+        state.ragCollectionOffset = 0;
+        state.ragCollectionHasMore = true;
+    }
+    
+    // Store the search term for next comparison
+    state.ragCollectionSearchTerm = query;
+    
+    if (DOM.ragCollectionLoading) {
+        if (state.ragCollectionOffset === 0) {
+            // Initial load
+            DOM.ragCollectionLoading.textContent = query && query.length >= 3 ? 'Searching...' : 'Loading rows...';
+        } else {
+            // Pagination load
+            DOM.ragCollectionLoading.textContent = 'Loading next segment...';
+        }
+        DOM.ragCollectionLoading.style.display = 'block';
+    }
+    try {
+        const params = new URLSearchParams();
+        const pageSize = 50;  // Reduced from 100 to enable proper pagination batching
+        params.set('limit', pageSize.toString());
+        params.set('offset', state.ragCollectionOffset.toString());
+        params.set('light', 'true');
+        if (query && query.length >= 3) {
+            params.set('q', query);
+        }
+        // Add sorting parameters
+        if (state.ragCollectionSortKey) {
+            params.set('sort_by', state.ragCollectionSortKey);
+            params.set('sort_order', state.ragCollectionSortDirection || 'asc');
+        }
+        // Get authentication token
+        const token = localStorage.getItem('tda_auth_token');
+        
+        // Determine API endpoint based on repository type
+        const repositoryType = state.currentInspectedRepositoryType || 'planner';
+        let apiUrl;
+        if (repositoryType === 'knowledge') {
+            apiUrl = `/api/v1/knowledge/collections/${collectionId}/chunks?${params.toString()}`;
+        } else {
+            apiUrl = `/api/v1/rag/collections/${collectionId}/rows?${params.toString()}`;
+        }
+        
+        const res = await fetch(apiUrl, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        
+        // Handle different response structures: rows (planner) vs chunks (knowledge)
+        const newRows = repositoryType === 'knowledge' ? (data.chunks || []) : (data.rows || []);
+        const totalAvailable = data.total || 0;
+        
+        // On first load/refresh, replace rows. On pagination, append rows.
+        if (state.ragCollectionOffset === 0) {
+            state.currentCollectionRows = newRows;
+        } else {
+            state.currentCollectionRows = (state.currentCollectionRows || []).concat(newRows);
+        }
+        
+        state.currentCollectionTotal = totalAvailable;
+        state.currentCollectionName = data.collection_name || `Collection ${collectionId}`;
+        
+        // Update offset for next fetch
+        state.ragCollectionOffset += newRows.length;
+        state.ragCollectionHasMore = state.ragCollectionOffset < totalAvailable;
+        
+        // Re-render the table based on repository type
+        if (state.ragCollectionOffset === newRows.length) {
+            // First load - full render
+            if (repositoryType === 'knowledge') {
+                renderKnowledgeChunks(state.currentCollectionRows, state.currentCollectionTotal, query, state.currentCollectionName);
+            } else {
+                renderCollectionRows(state.currentCollectionRows, state.currentCollectionTotal, query, state.currentCollectionName);
+            }
+        } else {
+            // Append new rows - append to table
+            if (repositoryType === 'knowledge') {
+                appendKnowledgeChunks(newRows);
+            } else {
+                appendCollectionRows(newRows);
+            }
+        }
+        
+        updateSortIndicators();
+    } catch (e) {
+        console.error('Failed to fetch collection rows', e);
+        if (DOM.ragCollectionTableBody) {
+            // Check if it's actually an error or just an empty collection
+            const isEmptyCollection = e.message && e.message.includes('not found');
+            const message = isEmptyCollection 
+                ? 'No rows available.' 
+                : `Error loading rows: ${e.message}`;
+            const colorClass = isEmptyCollection ? 'text-gray-400' : 'text-rose-400';
+            DOM.ragCollectionTableBody.innerHTML = `<tr><td colspan="7" class="px-2 py-2 ${colorClass}">${message}</td></tr>`;
+        }
+    } finally {
+        if (DOM.ragCollectionLoading) {
+            DOM.ragCollectionLoading.style.display = 'none';
+        }
+    }
+}
+
+// Export fetchAndRenderCollectionRows so it can be called from other modules (e.g., eventHandlers.js)
+export { fetchAndRenderCollectionRows };
+
+/**
+ * Append new rows to the table (for infinite scroll pagination)
+ */
+function appendCollectionRows(newRows) {
+    if (!DOM.ragCollectionTableBody || !newRows || newRows.length === 0) return;
+    
+    newRows.forEach(r => {
+        const tr = document.createElement('tr');
+        const isSelected = state.currentSelectedCaseId === r.id;
+        const selectedClass = isSelected ? 'bg-orange-500/30 ring-1 ring-orange-400/50' : 'border-b border-gray-700';
+        tr.className = `${selectedClass} hover:bg-gray-800/40 cursor-pointer transition-colors`;
+        
+        const efficientBadge = r.is_most_efficient ? '<span class="px-2 py-0.5 rounded bg-green-600 text-white text-xs">Yes</span>' : '<span class="px-2 py-0.5 rounded bg-gray-600 text-white text-xs">No</span>';
+
+        // Convert to number to handle both string and number types from API/ChromaDB
+        const feedbackScore = Number(r.user_feedback_score) || 0;
+        let feedbackBadge = '<span class="px-2 py-0.5 rounded bg-gray-600 text-white text-xs">—</span>';
+        if (feedbackScore === 1) {
+            feedbackBadge = '<span class="px-2 py-0.5 rounded bg-green-600 text-white text-xs">👍</span>';
+        } else if (feedbackScore === -1) {
+            feedbackBadge = '<span class="px-2 py-0.5 rounded bg-red-600 text-white text-xs">👎</span>';
+        }
+        
+        tr.innerHTML = `
+            <td class="px-2 py-2 font-mono text-xs text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis" title="${escapeHtml(r.id)}">${escapeHtml(r.id)}</td>
+            <td class="px-2 py-2 text-gray-200 whitespace-nowrap overflow-hidden text-ellipsis" title="${escapeHtml(r.user_query || '')}">${escapeHtml(r.user_query || '')}</td>
+            <td class="px-2 py-2 text-gray-300 whitespace-nowrap">${r.strategy_type || ''}</td>
+            <td class="px-2 py-2 whitespace-nowrap">${efficientBadge}</td>
+            <td class="px-2 py-2 whitespace-nowrap">${feedbackBadge}</td>
+            <td class="px-2 py-2 text-gray-300 whitespace-nowrap text-right">${r.output_tokens ?? ''}</td>
+            <td class="px-2 py-2 text-gray-400 whitespace-nowrap">${r.timestamp || ''}</td>
+        `;
+        tr.dataset.caseId = r.id;
+        tr.addEventListener('click', () => selectCaseRow(r.id));
+        DOM.ragCollectionTableBody.appendChild(tr);
+    });
+}
+
+function renderCollectionRows(rows, total, query, collectionName) {
+    if (!DOM.ragCollectionTableBody) return;
+    
+    // Restore planner table header
+    updateTableHeaderForPlanner();
+    
+    DOM.ragCollectionTableBody.innerHTML = '';
+    
+    // Apply sorting to rows
+    const sortedRows = [...rows].sort((a, b) => {
+        const key = state.ragCollectionSortKey;
+        let aVal = a[key];
+        let bVal = b[key];
+        
+        // Handle null/undefined values
+        if (aVal == null && bVal == null) return 0;
+        if (aVal == null) return state.ragCollectionSortDirection === 'asc' ? 1 : -1;
+        if (bVal == null) return state.ragCollectionSortDirection === 'asc' ? -1 : 1;
+        
+        // Sort logic
+        let comparison = 0;
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+            comparison = aVal.localeCompare(bVal);
+        } else if (typeof aVal === 'number' && typeof bVal === 'number') {
+            comparison = aVal - bVal;
+        } else if (typeof aVal === 'boolean' && typeof bVal === 'boolean') {
+            comparison = aVal === bVal ? 0 : aVal ? 1 : -1;
+        } else {
+            comparison = String(aVal).localeCompare(String(bVal));
+        }
+        
+        return state.ragCollectionSortDirection === 'asc' ? comparison : -comparison;
+    });
+    
+    if (!sortedRows.length) {
+        const message = query && query.length >= 3 ? 'No matches found.' : 'No rows available.';
+        DOM.ragCollectionTableBody.innerHTML = `<tr><td colspan="7" class="px-2 py-2 text-gray-400">${message}</td></tr>`;
+    } else {
+        sortedRows.forEach(r => {
+            const tr = document.createElement('tr');
+            // Check if this row is currently selected and apply highlight
+            const isSelected = state.currentSelectedCaseId === r.id;
+            const selectedClass = isSelected ? 'bg-orange-500/30 ring-1 ring-orange-400/50' : 'border-b border-gray-700';
+            tr.className = `${selectedClass} hover:bg-gray-800/40 cursor-pointer transition-colors`;
+            
+            const efficientBadge = r.is_most_efficient ? '<span class="px-2 py-0.5 rounded bg-green-600 text-white text-xs">Yes</span>' : '<span class="px-2 py-0.5 rounded bg-gray-600 text-white text-xs">No</span>';
+
+            // Render feedback badge - convert to number to handle both string and number types from API/ChromaDB
+            const feedbackScore = Number(r.user_feedback_score) || 0;
+            let feedbackBadge = '<span class="px-2 py-0.5 rounded bg-gray-600 text-white text-xs">—</span>';
+            if (feedbackScore === 1) {
+                feedbackBadge = '<span class="px-2 py-0.5 rounded bg-green-600 text-white text-xs">👍</span>';
+            } else if (feedbackScore === -1) {
+                feedbackBadge = '<span class="px-2 py-0.5 rounded bg-red-600 text-white text-xs">👎</span>';
+            }
+            
+            tr.innerHTML = `
+                <td class="px-2 py-2 font-mono text-xs text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis" title="${escapeHtml(r.id)}">${escapeHtml(r.id)}</td>
+                <td class="px-2 py-2 text-gray-200 whitespace-nowrap overflow-hidden text-ellipsis" title="${escapeHtml(r.user_query || '')}">${escapeHtml(r.user_query || '')}</td>
+                <td class="px-2 py-2 text-gray-300 whitespace-nowrap">${r.strategy_type || ''}</td>
+                <td class="px-2 py-2 whitespace-nowrap">${efficientBadge}</td>
+                <td class="px-2 py-2 whitespace-nowrap">${feedbackBadge}</td>
+                <td class="px-2 py-2 text-gray-300 whitespace-nowrap text-right">${r.output_tokens ?? ''}</td>
+                <td class="px-2 py-2 text-gray-400 whitespace-nowrap">${r.timestamp || ''}</td>
+            `;
+            // Set data attribute AFTER innerHTML so it doesn't get overwritten
+            tr.dataset.caseId = r.id;
+            tr.addEventListener('click', () => selectCaseRow(r.id));
+            DOM.ragCollectionTableBody.appendChild(tr);
+        });
+    }
+    if (DOM.ragCollectionFooter) {
+        const mode = query && query.length >= 3 ? 'search results' : 'sample';
+        DOM.ragCollectionFooter.textContent = `Showing ${rows.length} ${mode} (collection has ${total} total entries).`;
+    }
+    
+    // Auto-select first row if available
+    if (sortedRows.length > 0) {
+        selectCaseRow(sortedRows[0].id);
+    }
+}
+
+export function escapeHtml(str) {
+    // Handle non-string input (e.g., arrays from Google Gemini)
+    if (Array.isArray(str)) {
+        str = str.map(part => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part === 'object') return part.text || part.thinking || JSON.stringify(part);
+            return String(part);
+        }).join(' ');
+    } else if (str && typeof str !== 'string') {
+        str = String(str);
+    }
+    if (!str) return '';
+    return str.replace(/[&<>"]+/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+// ==================== KNOWLEDGE REPOSITORY RENDERING ====================
+
+/**
+ * Display knowledge repository metadata in the inspection view
+ */
+function displayKnowledgeRepositoryMetadata(repo) {
+    const metadataSection = document.getElementById('knowledge-repo-metadata');
+    if (!metadataSection) return;
+    
+    // Populate metadata fields
+    const descriptionEl = document.getElementById('knowledge-meta-description');
+    const docCountEl = document.getElementById('knowledge-meta-doc-count');
+    const chunkingEl = document.getElementById('knowledge-meta-chunking');
+    const embeddingEl = document.getElementById('knowledge-meta-embedding');
+    const chunkSizeEl = document.getElementById('knowledge-meta-chunk-size');
+    const overlapEl = document.getElementById('knowledge-meta-overlap');
+    const createdEl = document.getElementById('knowledge-meta-created');
+    const idEl = document.getElementById('knowledge-meta-id');
+    
+    if (descriptionEl) {
+        descriptionEl.textContent = repo.description || 'Knowledge repository for document storage and retrieval';
+    }
+    if (chunkingEl) chunkingEl.textContent = repo.chunking_strategy || 'semantic';
+    if (embeddingEl) embeddingEl.textContent = repo.embedding_model || 'default';
+    if (chunkSizeEl) chunkSizeEl.textContent = repo.chunk_size || 'N/A';
+    if (overlapEl) overlapEl.textContent = repo.chunk_overlap || 'N/A';
+    if (createdEl) {
+        const createdDate = repo.created_at ? new Date(repo.created_at).toLocaleDateString() : 'N/A';
+        createdEl.textContent = createdDate;
+    }
+    if (idEl) {
+        idEl.textContent = repo.id || repo.collection_id || 'N/A';
+    }
+    
+    // Fetch document count asynchronously
+    if (docCountEl) {
+        fetchKnowledgeDocumentCount(repo.id || repo.collection_id, docCountEl);
+    }
+    
+    // Show the metadata section
+    metadataSection.classList.remove('hidden');
+}
+
+/**
+ * Fetch and display document count for knowledge repository
+ */
+async function fetchKnowledgeDocumentCount(collectionId, targetElement) {
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const response = await fetch(`/api/v1/knowledge/repositories/${collectionId}/documents`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            const count = data.documents ? data.documents.length : 0;
+            targetElement.textContent = count;
+        } else {
+            targetElement.textContent = 'N/A';
+        }
+    } catch (error) {
+        console.error('[Knowledge] Failed to fetch document count:', error);
+        targetElement.textContent = 'N/A';
+    }
+}
+
+/**
+ * Hide knowledge repository metadata section
+ */
+function hideKnowledgeRepositoryMetadata() {
+    const metadataSection = document.getElementById('knowledge-repo-metadata');
+    if (metadataSection) {
+        metadataSection.classList.add('hidden');
+    }
+}
+
+/**
+ * Update table header for knowledge repository view
+ */
+function updateTableHeaderForKnowledge() {
+    // Use same selector pattern as wireSortListeners for consistency
+    const thead = document.querySelector('#rag-collection-table-body')?.closest('table')?.querySelector('thead');
+    const tr = thead?.querySelector('tr');
+    if (!tr) return;
+
+    tr.innerHTML = `
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id" style="max-width: 150px;">Chunk ID <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="content" style="max-width: 400px;">Content Preview <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="document_id" style="max-width: 200px;">Source Document <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-center text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="chunk_index">Chunk Index <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-right text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="token_count">Tokens <span class="text-xs text-gray-500">↕</span></th>
+    `;
+
+    // Re-wire sort listeners after replacing innerHTML
+    wireSortListeners();
+    updateSortIndicators();
+}
+
+/**
+ * Restore table header for planner repository view
+ */
+function updateTableHeaderForPlanner() {
+    // Use same selector pattern as wireSortListeners for consistency
+    const thead = document.querySelector('#rag-collection-table-body')?.closest('table')?.querySelector('thead');
+    const tr = thead?.querySelector('tr');
+    if (!tr) return;
+
+    tr.innerHTML = `
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="id" style="width: 200px;">ID <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_query" style="width: 300px;">User Query <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="strategy_type">Strategy <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-center text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="is_most_efficient">Efficient <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-center text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="user_feedback_score">Feedback <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-right text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="output_tokens">Output Tokens <span class="text-xs text-gray-500">↕</span></th>
+        <th class="px-2 py-2 text-left text-gray-300 font-semibold cursor-pointer hover:text-white hover:bg-gray-700/50 transition-colors" data-sort-key="timestamp">Timestamp <span class="text-xs text-gray-500">↕</span></th>
+    `;
+
+    // Re-wire sort listeners after replacing innerHTML
+    wireSortListeners();
+    updateSortIndicators();
+}
+
+/**
+ * Append new knowledge chunks to the table (for infinite scroll pagination)
+ */
+function appendKnowledgeChunks(newChunks) {
+    if (!DOM.ragCollectionTableBody || !newChunks || newChunks.length === 0) return;
+    
+    newChunks.forEach(chunk => {
+        const tr = document.createElement('tr');
+        const isSelected = state.currentSelectedCaseId === chunk.id;
+        const selectedClass = isSelected ? 'bg-orange-500/30 ring-1 ring-orange-400/50' : 'border-b border-gray-700';
+        tr.className = `${selectedClass} hover:bg-gray-800/40 cursor-pointer transition-colors`;
+        
+        // Truncate content for preview
+        const contentPreview = chunk.content.length > 100 
+            ? chunk.content.substring(0, 100) + '...' 
+            : chunk.content;
+        
+        // Get source filename from metadata
+        const sourceDoc = chunk.metadata?.source_filename || chunk.document_id || 'Unknown';
+        
+        tr.innerHTML = `
+            <td class="px-2 py-2 font-mono text-xs text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis" style="max-width: 150px;">${escapeHtml(chunk.id)}</td>
+            <td class="px-2 py-2 text-gray-200 overflow-hidden text-ellipsis" style="max-width: 400px;">${escapeHtml(contentPreview)}</td>
+            <td class="px-2 py-2 text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis" style="max-width: 200px;">${escapeHtml(sourceDoc)}</td>
+            <td class="px-2 py-2 text-gray-300 whitespace-nowrap text-center">${chunk.chunk_index ?? '-'}</td>
+            <td class="px-2 py-2 text-gray-300 whitespace-nowrap text-right">${chunk.token_count ?? '-'}</td>
+        `;
+        tr.dataset.chunkId = chunk.id;
+        tr.addEventListener('click', () => selectKnowledgeChunk(chunk.id));
+        DOM.ragCollectionTableBody.appendChild(tr);
+    });
+}
+
+/**
+ * Render knowledge chunks in table (full render, not append)
+ */
+function renderKnowledgeChunks(chunks, total, query, collectionName) {
+    if (!DOM.ragCollectionTableBody) return;
+    
+    // Update table header for knowledge view
+    updateTableHeaderForKnowledge();
+    
+    DOM.ragCollectionTableBody.innerHTML = '';
+    
+    if (!chunks.length) {
+        const message = query && query.length >= 3 ? 'No matches found.' : 'No chunks available.';
+        DOM.ragCollectionTableBody.innerHTML = `<tr><td colspan="5" class="px-2 py-2 text-gray-400">${message}</td></tr>`;
+    } else {
+        chunks.forEach(chunk => {
+            const tr = document.createElement('tr');
+            const isSelected = state.currentSelectedCaseId === chunk.id;
+            const selectedClass = isSelected ? 'bg-orange-500/30 ring-1 ring-orange-400/50' : 'border-b border-gray-700';
+            tr.className = `${selectedClass} hover:bg-gray-800/40 cursor-pointer transition-colors`;
+            
+            // Truncate content for preview
+            const contentPreview = chunk.content.length > 100 
+                ? chunk.content.substring(0, 100) + '...' 
+                : chunk.content;
+            
+            // Get source filename from metadata
+            const sourceDoc = chunk.metadata?.source_filename || chunk.document_id || 'Unknown';
+            
+            tr.innerHTML = `
+                <td class="px-2 py-2 font-mono text-xs text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis" style="max-width: 150px;">${escapeHtml(chunk.id)}</td>
+                <td class="px-2 py-2 text-gray-200 overflow-hidden text-ellipsis" style="max-width: 400px;">${escapeHtml(contentPreview)}</td>
+                <td class="px-2 py-2 text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis" style="max-width: 200px;">${escapeHtml(sourceDoc)}</td>
+                <td class="px-2 py-2 text-gray-300 whitespace-nowrap text-center">${chunk.chunk_index ?? '-'}</td>
+                <td class="px-2 py-2 text-gray-300 whitespace-nowrap text-right">${chunk.token_count ?? '-'}</td>
+            `;
+            tr.dataset.chunkId = chunk.id;
+            tr.addEventListener('click', () => selectKnowledgeChunk(chunk.id));
+            DOM.ragCollectionTableBody.appendChild(tr);
+        });
+    }
+    
+    if (DOM.ragCollectionFooter) {
+        const mode = query && query.length >= 3 ? 'search results' : 'chunks';
+        DOM.ragCollectionFooter.textContent = `Showing ${chunks.length} ${mode} (collection has ${total} total chunks).`;
+    }
+    
+    // Auto-select first chunk if available
+    if (chunks.length > 0) {
+        selectKnowledgeChunk(chunks[0].id);
+    }
+}
+
+/**
+ * Handle selection of a knowledge chunk row
+ */
+async function selectKnowledgeChunk(chunkId) {
+    if (!chunkId) return;
+    
+    // Update selected chunk ID (reuse case ID state)
+    state.currentSelectedCaseId = chunkId;
+    
+    // Highlight the selected row
+    const allRows = document.querySelectorAll('#rag-collection-table-body tr[data-chunk-id]');
+    allRows.forEach(row => {
+        if (row.dataset.chunkId === chunkId) {
+            row.classList.remove('border-b', 'border-gray-700');
+            row.classList.add('bg-orange-500/30', 'ring-1', 'ring-orange-400/50');
+        } else {
+            row.classList.remove('bg-orange-500/30', 'ring-1', 'ring-orange-400/50');
+            row.classList.add('border-b', 'border-gray-700');
+        }
+    });
+    
+    // Show the details panel
+    if (DOM.ragSelectedCaseDetails) {
+        DOM.ragSelectedCaseDetails.classList.remove('hidden');
+        if (DOM.ragSelectedCaseSeparator) {
+            DOM.ragSelectedCaseSeparator.classList.remove('hidden');
+        }
+    }
+    
+    // Show loading state
+    if (DOM.ragSelectedCaseMetadata) {
+        DOM.ragSelectedCaseMetadata.innerHTML = '<span class="text-gray-400">Loading chunk details...</span>';
+    }
+    if (DOM.ragSelectedCasePlan) {
+        DOM.ragSelectedCasePlan.innerHTML = '<div class="text-gray-400">Loading full content...</div>';
+    }
+    
+    try {
+        // Fetch FULL chunk data from dedicated endpoint
+        const token = localStorage.getItem('tda_auth_token');
+        const collectionId = state.currentInspectedCollectionId;
+        const apiUrl = `/api/v1/knowledge/collections/${collectionId}/chunks/${encodeURIComponent(chunkId)}`;
+        
+        console.log('Fetching full chunk from:', apiUrl);
+        
+        const res = await fetch(apiUrl, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        
+        const chunk = data.chunk;
+        console.log('Received chunk with content length:', chunk?.content?.length);
+        
+        if (!chunk) {
+            if (DOM.ragSelectedCaseMetadata) {
+                DOM.ragSelectedCaseMetadata.innerHTML = '<span class="text-rose-400">Chunk not found</span>';
+            }
+            return;
+        }
+        
+        // Display chunk details
+        if (DOM.ragSelectedCaseMetadata) {
+            const metadata = chunk.metadata || {};
+            const metadataEntries = Object.entries(metadata)
+                .filter(([key, value]) => value != null && value !== '')
+                .map(([key, value]) => `<strong>${escapeHtml(key)}:</strong> ${escapeHtml(String(value))}`)
+                .join(' | ');
+            
+            DOM.ragSelectedCaseMetadata.innerHTML = `
+                <div class="space-y-2">
+                    <div><strong>Chunk ID:</strong> <span class="font-mono text-xs">${escapeHtml(chunkId)}</span></div>
+                    <div><strong>Document ID:</strong> <span class="font-mono text-xs">${escapeHtml(chunk.document_id || 'N/A')}</span></div>
+                    <div><strong>Chunk Index:</strong> ${chunk.chunk_index ?? 'N/A'}</div>
+                    <div><strong>Token Count:</strong> ${chunk.token_count ?? 'N/A'}</div>
+                    ${metadataEntries ? `<div class="text-xs text-gray-500">${metadataEntries}</div>` : ''}
+                </div>
+            `;
+        }
+        
+        // Display full chunk content
+        if (DOM.ragSelectedCasePlan) {
+            const contentLength = chunk.content ? chunk.content.length : 0;
+            DOM.ragSelectedCasePlan.innerHTML = `
+                <h3 class="text-sm font-semibold text-gray-300 mb-2">Full Content (${contentLength} characters)</h3>
+                <div class="bg-gray-900/50 rounded-lg p-4 border border-white/10" style="height: 300px; overflow-y: scroll; overflow-x: hidden;">
+                    <pre class="text-sm text-gray-200" style="white-space: pre-wrap; word-wrap: break-word; margin: 0; font-family: inherit;">${escapeHtml(chunk.content)}</pre>
+                </div>
+            `;
+        }
+        
+        // Clear trace section (not applicable for knowledge chunks)
+        if (DOM.ragSelectedCaseTrace) {
+            DOM.ragSelectedCaseTrace.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('Error fetching full chunk:', error);
+        if (DOM.ragSelectedCaseMetadata) {
+            DOM.ragSelectedCaseMetadata.innerHTML = `<span class="text-rose-400">Error loading chunk: ${escapeHtml(error.message)}</span>`;
+        }
+    }
+}
+
+// ==================== END KNOWLEDGE REPOSITORY RENDERING ====================
+
+async function selectCaseRow(caseId) {
+    if (!caseId) return;
+    // Update the selected case ID and highlight the row
+    updateSelectedCaseId(caseId);
+    if (DOM.ragSelectedCaseDetails) {
+        DOM.ragSelectedCaseDetails.classList.remove('hidden');
+        DOM.ragSelectedCaseMetadata.textContent = 'Loading case details...';
+        DOM.ragSelectedCasePlan.innerHTML = '';
+        DOM.ragSelectedCaseTrace.innerHTML = '';
+        if (DOM.ragSelectedCaseSeparator) {
+            DOM.ragSelectedCaseSeparator.classList.remove('hidden');
+        }
+    }
+    try {
+        // Get authentication token
+        const token = localStorage.getItem('tda_auth_token');
+        let caseData = {};
+        let turnSummary = null;
+
+        // Try file-based endpoint first (provides full case data + session turn summary)
+        const res = await fetch(`/rag/cases/${encodeURIComponent(caseId)}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        const data = await res.json();
+        if (!data.error && res.ok) {
+            caseData = data.case || {};
+            turnSummary = data.session_turn_summary || null;
+        } else {
+            // Fallback: use full_case_data from the already-loaded collection rows (e.g. imported collections)
+            const row = (state.currentCollectionRows || []).find(r => r.id === caseId);
+            if (row && row.full_case_data) {
+                caseData = row.full_case_data;
+            } else {
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+        }
+        if (DOM.ragSelectedCaseMetadata) {
+            const meta = caseData.metadata || {};
+            
+            // --- MODIFICATION START: Create interactive feedback selector ---
+            // Use RAG case feedback score (not session turn feedback)
+            const ragFeedbackScore = meta.user_feedback_score ?? 0;
+            const sessionId = meta.session_id;
+            const turnId = meta.turn_id;
+            
+            let feedbackHtml = '<span class="text-gray-400">N/A (no session data)</span>';
+            if (sessionId && turnId !== undefined && turnId !== null) {
+                const upActive = ragFeedbackScore === 1 ? 'text-[#F15F22] bg-gray-800/60' : 'text-gray-300';
+                const downActive = ragFeedbackScore === -1 ? 'text-[#F15F22] bg-gray-800/60' : 'text-gray-300';
+                feedbackHtml = `
+                    <div class="inline-flex items-stretch rounded-md bg-gray-900/50 border border-white/10 overflow-hidden backdrop-blur-sm">
+                        <button type="button" 
+                                class="case-feedback-btn px-2 py-0.5 flex items-center gap-1 ${upActive} hover:text-white hover:bg-gray-800/60 transition text-xs"
+                                data-case-id="${escapeHtml(caseData.case_id || caseId)}"
+                                data-session-id="${escapeHtml(sessionId)}" 
+                                data-turn-id="${turnId}" 
+                                data-vote="up"
+                                title="Mark as helpful">
+                            <svg class='w-3 h-3' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>
+                                <path d='M14 9V5a3 3 0 00-3-3l-4 9v11h11a3 3 0 003-3v-5a3 3 0 00-3-3h-7'/>
+                            </svg>
+                            <span class="text-[10px]">Helpful</span>
+                        </button>
+                        <div class="w-px bg-white/10"></div>
+                        <button type="button" 
+                                class="case-feedback-btn px-2 py-0.5 flex items-center gap-1 ${downActive} hover:text-white hover:bg-gray-800/60 transition text-xs"
+                                data-case-id="${escapeHtml(caseData.case_id || caseId)}"
+                                data-session-id="${escapeHtml(sessionId)}" 
+                                data-turn-id="${turnId}" 
+                                data-vote="down"
+                                title="Mark as unhelpful">
+                            <svg class='w-3 h-3' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>
+                                <path d='M10 15v4a3 3 0 003 3l4-9V2H6a3 3 0 00-3 3v5a3 3 0 003 3h7'/>
+                            </svg>
+                            <span class="text-[10px]">Unhelpful</span>
+                        </button>
+                    </div>`;
+            } else if (ragFeedbackScore === 1) {
+                feedbackHtml = '<span class="text-[#F15F22]">👍 Helpful</span>';
+            } else if (ragFeedbackScore === -1) {
+                feedbackHtml = '<span class="text-[#F15F22]">👎 Unhelpful</span>';
+            } else {
+                feedbackHtml = '<span class="text-gray-400">None</span>';
+            }
+            // --- MODIFICATION END ---
+            
+            // Compute total execution time from trace timestamps (first to last)
+            let totalExecutionTime = 'N/A';
+            if (turnSummary && Array.isArray(turnSummary.execution_trace) && turnSummary.execution_trace.length > 0) {
+                const parseTs = (entry) => {
+                    try {
+                        const ts = entry?.action?.metadata?.timestamp || entry?.result?.metadata?.timestamp;
+                        return ts ? Date.parse(ts) : null;
+                    } catch { return null; }
+                };
+                // Find first and last valid timestamps
+                const firstEntry = turnSummary.execution_trace.find(e => parseTs(e) !== null);
+                const lastEntry = [...turnSummary.execution_trace].reverse().find(e => parseTs(e) !== null);
+                const firstTs = parseTs(firstEntry);
+                const lastTs = parseTs(lastEntry);
+                if (firstTs !== null && lastTs !== null && lastTs >= firstTs) {
+                    totalExecutionTime = ((lastTs - firstTs) / 1000).toFixed(2) + 's';
+                }
+            }
+            DOM.ragSelectedCaseMetadata.innerHTML = `
+                <div class='grid grid-cols-2 md:grid-cols-4 gap-2'>
+                    <div><span class='text-gray-500'>Case ID:</span> <code>${escapeHtml(caseData.case_id || caseId)}</code></div>
+                    <div><span class='text-gray-500'>Task ID:</span> <code>${escapeHtml(meta.task_id || '')}</code></div>
+                    <div><span class='text-gray-500'>Session:</span> <code>${escapeHtml(meta.session_id || '')}</code></div>
+                    <div><span class='text-gray-500'>Turn:</span> <code>${escapeHtml(String(meta.turn_id ?? ''))}</code></div>
+                    <div><span class='text-gray-500'>Provider:</span> ${escapeHtml(meta.llm_config?.provider || '')}</div>
+                    <div><span class='text-gray-500'>Model:</span> ${escapeHtml(meta.llm_config?.model || '')}</div>
+                    <div><span class='text-gray-500'>Output Tokens:</span> ${escapeHtml(String(meta.llm_config?.output_tokens ?? ''))}</div>
+                    <div><span class='text-gray-500'>Efficient:</span> ${meta.is_most_efficient ? '<span class="text-emerald-400">Yes</span>' : '<span class="text-gray-400">No</span>'}</div>
+                    <div><span class='text-gray-500'>User Feedback:</span> ${feedbackHtml}</div>
+                </div>
+                <div class='mt-2 text-xs text-gray-400'>Total Execution Time: <span class='font-mono text-gray-200'>${totalExecutionTime}</span></div>`;
+        }
+        if (DOM.ragSelectedCasePlan) {
+            const phases = caseData.successful_strategy?.phases || [];
+            if (phases.length) {
+                const phaseHtml = phases.map(p => `
+                    <div class='p-2 rounded-md bg-gray-800/40 border border-white/10'>
+                        <div class='text-xs font-semibold text-teradata-orange mb-1'>Phase ${p.phase}</div>
+                        <div class='text-sm text-gray-200 mb-1'>Goal: ${escapeHtml(p.goal || '')}</div>
+                        <div class='text-xs text-gray-400'>Tools: ${(p.relevant_tools || []).map(t => `<code>${escapeHtml(t)}</code>`).join(', ')}</div>
+                    </div>`).join('');
+                DOM.ragSelectedCasePlan.innerHTML = `<h3 class='text-white font-semibold mb-2'>Successful Strategy</h3><div class='grid md:grid-cols-2 gap-2'>${phaseHtml}</div>`;
+            } else {
+                DOM.ragSelectedCasePlan.innerHTML = '<div class="text-gray-400 text-sm">No successful strategy phases.</div>';
+            }
+        }
+        if (DOM.ragSelectedCaseTrace) {
+            if (turnSummary && Array.isArray(turnSummary.execution_trace)) {
+                // Store raw trace and render via helper for toggling & collapsing
+                state.currentCaseTrace = turnSummary.execution_trace.slice();
+                renderCaseTrace();
+            } else {
+                DOM.ragSelectedCaseTrace.innerHTML = '<div class="text-gray-400 text-sm">No execution trace available.</div>';
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load case details', e);
+        if (DOM.ragSelectedCaseMetadata) {
+            DOM.ragSelectedCaseMetadata.textContent = 'Error loading case details.';
+        }
+    }
+}
+
+// Export selectCaseRow so it can be called from other modules (e.g., eventHandlers.js)
+export { selectCaseRow };
+
+/**
+ * Updates the selected case ID in state and refreshes row highlighting.
+ * Called when a case row is clicked or when feedback is updated.
+ * @param {string} caseId - The ID of the selected case
+ */
+function updateSelectedCaseId(caseId) {
+    state.currentSelectedCaseId = caseId;
+    // Highlight all rows - remove highlighting from all, add to selected
+    const allRows = document.querySelectorAll('#rag-collection-table-body tr[data-case-id]');
+    allRows.forEach(row => {
+        if (row.dataset.caseId === caseId) {
+            row.classList.remove('border-b', 'border-gray-700');
+            row.classList.add('bg-orange-500/30', 'ring-1', 'ring-orange-400/50');
+        } else {
+            row.classList.remove('bg-orange-500/30', 'ring-1', 'ring-orange-400/50');
+            row.classList.add('border-b', 'border-gray-700');
+        }
+    });
+}
+
+// Export updateSelectedCaseId so it can be called from event handlers
+export { updateSelectedCaseId };
+
+/**
+ * Updates the feedback badge for a specific row in the table without refreshing the entire table
+ * @param {string} caseId - The case ID to update
+ * @param {number} feedbackScore - The new feedback score (-1, 0, or 1)
+ */
+function updateTableRowFeedback(caseId, feedbackScore) {
+    const allRows = document.querySelectorAll('#rag-collection-table-body tr');
+    let row = null;
+    
+    // Try exact match first
+    for (const r of allRows) {
+        if (r.dataset.caseId === caseId) {
+            row = r;
+            break;
+        }
+    }
+    
+    // If not found, try with/without "case_" prefix
+    if (!row) {
+        const altCaseId = caseId.startsWith('case_') ? caseId.substring(5) : `case_${caseId}`;
+        for (const r of allRows) {
+            if (r.dataset.caseId === altCaseId) {
+                row = r;
+                break;
+            }
+        }
+    }
+    
+    if (!row) {
+        console.warn('[updateTableRowFeedback] Row not found for caseId:', caseId);
+        return;
+    }
+    
+    console.log('[updateTableRowFeedback] Row found, updating feedback badge');
+
+    // Find the feedback badge cell (5th column, index 4)
+    const feedbackCell = row.cells[4];
+    if (!feedbackCell) {
+        console.warn('[updateTableRowFeedback] Feedback cell not found');
+        return;
+    }
+
+    // Generate new feedback badge - convert to number to handle both string and number types
+    const score = Number(feedbackScore) || 0;
+    let feedbackBadge = '<span class="px-2 py-0.5 rounded bg-gray-600 text-white text-xs">—</span>';
+    if (score === 1) {
+        feedbackBadge = '<span class="px-2 py-0.5 rounded bg-green-600 text-white text-xs">👍</span>';
+    } else if (score === -1) {
+        feedbackBadge = '<span class="px-2 py-0.5 rounded bg-red-600 text-white text-xs">👎</span>';
+    }
+    
+    // Update the cell
+    feedbackCell.innerHTML = feedbackBadge;
+    console.log('[updateTableRowFeedback] Feedback badge updated successfully');
+}
+
+// Export updateTableRowFeedback so it can be called from event handlers
+export { updateTableRowFeedback };
+
+/**
+ * Wire up sort click listeners on table headers.
+ * Called after thead innerHTML is replaced to restore event listeners.
+ */
+function wireSortListeners() {
+    const thead = document.querySelector('#rag-collection-table-body')?.closest('table')?.querySelector('thead');
+    if (!thead) return;
+
+    // After innerHTML replacement, th elements are brand new and have no listeners
+    thead.querySelectorAll('th[data-sort-key]').forEach(th => {
+        th.addEventListener('click', () => {
+            const sortKey = th.dataset.sortKey;
+            // Toggle sort direction if clicking same column
+            if (state.ragCollectionSortKey === sortKey) {
+                state.ragCollectionSortDirection = state.ragCollectionSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.ragCollectionSortKey = sortKey;
+                state.ragCollectionSortDirection = 'asc';
+            }
+            // Fetch sorted data from server (server-side sorting) - reset pagination
+            if (state.currentInspectedCollectionId !== null && state.currentInspectedCollectionId !== undefined) {
+                fetchAndRenderCollectionRows({
+                    collectionId: state.currentInspectedCollectionId,
+                    query: state.ragCollectionSearchTerm || '',
+                    refresh: true
+                });
+            }
+            updateSortIndicators();
+        });
+    });
+}
+
+/**
+ * Updates visual indicators on table headers to show current sort state
+ */
+function updateSortIndicators() {
+    const thead = document.querySelector('#rag-collection-table-body')?.closest('table')?.querySelector('thead');
+    if (!thead) return;
+    
+    thead.querySelectorAll('th[data-sort-key]').forEach(th => {
+        const sortKey = th.dataset.sortKey;
+        const span = th.querySelector('span');
+        if (!span) return;
+        
+        if (sortKey === state.ragCollectionSortKey) {
+            // Show active sort indicator
+            const arrow = state.ragCollectionSortDirection === 'asc' ? '↑' : '↓';
+            span.textContent = arrow;
+            span.className = 'text-xs text-amber-400 font-bold';
+            th.classList.add('bg-orange-500/20');
+        } else {
+            // Show default indicator
+            span.textContent = '↕';
+            span.className = 'text-xs text-gray-500';
+            th.classList.remove('bg-orange-500/20');
+        }
+    });
+}
+
+function renderCaseTrace() {
+    if (!DOM.ragSelectedCaseTrace) return;
+    const rawTrace = Array.isArray(state.currentCaseTrace) ? state.currentCaseTrace : [];
+    let workingTrace = rawTrace;
+    if (!state.showSystemLogsInCaseTrace) {
+        workingTrace = workingTrace.filter(entry => !(entry.action && entry.action.tool_name === 'TDA_SystemLog'));
+    }
+    // Collapse duplicates if enabled
+    let collapsed = [];
+    if (state.collapseDuplicateTraceEntries) {
+        for (let i = 0; i < workingTrace.length; i++) {
+            const entry = workingTrace[i];
+            const prev = collapsed.length ? collapsed[collapsed.length - 1] : null;
+            const toolName = entry.action && entry.action.tool_name;
+            const message = entry.action && entry.action.arguments && entry.action.arguments.message;
+            const status = entry.result && entry.result.status;
+            if (prev && prev.__toolName === toolName && prev.__message === message && prev.__status === status) {
+                prev.__count += 1;
+                prev.entries.push(entry);
+            } else {
+                const wrapper = { ...entry, __toolName: toolName, __message: message, __status: status, __count: 1, entries: [entry] };
+                collapsed.push(wrapper);
+            }
+        }
+    } else {
+        collapsed = workingTrace.map(e => ({ ...e, __toolName: e.action && e.action.tool_name, __message: e.action && e.action.arguments && e.action.arguments.message, __status: e.result && e.result.status, __count: 1, entries: [e] }));
+    }
+
+    // Timing calculations
+    const parseTs = ts => {
+        try { return ts ? Date.parse(ts) : null; } catch { return null; }
+    };
+    const firstTs = collapsed.length ? parseTs(collapsed[0].action && collapsed[0].action.metadata && collapsed[0].action.metadata.timestamp) : null;
+
+    const html = collapsed.map(block => {
+        const action = block.action || {}; const result = block.result || {};
+        const tool = block.__toolName || 'unknown';
+        const status = block.__status || 'info';
+        const msg = block.__message || '';
+        const tsRaw = action.metadata && action.metadata.timestamp;
+        const currentTs = parseTs(tsRaw);
+        let elapsed = '-';
+        let delta = '-';
+        if (currentTs && firstTs) {
+            elapsed = ((currentTs - firstTs) / 1000).toFixed(2) + 's';
+        }
+        // Find previous distinct block timestamp for delta
+        const idx = collapsed.indexOf(block);
+        if (idx > 0) {
+            const prevTsRaw = collapsed[idx - 1].action && collapsed[idx - 1].action.metadata && collapsed[idx - 1].action.metadata.timestamp;
+            const prevTs = parseTs(prevTsRaw);
+            if (currentTs && prevTs) {
+                delta = ((currentTs - prevTs) / 1000).toFixed(2) + 's';
+            }
+        }
+        const repeatBadge = block.__count > 1 ? `<span class='ml-2 px-1 py-0.5 rounded bg-blue-600/60 text-[10px]'>x${block.__count}</span>` : '';
+        const timingBadge = `<span class='text-[10px] text-gray-500'>t=${elapsed} Δ=${delta}</span>`;
+        return `<div class='text-xs p-2 rounded bg-gray-900/40 border border-gray-700/40'>
+            <div class='flex justify-between items-center'><span class='font-mono text-gray-300'>${escapeHtml(tool)}</span><span class='text-[10px] ${status === 'error' ? 'text-rose-400' : 'text-emerald-400'}'>${escapeHtml(status)}</span></div>
+            <div class='text-gray-400 mt-1'>${escapeHtml(msg)}</div>
+            <div class='flex justify-between mt-1'>${timingBadge}${repeatBadge}</div>
+        </div>`;
+    }).join('');
+
+    DOM.ragSelectedCaseTrace.innerHTML = `<h3 class='text-white font-semibold mb-2 flex items-center gap-4'>Execution Trace
+        <label class='flex items-center gap-1 text-[11px] font-normal'><input type='checkbox' id='toggle-system-logs' ${state.showSystemLogsInCaseTrace ? 'checked' : ''}>System Logs</label>
+        <label class='flex items-center gap-1 text-[11px] font-normal'><input type='checkbox' id='toggle-collapse-dupes' ${state.collapseDuplicateTraceEntries ? 'checked' : ''}>Collapse Duplicates</label>
+    </h3>
+    <div class='space-y-1 max-h-64 overflow-y-auto pr-1'>${html}</div>`;
+
+    const sysToggle = document.getElementById('toggle-system-logs');
+    const dupesToggle = document.getElementById('toggle-collapse-dupes');
+    if (sysToggle) {
+        sysToggle.onchange = () => { state.showSystemLogsInCaseTrace = sysToggle.checked; renderCaseTrace(); };
+    }
+    if (dupesToggle) {
+        dupesToggle.onchange = () => { state.collapseDuplicateTraceEntries = dupesToggle.checked; renderCaseTrace(); };
+    }
+}
+
+/**
+ * Copies the session ID to the clipboard.
+ * @param {string} sessionId - The session ID to copy.
+ */
+export function copySessionIdToClipboard(sessionId) {
+    navigator.clipboard.writeText(sessionId).then(() => {
+    }).catch(err => {
+        console.error('Failed to copy session ID:', err);
+    });
+}
+
+/**
+ * Load document count for a Knowledge repository
+ */
+async function loadKnowledgeRepositoryDocCount(collectionId) {
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const response = await fetch(`/api/v1/knowledge/repositories/${collectionId}/documents`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            const count = data.documents ? data.documents.length : 0;
+            const countEl = document.getElementById(`doc-count-${collectionId}`);
+            if (countEl) {
+                countEl.textContent = `${count} document${count !== 1 ? 's' : ''}`;
+            }
+        }
+    } catch (error) {
+        console.error(`Failed to load document count for collection ${collectionId}:`, error);
+    }
+}
+
+/**
+ * Open Knowledge repository view to show documents and details
+ */
+function openKnowledgeRepositoryView(collection) {
+    console.log('[Knowledge] Opening repository view:', collection);
+    
+    // Store current repository in state
+    state.currentKnowledgeRepository = collection;
+    
+    // For now, show an alert with details - we'll create a proper view modal later
+    const msg = `Knowledge Repository: ${collection.name}\n\n` +
+                `Description: ${collection.description || 'N/A'}\n` +
+                `Chunking: ${collection.chunking_strategy || 'semantic'}\n` +
+                `Collection ID: ${collection.id}\n` +
+                `ChromaDB: ${collection.collection_name}\n\n` +
+                `View modal coming soon...`;
+    
+    // Using info banner as temporary solution until proper modal is implemented
+    showAppBanner('Repository details view coming soon', 'info');
+    console.log(msg);
+    
+    // NOTE: Repository details modal deferred to future enhancement.
+    // Planned features: document list, upload dates, chunking preview, bulk operations.
+    // Current implementation provides basic view functionality via UI.
+}
+
+/**
+ * Delete a Knowledge repository
+ */
+export async function deleteKnowledgeRepository(collectionId, collectionName) {
+    // Use custom confirmation modal (same as planner repositories)
+    if (!window.showConfirmation) {
+        console.error('Confirmation system not available');
+        return;
+    }
+
+    showConfirmation(
+        'Delete Knowledge Repository',
+        `Are you sure you want to delete the repository "${collectionName}"?\n\nThis will remove all documents and cannot be undone.`,
+        async () => {
+            try {
+                const token = localStorage.getItem('tda_auth_token');
+                const response = await fetch(`/api/v1/rag/collections/${collectionId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showAppBanner(`Repository "${collectionName}" deleted successfully`, 'success');
+                    // Reload the collections list
+                    await loadRagCollections();
+                } else {
+                    showAppBanner(`Failed to delete repository: ${data.message || data.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                console.error('[Knowledge] Error deleting repository:', error);
+                showAppBanner(`Error deleting repository: ${error.message}`, 'error');
+            }
+        }
+    );
+}
