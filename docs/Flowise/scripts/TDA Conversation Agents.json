@@ -1,0 +1,623 @@
+{
+  "nodes": [
+    {
+      "id": "startAgentflow_0",
+      "type": "agentFlow",
+      "position": {
+        "x": 122.6808237204432,
+        "y": 85.82448517472298
+      },
+      "data": {
+        "id": "startAgentflow_0",
+        "label": "Start",
+        "version": 1.1,
+        "name": "startAgentflow",
+        "type": "Start",
+        "color": "#7EE787",
+        "hideInput": true,
+        "baseClasses": [
+          "Start"
+        ],
+        "category": "Agent Flows",
+        "description": "Starting point of the agentflow",
+        "inputParams": [
+          {
+            "label": "Input Type",
+            "name": "startInputType",
+            "type": "options",
+            "options": [
+              {
+                "label": "Chat Input",
+                "name": "chatInput",
+                "description": "Start the conversation with chat input"
+              },
+              {
+                "label": "Form Input",
+                "name": "formInput",
+                "description": "Start the workflow with form inputs"
+              }
+            ],
+            "default": "chatInput",
+            "id": "startAgentflow_0-input-startInputType-options",
+            "display": true
+          },
+          {
+            "label": "Form Title",
+            "name": "formTitle",
+            "type": "string",
+            "placeholder": "Please Fill Out The Form",
+            "show": {
+              "startInputType": "formInput"
+            },
+            "id": "startAgentflow_0-input-formTitle-string",
+            "display": false
+          },
+          {
+            "label": "Form Description",
+            "name": "formDescription",
+            "type": "string",
+            "placeholder": "Complete all fields below to continue",
+            "show": {
+              "startInputType": "formInput"
+            },
+            "id": "startAgentflow_0-input-formDescription-string",
+            "display": false
+          },
+          {
+            "label": "Form Input Types",
+            "name": "formInputTypes",
+            "description": "Specify the type of form input",
+            "type": "array",
+            "show": {
+              "startInputType": "formInput"
+            },
+            "array": [
+              {
+                "label": "Type",
+                "name": "type",
+                "type": "options",
+                "options": [
+                  {
+                    "label": "String",
+                    "name": "string"
+                  },
+                  {
+                    "label": "Number",
+                    "name": "number"
+                  },
+                  {
+                    "label": "Boolean",
+                    "name": "boolean"
+                  },
+                  {
+                    "label": "Options",
+                    "name": "options"
+                  }
+                ],
+                "default": "string"
+              },
+              {
+                "label": "Label",
+                "name": "label",
+                "type": "string",
+                "placeholder": "Label for the input"
+              },
+              {
+                "label": "Variable Name",
+                "name": "name",
+                "type": "string",
+                "placeholder": "Variable name for the input (must be camel case)",
+                "description": "Variable name must be camel case. For example: firstName, lastName, etc."
+              },
+              {
+                "label": "Add Options",
+                "name": "addOptions",
+                "type": "array",
+                "show": {
+                  "formInputTypes[$index].type": "options"
+                },
+                "array": [
+                  {
+                    "label": "Option",
+                    "name": "option",
+                    "type": "string"
+                  }
+                ]
+              }
+            ],
+            "id": "startAgentflow_0-input-formInputTypes-array",
+            "display": false
+          },
+          {
+            "label": "Ephemeral Memory",
+            "name": "startEphemeralMemory",
+            "type": "boolean",
+            "description": "Start fresh for every execution without past chat history",
+            "optional": true,
+            "id": "startAgentflow_0-input-startEphemeralMemory-boolean",
+            "display": true
+          },
+          {
+            "label": "Flow State",
+            "name": "startState",
+            "description": "Runtime state during the execution of the workflow",
+            "type": "array",
+            "optional": true,
+            "array": [
+              {
+                "label": "Key",
+                "name": "key",
+                "type": "string",
+                "placeholder": "Foo"
+              },
+              {
+                "label": "Value",
+                "name": "value",
+                "type": "string",
+                "placeholder": "Bar",
+                "optional": true
+              }
+            ],
+            "id": "startAgentflow_0-input-startState-array",
+            "display": true
+          },
+          {
+            "label": "Persist State",
+            "name": "startPersistState",
+            "type": "boolean",
+            "description": "Persist the state in the same session",
+            "optional": true,
+            "id": "startAgentflow_0-input-startPersistState-boolean",
+            "display": true
+          }
+        ],
+        "inputAnchors": [],
+        "inputs": {
+          "startInputType": "chatInput",
+          "formTitle": "",
+          "formDescription": "",
+          "formInputTypes": "",
+          "startEphemeralMemory": "",
+          "startState": [
+            {
+              "key": "baseUrl",
+              "value": "http://192.168.0.100:5050"
+            },
+            {
+              "key": "apiToken",
+              "value": ""
+            },
+            {
+              "key": "sessionId",
+              "value": "7ffb0b1a-096b-4479-afc5-28915f7384cc"
+            },
+            {
+              "key": "profileId",
+              "value": "profile-1763993711628-vvbh23q09"
+            }
+          ],
+          "startPersistState": ""
+        },
+        "outputAnchors": [
+          {
+            "id": "startAgentflow_0-output-startAgentflow",
+            "label": "Start",
+            "name": "startAgentflow"
+          }
+        ],
+        "outputs": {},
+        "selected": false
+      },
+      "width": 102,
+      "height": 65,
+      "selected": false,
+      "dragging": false,
+      "positionAbsolute": {
+        "x": 122.6808237204432,
+        "y": 85.82448517472298
+      }
+    },
+    {
+      "id": "customFunctionAgentflow_1",
+      "position": {
+        "x": 285.1122292221396,
+        "y": 86.31035974531679
+      },
+      "data": {
+        "id": "customFunctionAgentflow_1",
+        "label": "TDA Request",
+        "version": 1,
+        "name": "customFunctionAgentflow",
+        "type": "CustomFunction",
+        "color": "#E4B7FF",
+        "baseClasses": [
+          "CustomFunction"
+        ],
+        "category": "Agent Flows",
+        "description": "Execute custom function",
+        "inputParams": [
+          {
+            "label": "Input Variables",
+            "name": "customFunctionInputVariables",
+            "description": "Input variables can be used in the function with prefix $. For example: $foo",
+            "type": "array",
+            "optional": true,
+            "acceptVariable": true,
+            "array": [
+              {
+                "label": "Variable Name",
+                "name": "variableName",
+                "type": "string"
+              },
+              {
+                "label": "Variable Value",
+                "name": "variableValue",
+                "type": "string",
+                "acceptVariable": true
+              }
+            ],
+            "id": "customFunctionAgentflow_1-input-customFunctionInputVariables-array",
+            "display": true
+          },
+          {
+            "label": "Javascript Function",
+            "name": "customFunctionJavascriptFunction",
+            "type": "code",
+            "codeExample": "/*\n* You can use any libraries imported in Flowise\n* You can use properties specified in Input Variables with the prefix $. For example: $foo\n* You can get default flow config: $flow.sessionId, $flow.chatId, $flow.chatflowId, $flow.input, $flow.state\n* You can get global variables: $vars.<variable-name>\n* Must return a string value at the end of function\n*/\n\nconst fetch = require('node-fetch');\nconst url = 'https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&current_weather=true';\nconst options = {\n    method: 'GET',\n    headers: {\n        'Content-Type': 'application/json'\n    }\n};\ntry {\n    const response = await fetch(url, options);\n    const text = await response.text();\n    return text;\n} catch (error) {\n    console.error(error);\n    return '';\n}",
+            "description": "The function to execute. Must return a string or an object that can be converted to a string.",
+            "id": "customFunctionAgentflow_1-input-customFunctionJavascriptFunction-code",
+            "display": true
+          },
+          {
+            "label": "Update Flow State",
+            "name": "customFunctionUpdateState",
+            "description": "Update runtime state during the execution of the workflow",
+            "type": "array",
+            "optional": true,
+            "acceptVariable": true,
+            "array": [
+              {
+                "label": "Key",
+                "name": "key",
+                "type": "asyncOptions",
+                "loadMethod": "listRuntimeStateKeys",
+                "freeSolo": true
+              },
+              {
+                "label": "Value",
+                "name": "value",
+                "type": "string",
+                "acceptVariable": true,
+                "acceptNodeOutputAsVariable": true
+              }
+            ],
+            "id": "customFunctionAgentflow_1-input-customFunctionUpdateState-array",
+            "display": true
+          }
+        ],
+        "inputAnchors": [],
+        "inputs": {
+          "customFunctionInputVariables": [
+            {
+              "variableName": "baseUrl",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"$flow.state.baseUrl\" data-label=\"$flow.state.baseUrl\">{{ $flow.state.baseUrl }}</span> </p>"
+            },
+            {
+              "variableName": "apiToken",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"$flow.state.apiToken\" data-label=\"$flow.state.apiToken\">{{ $flow.state.apiToken }}</span> </p>"
+            },
+            {
+              "variableName": "prompt",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"question\" data-label=\"question\">{{ question }}</span> </p>"
+            },
+            {
+              "variableName": "sessionId",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"$flow.state.sessionId\" data-label=\"$flow.state.sessionId\">{{ $flow.state.sessionId }}</span> </p>"
+            },
+            {
+              "variableName": "profileId",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"$flow.state.profileId\" data-label=\"$flow.state.profileId\">{{ $flow.state.profileId }}</span> </p>"
+            }
+          ],
+          "customFunctionJavascriptFunction": "/**\n * TDA Modern REST API Integration for Flowise\n * Simplified to use a direct API Token.\n * \n * Input Variables Required:\n * - $baseUrl: TDA API endpoint (e.g., http://localhost:5050)\n * - $apiToken: Direct TDA API token for authentication\n * - $prompt: The question/prompt to execute\n * - $sessionId (optional): Existing session ID to reuse\n * - $profileId (optional): Profile ID override (uses default if not provided)\n * \n * Output Variables Created:\n * - baseUrl: Original base URL\n * - prompt: Original prompt\n * - sessionId: Session ID (created or reused)\n * - taskId: Task ID from query submission\n * - result: Full result object with tts_payload\n * - finalAnswer: Direct answer or executive summary\n * - turnId: Turn ID from result\n * - profileTag: Profile tag from result\n */\n\nconst fetch = require('node-fetch');\n\n// --- Helper Function for Polling ---\nconst sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));\n\ntry {\n    // === STEP 1: Define Headers ===\n    // Use the provided API token directly.\n    const HEADERS = {\n        'Content-Type': 'application/json',\n        'Authorization': `Bearer ${$apiToken}`\n    };\n    \n    // === STEP 2: Create or Reuse Session ===\n    let activeSessionId = $sessionId;\n    \n    if (!activeSessionId || activeSessionId.trim() === '') {\n        const sessionResp = await fetch(`${$baseUrl}/api/v1/sessions`, {\n            method: 'POST',\n            headers: HEADERS\n        });\n        \n        if (!sessionResp.ok) {\n            const errorText = await sessionResp.text();\n            throw new Error(`Session Create Failed: ${sessionResp.statusText} - ${errorText}`);\n        }\n        \n        const sessionData = await sessionResp.json();\n        activeSessionId = sessionData.session_id;\n    }\n    \n    // === STEP 3: Submit the Query ===\n    const queryPayload = {\n        prompt: $prompt\n    };\n    \n    // Add profile override if provided\n    if ($profileId && $profileId.trim() !== '') {\n        queryPayload.profile_id = $profileId;\n    }\n    \n    const queryResponse = await fetch(`${$baseUrl}/api/v1/sessions/${activeSessionId}/query`, {\n        method: 'POST',\n        headers: HEADERS,\n        body: JSON.stringify(queryPayload)\n    });\n    \n    // Handle invalid session ID case (e.g. expired session provided)\n    if (queryResponse.status === 404) {\n        throw new Error(`Session ${activeSessionId} not found or expired. Please try again without a session ID.`);\n    }\n    \n    if (queryResponse.status !== 202) {\n        const errorText = await queryResponse.text();\n        throw new Error(`Failed to submit query: ${queryResponse.statusText} - ${errorText}`);\n    }\n    \n    const taskData = await queryResponse.json();\n    const taskId = taskData.task_id;\n    const statusUrl = taskData.status_url;\n    \n    // === STEP 4: Poll for the Result ===\n    let taskComplete = false;\n    let finalResult = null;\n    let pollCount = 0;\n    const maxPolls = 360; // 12 minutes with 2s intervals\n    \n    while (!taskComplete && pollCount < maxPolls) {\n        // Construct full URL using baseUrl + relative statusUrl\n        const statusResponse = await fetch(`${$baseUrl}${statusUrl}`, {\n            headers: HEADERS\n        });\n        \n        const statusData = await statusResponse.json();\n        \n        switch (statusData.status) {\n            case 'complete':\n                taskComplete = true;\n                finalResult = statusData.result;\n                break;\n            case 'error':\n                throw new Error(`Agent Error: ${JSON.stringify(statusData.result)}`);\n            case 'cancelled':\n                throw new Error('Task was cancelled');\n            case 'pending':\n            case 'processing':\n                pollCount++;\n                await sleep(2000);\n                break;\n            default:\n                throw new Error(`Unknown status: ${statusData.status}`);\n        }\n    }\n    \n    if (!finalResult) {\n        throw new Error('Task timed out.');\n    }\n    \n    // === STEP 5: Return Output Variables ===\n    return {\n        baseUrl: $baseUrl,\n        prompt: $prompt,\n        sessionId: activeSessionId,\n        taskId: taskId,\n        result: finalResult,\n        finalAnswer: finalResult.direct_answer || finalResult.executive_summary || JSON.stringify(finalResult),\n        turnId: finalResult.turn_id || '',\n        profileTag: finalResult.profile_tag || ''\n    };\n    \n} catch (e) {\n    return { error: `Error: ${e.message}` };\n}\n",
+          "customFunctionUpdateState": [],
+          "undefined": ""
+        },
+        "outputAnchors": [
+          {
+            "id": "customFunctionAgentflow_1-output-customFunctionAgentflow",
+            "label": "Custom Function",
+            "name": "customFunctionAgentflow"
+          }
+        ],
+        "outputs": {},
+        "selected": false
+      },
+      "type": "agentFlow",
+      "width": 156,
+      "height": 65,
+      "positionAbsolute": {
+        "x": 285.1122292221396,
+        "y": 86.31035974531679
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "customFunctionAgentflow_0",
+      "position": {
+        "x": 498.45514041372405,
+        "y": 86.63040396185524
+      },
+      "data": {
+        "id": "customFunctionAgentflow_0",
+        "label": "Response Extractor",
+        "version": 1,
+        "name": "customFunctionAgentflow",
+        "type": "CustomFunction",
+        "color": "#E4B7FF",
+        "baseClasses": [
+          "CustomFunction"
+        ],
+        "category": "Agent Flows",
+        "description": "Execute custom function",
+        "inputParams": [
+          {
+            "label": "Input Variables",
+            "name": "customFunctionInputVariables",
+            "description": "Input variables can be used in the function with prefix $. For example: $foo",
+            "type": "array",
+            "optional": true,
+            "acceptVariable": true,
+            "array": [
+              {
+                "label": "Variable Name",
+                "name": "variableName",
+                "type": "string"
+              },
+              {
+                "label": "Variable Value",
+                "name": "variableValue",
+                "type": "string",
+                "acceptVariable": true
+              }
+            ],
+            "id": "customFunctionAgentflow_0-input-customFunctionInputVariables-array",
+            "display": true
+          },
+          {
+            "label": "Javascript Function",
+            "name": "customFunctionJavascriptFunction",
+            "type": "code",
+            "codeExample": "/*\n* You can use any libraries imported in Flowise\n* You can use properties specified in Input Variables with the prefix $. For example: $foo\n* You can get default flow config: $flow.sessionId, $flow.chatId, $flow.chatflowId, $flow.input, $flow.state\n* You can get global variables: $vars.<variable-name>\n* Must return a string value at the end of function\n*/\n\nconst fetch = require('node-fetch');\nconst url = 'https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&current_weather=true';\nconst options = {\n    method: 'GET',\n    headers: {\n        'Content-Type': 'application/json'\n    }\n};\ntry {\n    const response = await fetch(url, options);\n    const text = await response.text();\n    return text;\n} catch (error) {\n    console.error(error);\n    return '';\n}",
+            "description": "The function to execute. Must return a string or an object that can be converted to a string.",
+            "id": "customFunctionAgentflow_0-input-customFunctionJavascriptFunction-code",
+            "display": true
+          },
+          {
+            "label": "Update Flow State",
+            "name": "customFunctionUpdateState",
+            "description": "Update runtime state during the execution of the workflow",
+            "type": "array",
+            "optional": true,
+            "acceptVariable": true,
+            "array": [
+              {
+                "label": "Key",
+                "name": "key",
+                "type": "asyncOptions",
+                "loadMethod": "listRuntimeStateKeys",
+                "freeSolo": true
+              },
+              {
+                "label": "Value",
+                "name": "value",
+                "type": "string",
+                "acceptVariable": true,
+                "acceptNodeOutputAsVariable": true
+              }
+            ],
+            "id": "customFunctionAgentflow_0-input-customFunctionUpdateState-array",
+            "display": true
+          }
+        ],
+        "inputAnchors": [],
+        "inputs": {
+          "customFunctionInputVariables": [
+            {
+              "variableName": "apiResponse",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"customFunctionAgentflow_1\" data-label=\"customFunctionAgentflow_1\">{{ customFunctionAgentflow_1 }}</span> </p>"
+            },
+            {
+              "variableName": "baseUrl",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"$flow.state.baseUrl\" data-label=\"$flow.state.baseUrl\">{{ $flow.state.baseUrl }}</span> </p>"
+            },
+            {
+              "variableName": "jwtToken",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"$flow.state.jwtToken\" data-label=\"$flow.state.jwtToken\">{{ $flow.state.jwtToken }}</span> </p>"
+            },
+            {
+              "variableName": "sessionId",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"$flow.state.sessionId\" data-label=\"$flow.state.sessionId\">{{ $flow.state.sessionId }}</span> </p>"
+            },
+            {
+              "variableName": "prompt",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"question\" data-label=\"question\">{{ question }}</span> </p>"
+            }
+          ],
+          "customFunctionJavascriptFunction": "// Parse the API response from TDA Request\nlet responseObj = $apiResponse;\n\n// If it's a string, parse it\nif (typeof $apiResponse === 'string') {\n    try {\n        responseObj = JSON.parse($apiResponse);\n    } catch (e) {\n        return { error: \"Failed to parse apiResponse\" };\n    }\n}\n\n// Check if we have an error\nif (responseObj && responseObj.error) {\n    return { error: responseObj.error };\n}\n\n// Extract the result object\nif (responseObj && responseObj.result) {\n    const result = responseObj.result;\n    \n    // Check for tts_payload in the result\n    if (result && result.tts_payload) {\n        const payload = result.tts_payload;\n        \n        // Return the extracted tts_payload with the key fields\n        return {\n            direct_answer: payload.direct_answer || '',\n            key_observations: payload.key_observations || '',\n            synthesis: payload.synthesis || '',\n            baseUrl: responseObj.baseUrl,\n            prompt: responseObj.prompt,\n            sessionId: responseObj.sessionId,\n            taskId: responseObj.taskId,\n            turnId: responseObj.turnId,\n            profileTag: responseObj.profileTag\n        };\n    } else {\n        // If no tts_payload, return the result as-is with main fields\n        return {\n            direct_answer: result.direct_answer || '',\n            key_observations: result.key_observations || '',\n            synthesis: result.synthesis || '',\n            baseUrl: responseObj.baseUrl,\n            prompt: responseObj.prompt,\n            sessionId: responseObj.sessionId,\n            taskId: responseObj.taskId,\n            turnId: responseObj.turnId,\n            profileTag: responseObj.profileTag\n        };\n    }\n} else {\n    return { error: \"Invalid response structure\" };\n}",
+          "customFunctionUpdateState": ""
+        },
+        "outputAnchors": [
+          {
+            "id": "customFunctionAgentflow_0-output-customFunctionAgentflow",
+            "label": "Custom Function",
+            "name": "customFunctionAgentflow"
+          }
+        ],
+        "outputs": {},
+        "selected": false
+      },
+      "type": "agentFlow",
+      "width": 198,
+      "height": 65,
+      "selected": false,
+      "dragging": false,
+      "positionAbsolute": {
+        "x": 498.45514041372405,
+        "y": 86.63040396185524
+      }
+    },
+    {
+      "id": "customFunctionAgentflow_2",
+      "position": {
+        "x": 757.7127673063632,
+        "y": 87.31125029860817
+      },
+      "data": {
+        "id": "customFunctionAgentflow_2",
+        "label": "Formatter",
+        "version": 1,
+        "name": "customFunctionAgentflow",
+        "type": "CustomFunction",
+        "color": "#E4B7FF",
+        "baseClasses": [
+          "CustomFunction"
+        ],
+        "category": "Agent Flows",
+        "description": "Execute custom function",
+        "inputParams": [
+          {
+            "label": "Input Variables",
+            "name": "customFunctionInputVariables",
+            "description": "Input variables can be used in the function with prefix $. For example: $foo",
+            "type": "array",
+            "optional": true,
+            "acceptVariable": true,
+            "array": [
+              {
+                "label": "Variable Name",
+                "name": "variableName",
+                "type": "string"
+              },
+              {
+                "label": "Variable Value",
+                "name": "variableValue",
+                "type": "string",
+                "acceptVariable": true
+              }
+            ],
+            "id": "customFunctionAgentflow_2-input-customFunctionInputVariables-array",
+            "display": true
+          },
+          {
+            "label": "Javascript Function",
+            "name": "customFunctionJavascriptFunction",
+            "type": "code",
+            "codeExample": "/*\n* You can use any libraries imported in Flowise\n* You can use properties specified in Input Variables with the prefix $. For example: $foo\n* You can get default flow config: $flow.sessionId, $flow.chatId, $flow.chatflowId, $flow.input, $flow.state\n* You can get global variables: $vars.<variable-name>\n* Must return a string value at the end of function\n*/\n\nconst fetch = require('node-fetch');\nconst url = 'https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&current_weather=true';\nconst options = {\n    method: 'GET',\n    headers: {\n        'Content-Type': 'application/json'\n    }\n};\ntry {\n    const response = await fetch(url, options);\n    const text = await response.text();\n    return text;\n} catch (error) {\n    console.error(error);\n    return '';\n}",
+            "description": "The function to execute. Must return a string or an object that can be converted to a string.",
+            "id": "customFunctionAgentflow_2-input-customFunctionJavascriptFunction-code",
+            "display": true
+          },
+          {
+            "label": "Update Flow State",
+            "name": "customFunctionUpdateState",
+            "description": "Update runtime state during the execution of the workflow",
+            "type": "array",
+            "optional": true,
+            "acceptVariable": true,
+            "array": [
+              {
+                "label": "Key",
+                "name": "key",
+                "type": "asyncOptions",
+                "loadMethod": "listRuntimeStateKeys",
+                "freeSolo": true
+              },
+              {
+                "label": "Value",
+                "name": "value",
+                "type": "string",
+                "acceptVariable": true,
+                "acceptNodeOutputAsVariable": true
+              }
+            ],
+            "id": "customFunctionAgentflow_2-input-customFunctionUpdateState-array",
+            "display": true
+          }
+        ],
+        "inputAnchors": [],
+        "inputs": {
+          "customFunctionInputVariables": [
+            {
+              "variableName": "cleanData",
+              "variableValue": "<p><span class=\"variable\" data-type=\"mention\" data-id=\"customFunctionAgentflow_0\" data-label=\"customFunctionAgentflow_0\">{{ customFunctionAgentflow_0 }}</span> </p>"
+            }
+          ],
+          "customFunctionJavascriptFunction": "// Variable to hold the parsed object\nlet parsedData;\n\n// Check if $cleanData is a string that needs parsing\nif (typeof $cleanData === 'string') {\n  try {\n    parsedData = JSON.parse($cleanData);\n  } catch (e) {\n    return \"Error: Failed to parse cleanData string.\";\n  }\n} else {\n  // If it's not a string, assume it's already an object\n  parsedData = $cleanData;\n}\n\n// --- Now we use parsedData instead of $cleanData ---\n\n// Start building the final markdown string\nlet markdownOutput = \"\";\n\nif (parsedData && parsedData.direct_answer) {\n  markdownOutput += `**Answer:**\\n${parsedData.direct_answer}\\n\\n`;\n}\n\nif (parsedData && parsedData.key_observations) {\n  markdownOutput += `**Key Observations:**\\n${parsedData.key_observations}\\n\\n`;\n}\n\nif (parsedData && parsedData.synthesis) {\n  markdownOutput += `**Synthesis:**\\n${parsedData.synthesis}`;\n}\n\n// Return the complete, formatted string\nreturn markdownOutput.trim();",
+          "customFunctionUpdateState": "",
+          "undefined": ""
+        },
+        "outputAnchors": [
+          {
+            "id": "customFunctionAgentflow_2-output-customFunctionAgentflow",
+            "label": "Custom Function",
+            "name": "customFunctionAgentflow"
+          }
+        ],
+        "outputs": {},
+        "selected": false
+      },
+      "type": "agentFlow",
+      "width": 134,
+      "height": 65,
+      "selected": false,
+      "dragging": false,
+      "positionAbsolute": {
+        "x": 757.7127673063632,
+        "y": 87.31125029860817
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "startAgentflow_0",
+      "sourceHandle": "startAgentflow_0-output-startAgentflow",
+      "target": "customFunctionAgentflow_1",
+      "targetHandle": "customFunctionAgentflow_1",
+      "data": {
+        "sourceColor": "#7EE787",
+        "targetColor": "#E4B7FF",
+        "isHumanInput": false
+      },
+      "type": "agentFlow",
+      "id": "startAgentflow_0-startAgentflow_0-output-startAgentflow-customFunctionAgentflow_1-customFunctionAgentflow_1"
+    },
+    {
+      "source": "customFunctionAgentflow_1",
+      "sourceHandle": "customFunctionAgentflow_1-output-customFunctionAgentflow",
+      "target": "customFunctionAgentflow_0",
+      "targetHandle": "customFunctionAgentflow_0",
+      "data": {
+        "sourceColor": "#E4B7FF",
+        "targetColor": "#E4B7FF",
+        "isHumanInput": false
+      },
+      "type": "agentFlow",
+      "id": "customFunctionAgentflow_1-customFunctionAgentflow_1-output-customFunctionAgentflow-customFunctionAgentflow_0-customFunctionAgentflow_0"
+    },
+    {
+      "source": "customFunctionAgentflow_0",
+      "sourceHandle": "customFunctionAgentflow_0-output-customFunctionAgentflow",
+      "target": "customFunctionAgentflow_2",
+      "targetHandle": "customFunctionAgentflow_2",
+      "data": {
+        "sourceColor": "#E4B7FF",
+        "targetColor": "#E4B7FF",
+        "isHumanInput": false
+      },
+      "type": "agentFlow",
+      "id": "customFunctionAgentflow_0-customFunctionAgentflow_0-output-customFunctionAgentflow-customFunctionAgentflow_2-customFunctionAgentflow_2"
+    }
+  ]
+}

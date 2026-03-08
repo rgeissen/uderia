@@ -1,0 +1,78 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T17:29:08.521269",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_date_orchestrator_fixtures.json",
+    "filter": "date_orch_last_2",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 35168,
+    "total_duration_ms": 10076,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 35168.0,
+    "avg_duration_ms": 10076.0
+  },
+  "results": [
+    {
+      "fixture_id": "date_orch_last_2_days",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-89cd1f06-6aae-4d66-8bda-7d44e300ec5e",
+      "session_id": "9d7d583d-cdfc-431f-a337-ebd0c7959790",
+      "duration_ms": 10076,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 34486,
+        "output": 682,
+        "total": 35168
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "TDA_FinalReport",
+          "TDA_SystemOrchestration",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    }
+  ]
+}

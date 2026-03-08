@@ -1,0 +1,197 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-09T20:08:19.354679",
+    "query": "what is the system utilization for the past 2 days"
+  },
+  "profile1": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "2d34d7e8-2e0c-42eb-b0a0-71e4fb87ed0e",
+      "task_id": "task-3d1159c9-61b2-4772-8ba9-10280149d7b7",
+      "status": "complete",
+      "duration_ms": 12306,
+      "execution_path": "conversation_agent"
+    },
+    "metrics": {
+      "total_input_tokens": 66524,
+      "total_output_tokens": 1265,
+      "total_tokens": 67789,
+      "llm_call_count": 2,
+      "tokens_per_llm_call": 33894.5,
+      "ms_per_token": 0.1815338771777132,
+      "tools_used": [
+        "dba_resusageSummary"
+      ],
+      "llm_call_durations": [
+        2871,
+        8872
+      ]
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": false,
+      "rag_case_count": 0,
+      "rag_case_ids": []
+    },
+    "plan_quality": {
+      "score": 100.0,
+      "query_type": "procedural",
+      "issues": [],
+      "missing_tools": []
+    }
+  },
+  "profile2": {
+    "profile_info": {
+      "profile_id": "",
+      "profile_tag": "",
+      "profile_type": "",
+      "provider": "",
+      "model": ""
+    },
+    "execution": {
+      "session_id": "ec3b5f1e-a645-4be5-a6dc-f73bb98a3feb",
+      "task_id": "task-4c72b588-57bc-4987-b2f5-ae2b8d377a0f",
+      "status": "complete",
+      "duration_ms": 9428,
+      "execution_path": "planner/executor"
+    },
+    "metrics": {
+      "total_input_tokens": 8160,
+      "total_output_tokens": 1348,
+      "total_tokens": 9508,
+      "llm_call_count": 0,
+      "tokens_per_llm_call": 0.0,
+      "ms_per_token": 0.991586032814472,
+      "tools_used": [
+        "dba_resusageSummary",
+        "TDA_FinalReport"
+      ],
+      "llm_call_durations": []
+    },
+    "self_correction": {
+      "correction_count": 0,
+      "correction_types": [],
+      "correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "correction_overhead_percentage": 0.0,
+      "failed_tool_calls": [],
+      "retry_attempts": []
+    },
+    "rag": {
+      "rag_used": true,
+      "rag_case_count": 1,
+      "rag_case_ids": [
+        "case_71423bc2-ba44-57ec-ac6f-42ba632c7177"
+      ]
+    },
+    "plan_quality": {
+      "score": 100.0,
+      "query_type": "procedural",
+      "issues": [],
+      "missing_tools": []
+    }
+  },
+  "comparison": {
+    "token_difference": {
+      "input": {
+        "profile1": 66524,
+        "profile2": 8160,
+        "absolute": 58364,
+        "percentage": 715.2450980392157
+      },
+      "output": {
+        "profile1": 1265,
+        "profile2": 1348,
+        "absolute": -83,
+        "percentage": -6.157270029673591
+      },
+      "total": {
+        "profile1": 67789,
+        "profile2": 9508,
+        "absolute": 58281,
+        "percentage": 612.968026924695
+      }
+    },
+    "time_difference": {
+      "profile1_ms": 12306,
+      "profile2_ms": 9428,
+      "absolute_ms": 2878,
+      "percentage": 30.526092490453966,
+      "profile1_seconds": 12.306,
+      "profile2_seconds": 9.428
+    },
+    "efficiency": {
+      "profile1_tokens_per_call": 33894.5,
+      "profile2_tokens_per_call": 0.0,
+      "profile1_ms_per_token": 0.1815338771777132,
+      "profile2_ms_per_token": 0.991586032814472,
+      "profile1_llm_calls": 2,
+      "profile2_llm_calls": 0
+    },
+    "self_correction": {
+      "profile1_count": 0,
+      "profile2_count": 0,
+      "profile1_types": [],
+      "profile2_types": [],
+      "profile1_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile2_correction_tokens": {
+        "input": 0,
+        "output": 0
+      },
+      "profile1_failed_tools": [],
+      "profile2_failed_tools": [],
+      "profile1_retry_attempts": [],
+      "profile2_retry_attempts": [],
+      "correction_overhead_percentage": {
+        "profile1": 0.0,
+        "profile2": 0.0
+      }
+    },
+    "rag_comparison": {
+      "profile1_used": false,
+      "profile2_used": true,
+      "profile1_case_count": 0,
+      "profile2_case_count": 1,
+      "profile1_case_ids": [],
+      "profile2_case_ids": [
+        "case_71423bc2-ba44-57ec-ac6f-42ba632c7177"
+      ]
+    },
+    "plan_quality_comparison": {
+      "profile1_score": 100.0,
+      "profile2_score": 100.0,
+      "profile1_query_type": "procedural",
+      "profile2_query_type": "procedural",
+      "profile1_issues": [],
+      "profile2_issues": [],
+      "profile1_missing_tools": [],
+      "profile2_missing_tools": []
+    },
+    "winner": {
+      "tokens": "",
+      "time": "",
+      "efficiency": ""
+    }
+  }
+}

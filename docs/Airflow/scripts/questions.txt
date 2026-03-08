@@ -1,0 +1,4 @@
+# Example questions for the TDA API
+# Lines starting with # are comments and will be ignored.
+What is the system version?
+What is the current date?

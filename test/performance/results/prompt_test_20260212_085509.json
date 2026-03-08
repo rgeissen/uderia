@@ -1,0 +1,92 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-12T08:55:09.657048",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": null,
+    "tag": null,
+    "profile_tag": null,
+    "profile_id": null
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 0,
+    "failed": 1,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 5174,
+    "total_duration_ms": 4033,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 5174.0,
+    "avg_duration_ms": 4033.0
+  },
+  "results": [
+    {
+      "fixture_id": "base_tableBusinessDesc_example",
+      "prompt_name": "base_tableBusinessDesc",
+      "verdict": "FAIL",
+      "verdict_reasons": [
+        "No TDA_FinalReport or TDA_ComplexPromptReport in trace"
+      ],
+      "status": "complete",
+      "task_id": "task-97e8b4f6-364b-4a66-96d9-3442820144f7",
+      "session_id": "34a9e4e7-5aef-4d22-a752-93561ec36de5",
+      "duration_ms": 4033,
+      "tokens": {
+        "input": 5088,
+        "output": 86,
+        "total": 5174
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "Response Generation"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": false,
+        "resolved": {
+          "database_name": false,
+          "table_name": false
+        },
+        "unresolved": [
+          "database_name",
+          "table_name"
+        ]
+      },
+      "issues": [
+        {
+          "severity": "warning",
+          "category": "parameter_not_resolved",
+          "description": "Argument 'database_name' value 'fitness_db' not found in execution events",
+          "impact": "Parameter may not have been properly substituted by MCP server"
+        },
+        {
+          "severity": "warning",
+          "category": "parameter_not_resolved",
+          "description": "Argument 'table_name' value 'products' not found in execution events",
+          "impact": "Parameter may not have been properly substituted by MCP server"
+        },
+        {
+          "severity": "error",
+          "category": "missing_final_report",
+          "description": "No TDA_FinalReport or TDA_ComplexPromptReport in trace",
+          "impact": "User may see raw data instead of formatted report"
+        }
+      ]
+    }
+  ]
+}

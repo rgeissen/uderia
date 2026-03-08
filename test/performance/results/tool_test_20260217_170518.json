@@ -1,0 +1,77 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T17:05:18.862787",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_date_orchestrator_fixtures.json",
+    "filter": "date_orch_today",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9",
+    "profile_type": "tool_enabled",
+    "execution_mode": "tool_enabled",
+    "test_type": "mcp_tool"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 24731,
+    "total_duration_ms": 6043,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 24731.0,
+    "avg_duration_ms": 6043.0
+  },
+  "results": [
+    {
+      "fixture_id": "date_orch_today",
+      "prompt_name": "dba_flowControl",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-5cd05309-66b0-49e4-847a-0cb27f5f6479",
+      "session_id": "ad210e27-1d85-411f-ab1d-b391cb9f0c80",
+      "duration_ms": 6043,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 24325,
+        "output": 406,
+        "total": 24731
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "base_readQuery",
+          "TDA_FinalReport",
+          "dba_flowControl"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    }
+  ]
+}

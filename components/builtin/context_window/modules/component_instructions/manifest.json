@@ -1,0 +1,30 @@
+{
+  "module_id": "component_instructions",
+  "display_name": "Component Instructions",
+  "version": "1.0.0",
+  "description": "LLM prompt instructions from active Generative UI components",
+  "category": "system",
+
+  "capabilities": {
+    "condensable": true,
+    "purgeable": false,
+    "has_cache": false
+  },
+
+  "applicability": {
+    "profile_types": ["tool_enabled", "llm_only"],
+    "required": false
+  },
+
+  "defaults": {
+    "priority": 55,
+    "target_pct": 4,
+    "min_pct": 0,
+    "max_pct": 10
+  },
+
+  "handler": {
+    "file": "handler.py",
+    "class": "ComponentInstructionsModule"
+  }
+}

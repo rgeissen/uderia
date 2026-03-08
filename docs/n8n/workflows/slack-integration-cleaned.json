@@ -1,0 +1,688 @@
+{
+  "name": "Uderia Slack Integration",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "uderia-slack",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook-trigger",
+      "name": "Slack Command Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "uderia-slack-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Slack slash command payload\nconst body = $input.item.json.body;\n\n// Slack sends form-encoded data\nconst text = body.text || \"\";\nconst userId = body.user_id || \"\";\nconst userName = body.user_name || \"\";\nconst channelId = body.channel_id || \"\";\nconst responseUrl = body.response_url || \"\";\nconst command = body.command || \"\";\n\n// Validate query\nif (!text || text.trim() === \"\") {\n  return {\n    json: {\n      error: true,\n      message: \"Please provide a question after the command.\\nExample: `/uderia Show me all databases`\"\n    }\n  };\n}\n\nreturn {\n  json: {\n    query: text.trim(),\n    user_id: userId,\n    user_name: userName,\n    channel_id: channelId,\n    response_url: responseUrl,\n    command: command,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "node-parse-slack",
+      "name": "Parse Slack Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-error",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-check-valid",
+      "name": "Check Valid Query",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"response_type\": \"ephemeral\", \"text\": \"{{ $('Parse Slack Payload').item.json.message }}\" }",
+        "options": {}
+      },
+      "id": "node-error-response",
+      "name": "Send Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"response_type\": \"ephemeral\", \"text\": \"⏳ Processing your query: {{ $('Parse Slack Payload').item.json.query }}\\nThis may take a few seconds...\" }",
+        "options": {}
+      },
+      "id": "node-ack-response",
+      "name": "Send Acknowledgment",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5050/api/v1/sessions",
+        "options": {}
+      },
+      "id": "node-create-session",
+      "name": "Create Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1120,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "session-id",
+              "name": "session_id",
+              "value": "={{ $json.session_id }}",
+              "type": "string"
+            },
+            {
+              "id": "query",
+              "name": "query",
+              "value": "={{ $('Parse Slack Payload').item.json.query }}",
+              "type": "string"
+            },
+            {
+              "id": "response-url",
+              "name": "response_url",
+              "value": "={{ $('Parse Slack Payload').item.json.response_url }}",
+              "type": "string"
+            },
+            {
+              "id": "user-name",
+              "name": "user_name",
+              "value": "={{ $('Parse Slack Payload').item.json.user_name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-store-context",
+      "name": "Store Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        1340,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:5050/api/v1/sessions/{{ $('Store Context').item.json.session_id }}/query",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\\n  \\\"prompt\\\": \\\"{{ $('Store Context').item.json.query }}\\\"\\n}",
+        "options": {}
+      },
+      "id": "node-submit-query",
+      "name": "Submit Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1560,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "task-id",
+              "name": "task_id",
+              "value": "={{ $json.task_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "pending",
+              "type": "string"
+            },
+            {
+              "id": "poll-count",
+              "name": "poll_count",
+              "value": "0",
+              "type": "number"
+            },
+            {
+              "id": "max-polls",
+              "name": "max_polls",
+              "value": "30",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-init-poll",
+      "name": "Initialize Poll State",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        1780,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "node-poll-loop",
+      "name": "Poll Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2000,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "node-wait",
+      "name": "Wait 2 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        200
+      ],
+      "webhookId": "auto-webhook-slack"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://localhost:5050/api/v1/tasks/{{ $('Initialize Poll State').item.json.task_id }}",
+        "options": {}
+      },
+      "id": "node-poll-status",
+      "name": "Poll Task Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2440,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "task-id-update",
+              "name": "task_id",
+              "value": "={{ $('Initialize Poll State').item.json.task_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status-update",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "poll-count-update",
+              "name": "poll_count",
+              "value": "={{ $('Initialize Poll State').item.json.poll_count + 1 }}",
+              "type": "number"
+            },
+            {
+              "id": "max-polls-update",
+              "name": "max_polls",
+              "value": "={{ $('Initialize Poll State').item.json.max_polls }}",
+              "type": "number"
+            },
+            {
+              "id": "result-update",
+              "name": "result",
+              "value": "={{ $json.result }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-update-poll",
+      "name": "Update Poll State",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [
+        2660,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-complete",
+              "leftValue": "={{ $('Update Poll State').item.json.status }}",
+              "rightValue": "complete",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-error",
+              "leftValue": "={{ $('Update Poll State').item.json.status }}",
+              "rightValue": "error",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "node-check-complete",
+      "name": "Check If Complete",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Update Poll State').item.json.status }}",
+                    "rightValue": "complete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "success"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Update Poll State').item.json.status }}",
+                    "rightValue": "error",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "error"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-route-status",
+      "name": "Route by Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        3100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const taskData = $input.item.json;\nconst result = taskData.result;\nconst userName = $('Store Context').item.json.user_name;\nconst query = $('Store Context').item.json.query;\n\nif (!result || !result.result) {\n  return {\n    json: {\n      response_type: \"in_channel\",\n      blocks: [\n        {\n          type: \"section\",\n          text: {\n            type: \"mrkdwn\",\n            text: `❌ *Error Processing Query*\\n\\n_Question:_ ${query}\\n\\n> No result received from Uderia Platform.`\n          }\n        }\n      ]\n    }\n  };\n}\n\nconst finalAnswer = result.result.final_answer || \"No answer provided\";\nconst profileTag = result.result.profile_tag || \"unknown\";\n\n// Extract token counts\nlet inputTokens = 0;\nlet outputTokens = 0;\n\nif (result.events) {\n  const tokenEvent = result.events.find(e => e.event_type === 'token_update');\n  if (tokenEvent) {\n    inputTokens = tokenEvent.event_data.turn_input || 0;\n    outputTokens = tokenEvent.event_data.turn_output || 0;\n  }\n}\n\n// Format answer for Slack (limit to 3000 chars)\nlet formattedAnswer = finalAnswer;\nif (formattedAnswer.length > 2800) {\n  formattedAnswer = formattedAnswer.substring(0, 2800) + \"...\\n\\n_[Answer truncated for Slack display]_\";\n}\n\n// Create Slack blocks\nreturn {\n  json: {\n    response_type: \"in_channel\",\n    blocks: [\n      {\n        type: \"section\",\n        text: {\n          type: \"mrkdwn\",\n          text: `*Question from @${userName}:*\\n_${query}_`\n        }\n      },\n      {\n        type: \"divider\"\n      },\n      {\n        type: \"section\",\n        text: {\n          type: \"mrkdwn\",\n          text: formattedAnswer\n        }\n      },\n      {\n        type: \"context\",\n        elements: [\n          {\n            type: \"mrkdwn\",\n            text: `🤖 Powered by *Uderia* | Profile: \\`${profileTag}\\` | Tokens: ${inputTokens + outputTokens}`\n          }\n        ]\n      }\n    ]\n  }\n};"
+      },
+      "id": "node-format-success",
+      "name": "Format Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3320,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const userName = $('Store Context').item.json.user_name;\nconst query = $('Store Context').item.json.query;\nconst taskData = $input.item.json;\nconst errorMsg = taskData.result?.error || \"Unknown error occurred\";\n\nreturn {\n  json: {\n    response_type: \"ephemeral\",\n    blocks: [\n      {\n        type: \"section\",\n        text: {\n          type: \"mrkdwn\",\n          text: `❌ *Query Failed*\\n\\n_Your question:_ ${query}\\n\\n> ${errorMsg}`\n        }\n      },\n      {\n        type: \"context\",\n        elements: [\n          {\n            type: \"mrkdwn\",\n            text: \"Please try rephrasing your question or contact your admin if the issue persists.\"\n          }\n        ]\n      }\n    ]\n  }\n};"
+      },
+      "id": "node-format-error",
+      "name": "Format Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3320,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const userName = $('Store Context').item.json.user_name;\nconst query = $('Store Context').item.json.query;\nconst pollCount = $input.item.json.poll_count;\n\nreturn {\n  json: {\n    response_type: \"ephemeral\",\n    blocks: [\n      {\n        type: \"section\",\n        text: {\n          type: \"mrkdwn\",\n          text: `⏱️ *Query Timeout*\\n\\n_Your question:_ ${query}\\n\\n> The query took longer than expected to process (${pollCount * 2} seconds).`\n        }\n      },\n      {\n        type: \"context\",\n        elements: [\n          {\n            type: \"mrkdwn\",\n            text: \"This usually happens with complex queries. Try simplifying your question or try again later.\"\n          }\n        ]\n      }\n    ]\n  }\n};"
+      },
+      "id": "node-format-timeout",
+      "name": "Format Timeout Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Store Context').item.json.response_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "node-post-to-slack",
+      "name": "Post to Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        3540,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Slack Command Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Slack Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Slack Payload": {
+      "main": [
+        [
+          {
+            "node": "Check Valid Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Valid Query": {
+      "main": [
+        [
+          {
+            "node": "Send Acknowledgment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Acknowledgment": {
+      "main": [
+        [
+          {
+            "node": "Create Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Session": {
+      "main": [
+        [
+          {
+            "node": "Store Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Context": {
+      "main": [
+        [
+          {
+            "node": "Submit Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Query": {
+      "main": [
+        [
+          {
+            "node": "Initialize Poll State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Poll State": {
+      "main": [
+        [
+          {
+            "node": "Poll Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Loop": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check If Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Poll Task Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Task Status": {
+      "main": [
+        [
+          {
+            "node": "Update Poll State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Poll State": {
+      "main": [
+        [
+          {
+            "node": "Poll Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Complete": {
+      "main": [
+        [
+          {
+            "node": "Route by Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Timeout Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Status": {
+      "main": [
+        [
+          {
+            "node": "Format Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Timeout Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success Response": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error Response": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Timeout Response": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

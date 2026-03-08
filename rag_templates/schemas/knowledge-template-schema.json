@@ -1,0 +1,479 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tda.dev/schemas/knowledge-template-v1.json",
+  "title": "TDA Knowledge Repository Template Schema",
+  "description": "JSON schema for knowledge repository templates (document storage templates)",
+  "type": "object",
+  "required": [
+    "template_id",
+    "template_name",
+    "template_type",
+    "repository_configuration"
+  ],
+  "properties": {
+    "template_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+_v\\d+$",
+      "description": "Unique template identifier with version suffix",
+      "examples": ["knowledge_repo_v1", "document_store_v2"]
+    },
+    "template_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Human-readable template name"
+    },
+    "template_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of template definition"
+    },
+    "template_type": {
+      "type": "string",
+      "enum": ["knowledge_repository"],
+      "description": "Must be 'knowledge_repository' for knowledge templates"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Brief description of template functionality"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "beta", "deprecated", "draft"],
+      "description": "Template lifecycle status"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Template creation timestamp"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Template last update timestamp"
+    },
+    "icon": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Icon type identifier"
+        },
+        "color": {
+          "type": "string",
+          "description": "Icon color"
+        }
+      }
+    },
+    "repository_configuration": {
+      "type": "object",
+      "required": ["repository_type", "requires_mcp_server"],
+      "description": "Configuration for knowledge repository behavior",
+      "properties": {
+        "repository_type": {
+          "type": "string",
+          "enum": ["knowledge"],
+          "description": "Must be 'knowledge' for knowledge repositories"
+        },
+        "requires_mcp_server": {
+          "type": "boolean",
+          "description": "Whether an MCP server connection is required"
+        },
+        "mcp_server_id": {
+          "type": ["string", "null"],
+          "description": "Required MCP server ID, or null if not required"
+        },
+        "chunking_strategy": {
+          "type": "object",
+          "required": ["type", "required", "default", "options"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["enum"],
+              "description": "Field type (enum for selection)"
+            },
+            "required": {
+              "type": "boolean",
+              "description": "Whether chunking strategy selection is mandatory"
+            },
+            "default": {
+              "type": "string",
+              "description": "Default chunking strategy"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["semantic", "paragraph", "sentence", "fixed_size"]
+              },
+              "description": "Available chunking strategies"
+            },
+            "description": {
+              "type": "string"
+            }
+          }
+        },
+        "chunk_size": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["integer"]
+            },
+            "required": {
+              "type": "boolean"
+            },
+            "default": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "applies_to": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": {
+              "type": "string"
+            }
+          }
+        },
+        "chunk_overlap": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["integer"]
+            },
+            "required": {
+              "type": "boolean"
+            },
+            "default": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "applies_to": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": {
+              "type": "string"
+            }
+          }
+        },
+        "embedding_model": {
+          "type": "object",
+          "required": ["type", "required", "default"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["enum"]
+            },
+            "required": {
+              "type": "boolean"
+            },
+            "default": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "required": ["value", "label"],
+                    "properties": {
+                      "value": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "description": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "document_configuration": {
+      "type": "object",
+      "description": "Document handling configuration",
+      "properties": {
+        "supported_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of supported file extensions"
+        },
+        "max_file_size_mb": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum file size in megabytes"
+        },
+        "metadata_fields": {
+          "type": "object",
+          "description": "Additional metadata fields for documents",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "description": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "preview_configuration": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "initial_chunks_displayed": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_text_preview_chars": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "pdf_max_pages": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "infinite_scroll": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "output_configuration": {
+      "type": "object",
+      "description": "Output metadata configuration",
+      "properties": {
+        "session_id": {
+          "$ref": "#/definitions/output_field"
+        },
+        "repository_type": {
+          "$ref": "#/definitions/output_field"
+        },
+        "template_generated": {
+          "$ref": "#/definitions/output_field"
+        },
+        "template_type": {
+          "$ref": "#/definitions/output_field"
+        }
+      },
+      "additionalProperties": true
+    },
+    "validation_rules": {
+      "type": "object",
+      "description": "Input validation rules",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "not_empty": {
+            "type": "boolean"
+          },
+          "min_length": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_length": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "error_message": {
+            "type": "string"
+          },
+          "enum": {
+            "type": "array"
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "condition": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ui_workflow": {
+      "type": "object",
+      "description": "UI workflow configuration",
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["step", "title"],
+            "properties": {
+              "step": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "conditional_fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "preview_features": {
+          "type": "object",
+          "properties": {
+            "live_preview": {
+              "type": "boolean"
+            },
+            "preview_trigger_events": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "preview_debounce_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "preview_display": {
+              "type": "object",
+              "properties": {
+                "initial_chunks": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "infinite_scroll": {
+                  "type": "boolean"
+                },
+                "chunk_expansion": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "usage_examples": {
+      "type": "array",
+      "description": "Example use cases for the template",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "repository_name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "chunking_strategy": {
+            "type": "string"
+          },
+          "embedding_model": {
+            "type": "string"
+          },
+          "use_case": {
+            "type": "string"
+          },
+          "chunk_size": {
+            "type": "integer"
+          },
+          "chunk_overlap": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "definitions": {
+    "output_field": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["constant", "string", "number", "boolean"]
+        },
+        "value": {
+          "description": "The field value"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the output field"
+        }
+      }
+    }
+  }
+}

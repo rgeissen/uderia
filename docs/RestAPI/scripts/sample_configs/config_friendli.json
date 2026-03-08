@@ -1,0 +1,13 @@
+{
+    "provider": "Friendli",
+    "model": "meta-llama/Llama-3.3-70B-Instruct",
+    "credentials": {
+        "friendli_token": "<YOUR_FRIENDLI_TOKEN>",
+        "friendli_endpoint_url": "<YOUR_FRIENDLI_ENDPOINT_URL>",
+    "mcp_server": {
+        "name": "Default MCP Server",
+        "host": "localhost",
+        "port": "8080",
+        "path": "/mcp"
+    }
+}

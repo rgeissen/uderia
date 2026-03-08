@@ -1,0 +1,13 @@
+{
+    "provider": "Anthropic",
+    "model": "claude-3-5-haiku-2024102",
+    "credentials": {
+        "apiKey": "<YOUR_ANTHROPIC_API_KEY>"
+    },
+    "mcp_server": {
+        "name": "Default MCP Server",
+        "host": "localhost",
+        "port": "8080",
+        "path": "/mcp"
+    }
+}

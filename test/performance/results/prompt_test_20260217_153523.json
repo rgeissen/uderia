@@ -1,0 +1,67 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T15:35:23.596674",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "dba_databaseHealthAssessment",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 0,
+    "failed": 0,
+    "warned": 0,
+    "errored": 1,
+    "total_tokens": 0,
+    "total_duration_ms": 0,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 0.0,
+    "avg_duration_ms": 0.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_databaseHealthAssessment_system",
+      "prompt_name": "dba_databaseHealthAssessment",
+      "verdict": "ERROR",
+      "verdict_reasons": [
+        "Task task-827ace45-7eb1-47c8-94c0-b78448ef459c timed out after 120s (last status: polling)"
+      ],
+      "status": "error",
+      "task_id": "",
+      "session_id": "",
+      "duration_ms": 0,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "total": 0
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": false,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": []
+    }
+  ]
+}

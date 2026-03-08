@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tda.dev/schemas/template-manifest-v1.json",
+  "title": "TDA Template Plugin Manifest",
+  "description": "Schema for TDA template plugin manifest.json files",
+  "type": "object",
+  "required": ["name", "version", "template_id", "display_name", "author"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Package name (lowercase letters, numbers, hyphens only)",
+      "examples": ["sql-query-basic", "api-rest-advanced"]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version (MAJOR.MINOR.PATCH)",
+      "examples": ["1.0.0", "2.1.5"]
+    },
+    "template_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+_v\\d+$",
+      "description": "Unique template identifier with version suffix",
+      "examples": ["sql_query_v1", "api_rest_v2"]
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "Human-readable template name for UI display"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Brief description of template functionality"
+    },
+    "author": {
+      "type": "string",
+      "description": "Author name, organization, or GitHub username"
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier",
+      "examples": ["MIT", "Apache-2.0", "GPL-3.0", "AGPL-3.0"]
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri",
+      "description": "Project homepage URL"
+    },
+    "repository": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["git", "svn", "hg"],
+          "description": "Version control system type"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Repository URL"
+        }
+      },
+      "required": ["type", "url"]
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "maxItems": 20,
+      "description": "Search keywords for marketplace discovery"
+    },
+    "compatibility": {
+      "type": "object",
+      "properties": {
+        "min_app_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$|^\\d+\\.\\d+\\.x$|^\\d+\\.x\\.x$",
+          "description": "Minimum TDA version required"
+        },
+        "max_app_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$|^\\d+\\.\\d+\\.x$|^\\d+\\.x\\.x$",
+          "description": "Maximum TDA version supported"
+        }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "properties": {
+        "templates": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+_v\\d+$"
+          },
+          "description": "Required template dependencies (template_ids)"
+        },
+        "python_packages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Required Python packages in pip format (package>=version)"
+        }
+      }
+    },
+    "files": {
+      "type": "object",
+      "required": ["template"],
+      "properties": {
+        "template": {
+          "type": "string",
+          "pattern": ".*\\.json$",
+          "description": "Path to template.json file (relative to manifest)"
+        },
+        "ui_config": {
+          "type": "string",
+          "pattern": ".*\\.html$",
+          "description": "Path to custom UI configuration panel HTML"
+        },
+        "ui_script": {
+          "type": "string",
+          "pattern": ".*\\.js$",
+          "description": "Path to custom UI JavaScript file"
+        },
+        "validator": {
+          "type": "string",
+          "pattern": ".*\\.py$",
+          "description": "Path to custom Python validator script"
+        },
+        "icon": {
+          "type": "string",
+          "pattern": ".*\\.(svg|png|jpg)$",
+          "description": "Path to template icon image"
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["database_access", "mcp_tools", "file_system", "network"]
+      },
+      "uniqueItems": true,
+      "description": "Required permissions for template execution"
+    },
+    "ui_components": {
+      "type": "object",
+      "properties": {
+        "config_panel": {
+          "type": "boolean",
+          "description": "Template provides custom configuration panel"
+        },
+        "preview_renderer": {
+          "type": "boolean",
+          "description": "Template provides custom preview renderer"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-17T08:59:18.306527",
+    "server_url": "http://192.168.0.46:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "dba_userActivityAnalysis",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 0,
+    "failed": 1,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 9303,
+    "total_duration_ms": 12172,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 9303.0,
+    "avg_duration_ms": 12172.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_userActivityAnalysis_system",
+      "prompt_name": "dba_userActivityAnalysis",
+      "verdict": "FAIL",
+      "verdict_reasons": [
+        "Execution error (system_error): 400 The input token count (1377559) exceeds the maximum number of tokens allowed (1048575). [phases_completed=2, partial_tokens=9,074]"
+      ],
+      "status": "complete",
+      "task_id": "task-59129145-e1c3-46e4-9c5b-004669d2cff7",
+      "session_id": "79a389f0-d41d-4c00-8eb7-a247f03664b1",
+      "duration_ms": 12172,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 9074,
+        "output": 229,
+        "total": 9303
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "dba_resusageSummary",
+          "dba_userSqlList"
+        ],
+        "orchestrators_used": [],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": [],
+      "execution_errors": [
+        {
+          "error_message": "400 The input token count (1377559) exceeds the maximum number of tokens allowed (1048575).",
+          "error_type": "system_error",
+          "phases_completed": 2,
+          "partial_input_tokens": 9074,
+          "partial_output_tokens": 229
+        }
+      ]
+    }
+  ]
+}

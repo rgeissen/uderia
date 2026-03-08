@@ -1,0 +1,30 @@
+{
+  "module_id": "workflow_history",
+  "display_name": "Workflow History",
+  "version": "1.0.0",
+  "description": "Turn execution summaries for planner context and multi-turn awareness",
+  "category": "history",
+
+  "capabilities": {
+    "condensable": true,
+    "purgeable": true,
+    "has_cache": false
+  },
+
+  "applicability": {
+    "profile_types": ["tool_enabled"],
+    "required": false
+  },
+
+  "defaults": {
+    "priority": 50,
+    "target_pct": 4,
+    "min_pct": 0,
+    "max_pct": 10
+  },
+
+  "handler": {
+    "file": "handler.py",
+    "class": "WorkflowHistoryModule"
+  }
+}

@@ -1,0 +1,309 @@
+{
+  "template_id": "sql_query_doc_context_v1",
+  "template_name": "SQL Query Constructor - Document Context",
+  "template_version": "1.1.0",
+  "template_type": "sql_query",
+  "description": "Two-phase strategy: Execute SQL statement and generate final report. Uses technical documentation as context for generating operational database queries. Integrates DocumentUploadHandler abstraction for provider-aware document handling with admin-configurable behavior.",
+  "status": "active",
+  "created_at": "2025-11-21T00:00:00Z",
+  "updated_at": "2025-11-27T00:00:00Z",
+  "icon": {
+    "type": "document-database",
+    "color": "purple"
+  },
+  "input_variables": {
+    "user_query": {
+      "type": "string",
+      "required": true,
+      "description": "The user's natural language question",
+      "placeholder": "Show me all tables with fragmentation > 20%",
+      "validation": {
+        "min_length": 5,
+        "max_length": 500
+      }
+    },
+    "sql_statement": {
+      "type": "string",
+      "required": true,
+      "description": "The SQL statement to execute",
+      "placeholder": "SELECT table_name, fragmentation_pct FROM dbc.tablesize WHERE fragmentation_pct > 20",
+      "validation": {
+        "min_length": 10,
+        "max_length": 5000
+      }
+    },
+    "context_topic": {
+      "type": "string",
+      "required": true,
+      "description": "The operational context/topic for question generation (e.g., 'performance tuning', 'backup procedures', 'index optimization')",
+      "placeholder": "performance tuning",
+      "validation": {
+        "min_length": 3,
+        "max_length": 200
+      }
+    },
+    "document_file": {
+      "type": "file",
+      "required": false,
+      "description": "Upload technical documentation file (PDF, Word, etc.) - will use document upload abstraction for provider-specific handling",
+      "placeholder": "performance_tuning_guide.pdf",
+      "validation": {
+        "allowed_extensions": [".pdf", ".doc", ".docx", ".txt"],
+        "max_size_mb": 32
+      },
+      "upload_config": {
+        "use_abstraction": true,
+        "provider_aware": true,
+        "fallback_to_extraction": true
+      }
+    },
+    "document_content": {
+      "type": "text",
+      "required": false,
+      "description": "Extracted text content from technical documentation (alternative to file upload, or populated automatically from document_file)",
+      "placeholder": "Database performance tuning guide contents...",
+      "validation": {
+        "min_length": 100,
+        "max_length": 50000
+      }
+    },
+    "database_name": {
+      "type": "string",
+      "required": false,
+      "description": "Target database name",
+      "placeholder": "production_db"
+    },
+    "table_names": {
+      "type": "array",
+      "required": false,
+      "description": "List of tables involved in the query",
+      "placeholder": ["dbc.tablesize", "dbc.indices"]
+    },
+    "mcp_tool_name": {
+      "type": "string",
+      "required": false,
+      "description": "MCP tool to use for SQL execution",
+      "placeholder": "base_readQuery",
+      "default": "base_readQuery"
+    },
+    "target_database": {
+      "type": "string",
+      "required": false,
+      "description": "Target database system for SQL syntax (e.g., Teradata, PostgreSQL, MySQL)",
+      "placeholder": "Teradata",
+      "default": "Teradata"
+    }
+  },
+  "output_configuration": {
+    "session_id": {
+      "type": "constant",
+      "value": "00000000-0000-0000-0000-000000000000",
+      "description": "All template-generated cases share this session ID"
+    },
+    "turn_id": {
+      "type": "constant",
+      "value": 1,
+      "description": "Turn number for template cases"
+    },
+    "is_success": {
+      "type": "constant",
+      "value": true,
+      "description": "Template cases are always successful"
+    },
+    "is_most_efficient": {
+      "type": "boolean",
+      "value": true,
+      "editable": true,
+      "description": "Template cases start as champions by default"
+    },
+    "estimated_tokens": {
+      "input_tokens": {
+        "type": "number",
+        "value": 200,
+        "editable": true,
+        "description": "Approximate tokens for planning phase (higher due to document context)"
+      },
+      "output_tokens": {
+        "type": "number",
+        "value": 220,
+        "editable": true,
+        "description": "Approximate tokens for response"
+      }
+    },
+    "llm_config": {
+      "provider": {
+        "type": "constant",
+        "value": "Template"
+      },
+      "model": {
+        "type": "constant",
+        "value": "sql_doc_context_v1"
+      }
+    },
+    "user_feedback_score": {
+      "type": "constant",
+      "value": 0,
+      "description": "Neutral feedback by default"
+    },
+    "template_generated": {
+      "type": "constant",
+      "value": true,
+      "description": "Marker to identify template-generated cases"
+    },
+    "template_type": {
+      "type": "constant",
+      "value": "sql_query",
+      "description": "Template type identifier"
+    },
+    "default_mcp_tool": {
+      "type": "string",
+      "value": "base_readQuery",
+      "editable": true,
+      "description": "Default MCP tool for SQL execution"
+    },
+    "default_mcp_context_prompt": {
+      "type": "string",
+      "value": "",
+      "editable": true,
+      "description": "Not used for document context (context comes from uploaded docs)"
+    },
+    "document_upload_handler": {
+      "enabled": true,
+      "provider_config_lookup": true,
+      "description": "Uses DocumentUploadHandler abstraction with database-backed configuration"
+    }
+  },
+  "strategy_template": {
+    "phase_count": 2,
+    "phases": [
+      {
+        "phase": 1,
+        "goal_template": "Execute SQL query for {context_topic}{database_context}: {sql_preview}",
+        "goal_variables": {
+          "context_topic": {
+            "source": "context_topic",
+            "description": "Operational context (e.g., performance tuning)"
+          },
+          "database_context": {
+            "condition": "if database_name",
+            "format": " on {database_name}"
+          },
+          "sql_preview": {
+            "source": "sql_statement",
+            "transform": "truncate",
+            "max_length": 500
+          }
+        },
+        "relevant_tools_source": "mcp_tool_name",
+        "arguments": {
+          "sql": {
+            "source": "sql_statement",
+            "description": "The SQL query to execute (includes database name)"
+          }
+        }
+      },
+      {
+        "phase": 2,
+        "goal": "Generate the final report based on the query results.",
+        "relevant_tools": ["TDA_FinalReport"],
+        "arguments": {}
+      }
+    ]
+  },
+  "metadata_mapping": {
+    "database_name": {
+      "source": "database_name",
+      "condition": "if database_name"
+    },
+    "table_names": {
+      "source": "table_names",
+      "condition": "if table_names"
+    },
+    "context_topic": {
+      "source": "context_topic"
+    }
+  },
+  "validation_rules": {
+    "sql_statement": {
+      "not_empty": true,
+      "sql_keywords": ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "SHOW", "DESCRIBE"]
+    },
+    "context_topic": {
+      "not_empty": true
+    },
+    "document_content_or_file": {
+      "at_least_one": ["document_file", "document_content"],
+      "description": "Either upload a document file or provide text content"
+    },
+    "document_processing": {
+      "use_upload_handler": true,
+      "handler_class": "DocumentUploadHandler",
+      "handler_method": "prepare_document_for_llm",
+      "auto_extract_text": true,
+      "respect_provider_config": true
+    }
+  },
+  "usage_examples": [
+    {
+      "name": "Find fragmented tables (with file upload)",
+      "user_query": "Show me all tables with high fragmentation",
+      "sql_statement": "SELECT DatabaseName, TableName, CurrentPerm, PeakPerm FROM DBC.TableSize WHERE (CurrentPerm - PeakPerm) / NULLIFZERO(PeakPerm) > 0.20 ORDER BY DatabaseName, TableName",
+      "context_topic": "performance tuning",
+      "database_name": "production",
+      "document_file": "dba_performance_guide.pdf",
+      "note": "Uses document upload abstraction - native upload for supported providers (Google, Anthropic, Amazon), automatic text extraction fallback for others"
+    },
+    {
+      "name": "Find fragmented tables (with text content)",
+      "user_query": "Show me all tables with high fragmentation",
+      "sql_statement": "SELECT DatabaseName, TableName, CurrentPerm, PeakPerm FROM DBC.TableSize WHERE (CurrentPerm - PeakPerm) / NULLIFZERO(PeakPerm) > 0.20 ORDER BY DatabaseName, TableName",
+      "context_topic": "performance tuning",
+      "database_name": "production",
+      "document_content": "[Excerpt from DBA Performance Guide] Table fragmentation occurs when... Check DBC.TableSize for fragmentation metrics...",
+      "note": "Direct text content - bypasses document upload handler"
+    },
+    {
+      "name": "Long running queries",
+      "user_query": "List queries running longer than 5 minutes",
+      "sql_statement": "SELECT QueryID, UserName, StartTime, AMPCPUTime, TotalIOCount FROM DBC.QryLogV WHERE AMPCPUTime > 300 ORDER BY AMPCPUTime DESC",
+      "context_topic": "query monitoring",
+      "database_name": "production",
+      "document_file": "query_monitoring_guide.pdf",
+      "note": "Provider-aware document handling based on admin configuration"
+    },
+    {
+      "name": "Index analysis",
+      "user_query": "Find tables without primary indexes",
+      "sql_statement": "SELECT DatabaseName, TableName FROM DBC.Tables WHERE TableKind = 'T' AND IndexType = 'N' ORDER BY DatabaseName, TableName",
+      "context_topic": "index optimization",
+      "database_name": "production",
+      "document_file": "index_best_practices.docx",
+      "note": "Supports multiple formats (.pdf, .doc, .docx, .txt) with automatic format detection"
+    }
+  ],
+  "document_upload_integration": {
+    "description": "This template integrates the DocumentUploadHandler abstraction layer",
+    "features": [
+      "Provider-aware document handling (native upload vs text extraction)",
+      "Database-backed configuration for admin-controlled behavior",
+      "Automatic format detection and validation",
+      "Graceful fallback to text extraction when native upload unavailable",
+      "Support for multiple document formats (.pdf, .doc, .docx, .txt)"
+    ],
+    "workflow": [
+      "1. User provides document_file or document_content",
+      "2. If document_file: DocumentUploadHandler.prepare_document_for_llm() called",
+      "3. Handler checks provider configuration from database",
+      "4. Native upload used if enabled and supported, otherwise text extraction",
+      "5. Extracted/prepared content used as context in Phase 1 SQL query generation"
+    ],
+    "configuration_source": "document_upload_configurations table (admin-managed via UI)",
+    "admin_controls": [
+      "Enable/disable document upload per provider",
+      "Force text extraction (disable native upload)",
+      "Override max file size limits",
+      "Override supported formats",
+      "Add admin notes for operational context"
+    ]
+  }
+}

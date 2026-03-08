@@ -1,0 +1,85 @@
+- **Core Concept**: You create charts by mapping columns from the data you have received to visual roles.
+- **CRITICAL CHARTING RULE**: When you call the `TDA_Charting` tool, you **MUST** provide the `data` argument. The value for this argument **MUST BE THE EXACT `results` ARRAY** from the previous successful tool call. Do not modify or re-create it.
+- **Your Task**: You must provide the `chart_type`, a `title`, the `data` from the previous step, and the `mapping` argument.
+- **The `mapping` Argument**: This is the most important part. It tells the system how to draw the chart.
+  - The `mapping` dictionary keys **MUST be one of the following visual roles**: `x_axis`, `y_axis`, `color`, `angle`, `size`.
+  - The `mapping` dictionary values **MUST BE THE EXACT COLUMN NAMES** from the data you are passing.
+
+- **Example Interaction (Single Series)**:
+  1. You receive data: `{"results": [{"Category": "A", "Value": 20}, {"Category": "B", "Value": 30}]}`
+  2. Your call to `TDA_Charting` **MUST** look like this:
+     ```json
+     {
+       "tool_name": "TDA_Charting",
+       "arguments": {
+         "chart_type": "bar",
+         "title": "Category Values",
+         "data": [{"Category": "A", "Value": 20}, {"Category": "B", "Value": 30}],
+         "mapping": {"x_axis": "Category", "y_axis": "Value"}
+       }
+     }
+     ```
+
+- **Example Interaction (Multi-Series Line Chart)**:
+  1. You receive data with a categorical column to group by (e.g., `workloadType`).
+  2. To create a line chart with a separate colored line for each `workloadType`, you **MUST** include the `color` key in your mapping.
+  3. Your call to `TDA_Charting` **MUST** look like this:
+     ```json
+     {
+       "tool_name": "TDA_Charting",
+       "arguments": {
+         "chart_type": "line",
+         "title": "Usage by Workload",
+         "data": [],
+         "mapping": {
+           "x_axis": "LogDate",
+           "y_axis": "Request Count",
+           "color": "workloadType"
+         }
+       }
+     }
+     ```
+
+- **Chart Types & Their Mappings**:
+
+  **Comparison Charts:**
+  - **`bar` or `column`**: Compare numerical values across categories.
+    - Required: `x_axis`, `y_axis`. Optional: `color` (grouped/stacked bars).
+  - **`waterfall`**: Show cumulative effect of sequential positive/negative values.
+    - Required: `x_axis`, `y_axis`.
+  - **`funnel`**: Show progressive reduction across stages (e.g., conversion pipeline).
+    - Required: `x_axis`, `y_axis`.
+  - **`radar`**: Compare multiple variables across categories on radial axes.
+    - Required: `x_axis`, `y_axis`. Optional: `color` (overlay multiple series).
+
+  **Trend Charts:**
+  - **`line`**: Show trends over a continuous variable (e.g., time).
+    - Required: `x_axis`, `y_axis`. Optional: `color` (multiple lines).
+  - **`area`**: Like line but with filled area beneath — emphasizes volume.
+    - Required: `x_axis`, `y_axis`. Optional: `color` (stacked areas).
+  - **`dualaxes`**: Two different Y-axis scales on one chart (e.g., revenue + count).
+    - Required: `x_axis`, `y_axis`.
+
+  **Proportion Charts:**
+  - **`pie`**: Show parts of a whole.
+    - Required: `angle` (numerical value), `color` (category label).
+  - **`rose`**: Polar area chart — like pie but encodes value as radius, not angle.
+    - Required: `x_axis`, `y_axis`. Optional: `color`.
+  - **`treemap`**: Hierarchical proportion as nested rectangles.
+    - Required: `x_axis` (category), `y_axis` (size value). Optional: `color`.
+
+  **Distribution Charts:**
+  - **`scatter`**: Relationship between two numerical variables.
+    - Required: `x_axis`, `y_axis`. Optional: `color` (group), `size` (third variable).
+  - **`histogram`**: Frequency distribution of a single numerical variable.
+    - Required: `x_axis`. Optional: `color`.
+  - **`boxplot`**: Statistical distribution showing median, quartiles, and outliers.
+    - Required: `x_axis`, `y_axis`. Optional: `color`.
+  - **`heatmap`**: Density/intensity across two categorical axes.
+    - Required: `x_axis`, `y_axis`, `color` (the intensity value).
+
+  **Specialized Charts:**
+  - **`gauge`**: Single KPI as a dial indicator (e.g., utilization percentage).
+    - Required: `value` (a single numerical column).
+  - **`wordcloud`**: Text frequency visualization.
+    - Required: `x_axis` (word/label), `y_axis` (frequency/weight).

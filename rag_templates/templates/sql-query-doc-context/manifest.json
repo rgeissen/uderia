@@ -1,0 +1,121 @@
+{
+  "name": "sql-query-doc-context",
+  "version": "1.0.0",
+  "template_id": "sql_query_doc_context_v1",
+  "display_name": "SQL Query Constructor - Document Context",
+  "description": "Two-phase strategy: Execute SQL statement and generate final report. Generates question/SQL pairs from technical documentation (DBA guides, performance docs) with configurable context topics.",
+  "author": "TDA Core Team",
+  "license": "MIT",
+  "homepage": "https://github.com/rgeissen/uderia",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rgeissen/uderia"
+  },
+  "keywords": [
+    "sql",
+    "database",
+    "query",
+    "documentation",
+    "dba",
+    "performance",
+    "operations",
+    "pdf",
+    "document-driven"
+  ],
+  "compatibility": {
+    "min_app_version": "1.0.0",
+    "max_app_version": "2.x.x"
+  },
+  "dependencies": {
+    "templates": [],
+    "python_packages": ["PyPDF2", "pdfplumber"]
+  },
+  "files": {
+    "template": "sql_query_doc_context_v1.json",
+    "readme": "README.md",
+    "license": "LICENSE"
+  },
+  "permissions": [
+    "database_access",
+    "file_upload",
+    "pdf_processing"
+  ],
+  "ui_components": {
+    "config_panel": false,
+    "preview_renderer": false,
+    "file_upload": true
+  },
+  "population_modes": {
+    "manual": {
+      "supported": false,
+      "description": "Manual entry not supported for document-based templates - use auto-generate mode with document upload",
+      "required_fields": []
+    },
+    "auto_generate": {
+      "supported": true,
+      "requires_llm": true,
+      "requires_pdf": true,
+      "requires_mcp_context": false,
+      "input_method": "document_upload",
+      "generation_endpoint": "/api/v1/rag/generate-questions-from-documents",
+      "description": "LLM generates question/SQL pairs from technical documentation (DBA guides, performance docs, operational manuals)",
+      "input_variables": {
+        "context_topic": {
+          "required": true,
+          "description": "Technical domain or documentation topic",
+          "example": "database performance tuning, index optimization, query best practices"
+        },
+        "database_name": {
+          "required": false,
+          "description": "Target database name",
+          "example": "production_db, teradata_prod"
+        },
+        "conversion_rules": {
+          "required": false,
+          "description": "SQL dialect conversion rules for target database",
+          "example": "Use TOP instead of LIMIT, convert boolean true/false to 1/0"
+        },
+        "num_examples": {
+          "required": true,
+          "type": "integer",
+          "default": 5,
+          "min": 1,
+          "max": 1000,
+          "description": "Number of question/SQL pairs to generate"
+        }
+      }
+    }
+  },
+  "prompt_templates": {
+    "question_generation": {
+      "system_role": "You are an expert SQL database consultant helping to create a knowledge base from technical documentation.",
+      "task_description": "Your task is to analyze the provided technical documentation and generate {count} practical question/SQL pairs that capture key concepts, problems, and solutions related to \"{subject}\".",
+      "approach_instructions": "1. READ the documentation carefully to identify:\n   - Common problems or challenges discussed\n   - Performance issues and optimization techniques\n   - Best practices and recommendations\n   - Use cases and scenarios\n   - Configuration or tuning strategies\n\n2. CREATE questions that:\n   - Reflect real-world problems a user might ask\n   - Are inspired by concepts in the documentation (not necessarily direct quotes)\n   - Range from simple to advanced complexity\n   - Focus on practical, actionable scenarios\n\n3. WRITE SQL solutions that:\n   - Address the question effectively using your SQL expertise\n   - May be inspired by examples in the docs OR created from your own knowledge\n   - Use valid {target_database} syntax and best practices\n   - Are complete, runnable queries (not pseudocode or fragments)\n   - Target the database \"{database_name}\"",
+      "requirements": [
+        "Generate EXACTLY {count} question/SQL pairs",
+        "Questions should be natural language, as a user would ask them",
+        "Use {target_database}-specific SQL syntax, functions, and conventions",
+        "Database name: \"{database_name}\"",
+        "Vary the complexity and scope of questions"
+      ],
+      "output_format": "Return ONLY a valid JSON array with this structure:\n[\n  {{\n    \"question\": \"What is the total revenue by product category?\",\n    \"sql\": \"SELECT ProductType, SUM(Price * StockQuantity) as TotalValue FROM {database_name}.Products GROUP BY ProductType;\"\n  }}\n]",
+      "critical_guidelines": [
+        "Extract CONCEPTS and PROBLEMS from the documentation, not just SQL examples",
+        "Use the documentation as inspiration, but apply your full SQL expertise",
+        "Write COMPLETE, production-ready SQL queries (no \"...\" or truncation)",
+        "Your response must be ONLY the JSON array - no explanatory text before or after",
+        "Generate all {count} pairs as requested",
+        "Make questions realistic and practical for real database scenarios"
+      ]
+    }
+  },
+  "metadata": {
+    "category": "Database",
+    "difficulty": "intermediate",
+    "estimated_tokens": {
+      "planning": 200,
+      "execution": 220
+    },
+    "tags": ["built-in", "sql", "documentation", "operations", "dba"]
+  }
+}

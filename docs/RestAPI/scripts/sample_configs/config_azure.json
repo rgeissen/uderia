@@ -1,0 +1,18 @@
+{
+    "provider": "Azure",
+    "model": "gpt-4o",
+    "credentials": {
+        "apiKey": "<YOUR_AZURE_API_KEY>"
+    },
+    "azure_deployment_details": {
+        "endpoint": "<YOUR_AZURE_ENDPOINT>",
+        "deployment_name": "<YOUR_AZURE_DEPLOYMENT_NAME>",
+        "api_version": "<YOUR_AZURE_API_VERSION>"
+    },
+    "mcp_server": {
+        "name": "Default MCP Server",
+        "host": "localhost",
+        "port": "8080",
+        "path": "/mcp"
+    }
+}

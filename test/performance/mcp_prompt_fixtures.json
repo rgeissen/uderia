@@ -1,0 +1,125 @@
+{
+  "$schema_version": "1.0",
+  "description": "MCP prompt performance test fixtures for Uderia platform. Update argument values to match your environment.",
+  "defaults": {
+    "timeout_seconds": 180,
+    "expect_zero_self_corrections": true
+  },
+  "fixtures": [
+    {
+      "id": "base_tableBusinessDesc_example",
+      "prompt_name": "base_tableBusinessDesc",
+      "description": "Business description for a table - requires database_name and table_name",
+      "arguments": {
+        "database_name": "fitness_db",
+        "table_name": "products"
+      },
+      "tags": ["base", "table-level"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "base_databaseBusinessDesc_fitness",
+      "prompt_name": "base_databaseBusinessDesc",
+      "description": "Business description for fitness_db database",
+      "arguments": {
+        "database_name": "fitness_db"
+      },
+      "tags": ["base", "database-level"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "qlty_databaseQuality_fitness",
+      "prompt_name": "qlty_databaseQuality",
+      "description": "Database quality assessment for fitness_db",
+      "arguments": {
+        "database_name": "fitness_db"
+      },
+      "tags": ["qlty", "database-level"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "dba_databaseHealthAssessment_system",
+      "prompt_name": "dba_databaseHealthAssessment",
+      "description": "Comprehensive system health dashboard - uses multiple DBA tools with database scope parameter",
+      "arguments": {
+        "database_scope": "user"
+      },
+      "tags": ["dba", "system-level"],
+      "timeout_seconds": 120,
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "dba_tableDropImpact_products",
+      "prompt_name": "dba_tableDropImpact",
+      "description": "Analyze impact of dropping Products table in fitness_db - uses dba_tableSqlList",
+      "arguments": {
+        "database_name": "fitness_db",
+        "table_name": "Products",
+        "number_days": "30"
+      },
+      "tags": ["dba", "table-level"],
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "dba_tableArchive_system",
+      "prompt_name": "dba_tableArchive",
+      "description": "Find archiving opportunities across the 10 largest tables - generates SQL archive script",
+      "arguments": {},
+      "tags": ["dba", "system-level"],
+      "timeout_seconds": 300,
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "dba_databaseLineage_fitness",
+      "prompt_name": "dba_databaseLineage",
+      "description": "Analyze table lineage in fitness_db by parsing SQL execution history",
+      "arguments": {
+        "database_name": "fitness_db",
+        "number_days": "30"
+      },
+      "tags": ["dba", "database-level"],
+      "timeout_seconds": 300,
+      "expectations": {
+        "max_self_corrections": 0,
+        "expect_status": "complete"
+      }
+    }
+    ,
+    {
+      "id": "dba_userActivityAnalysis_system",
+      "prompt_name": "dba_userActivityAnalysis",
+      "description": "Analyze user activity patterns for the past 7 days - resource consumption and query behavior",
+      "arguments": {},
+      "tags": ["dba", "system-level"],
+      "timeout_seconds": 300,
+      "expectations": {
+        "max_self_corrections": 2,
+        "expect_status": "complete"
+      }
+    }
+  ]
+}

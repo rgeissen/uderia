@@ -1,0 +1,30 @@
+{
+  "module_id": "system_prompt",
+  "display_name": "System Prompt",
+  "version": "1.0.0",
+  "description": "Base system prompt with provider-specific formatting and profile-aware resolution",
+  "category": "system",
+
+  "capabilities": {
+    "condensable": false,
+    "purgeable": false,
+    "has_cache": false
+  },
+
+  "applicability": {
+    "profile_types": ["tool_enabled", "llm_only", "rag_focused", "genie"],
+    "required": true
+  },
+
+  "defaults": {
+    "priority": 95,
+    "target_pct": 10,
+    "min_pct": 5,
+    "max_pct": 15
+  },
+
+  "handler": {
+    "file": "handler.py",
+    "class": "SystemPromptModule"
+  }
+}

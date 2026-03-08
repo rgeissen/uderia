@@ -1,0 +1,27 @@
+{
+  "component_id": "context_window",
+  "display_name": "Context Window Manager",
+  "version": "1.0.0",
+  "component_type": "system",
+  "description": "Centralized context budget orchestration with modular contributors, profile-aware strategies, and real-time observability",
+  "category": "System",
+
+  "backend": {
+    "handler_file": "handler.py",
+    "handler_class": "ContextWindowHandler"
+  },
+
+  "frontend": {
+    "renderer_file": "renderer.js",
+    "renderer_export": "renderContextWindow"
+  },
+
+  "render_targets": {
+    "default": "status_panel",
+    "supports": ["status_panel"]
+  },
+
+  "profile_defaults": {
+    "enabled_for": ["tool_enabled", "llm_only", "rag_focused", "genie"]
+  }
+}

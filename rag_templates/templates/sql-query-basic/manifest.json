@@ -1,0 +1,119 @@
+{
+  "name": "sql-query-basic",
+  "version": "1.0.0",
+  "template_id": "sql_query_v1",
+  "display_name": "SQL Query Constructor - Database Context",
+  "description": "Two-phase strategy: Execute SQL statement and generate final report. Supports multiple databases with configurable MCP tools and LLM-assisted question generation.",
+  "author": "TDA Core Team",
+  "license": "MIT",
+  "homepage": "https://github.com/rgeissen/uderia",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rgeissen/uderia"
+  },
+  "keywords": [
+    "sql",
+    "database",
+    "query",
+    "teradata",
+    "postgresql",
+    "mysql",
+    "mcp",
+    "llm-assisted"
+  ],
+  "compatibility": {
+    "min_app_version": "1.0.0",
+    "max_app_version": "2.x.x"
+  },
+  "dependencies": {
+    "templates": [],
+    "python_packages": []
+  },
+  "files": {
+    "template": "sql_query_v1.json",
+    "readme": "README.md",
+    "license": "LICENSE"
+  },
+  "permissions": [
+    "database_access",
+    "mcp_tools"
+  ],
+  "ui_components": {
+    "config_panel": false,
+    "preview_renderer": false
+  },
+  "population_modes": {
+    "manual": {
+      "supported": true,
+      "description": "User manually enters question/SQL pairs through the template populator interface",
+      "required_fields": ["user_query", "sql_statement"]
+    },
+    "auto_generate": {
+      "supported": true,
+      "requires_llm": true,
+      "requires_mcp_context": true,
+      "input_method": "mcp_context",
+      "generation_endpoint": "/api/v1/rag/generate-questions",
+      "description": "LLM generates question/SQL pairs from business context and requirements",
+      "input_variables": {
+        "context_topic": {
+          "required": true,
+          "description": "Business domain or subject area for generated queries",
+          "example": "customer analytics, sales reporting, inventory management"
+        },
+        "conversion_rules": {
+          "required": false,
+          "description": "SQL dialect conversion rules for target database",
+          "example": "Use TOP instead of LIMIT, convert boolean true/false to 1/0"
+        },
+        "database_name": {
+          "required": false,
+          "description": "Target database name",
+          "example": "production_db, analytics_warehouse"
+        },
+        "num_examples": {
+          "required": true,
+          "type": "integer",
+          "default": 5,
+          "min": 1,
+          "max": 1000,
+          "description": "Number of question/SQL pairs to generate"
+        }
+      }
+    }
+  },
+  "prompt_templates": {
+    "question_generation": {
+      "system_role": "You are a SQL expert helping to generate test questions and queries for a RAG system.",
+      "task_description": "Based on the following database context, generate {count} diverse, interesting business questions about \"{subject}\" along with the SQL queries that would answer them.",
+      "requirements": [
+        "Generate EXACTLY {count} question/SQL pairs",
+        "Questions should be natural language business questions about {subject}",
+        "SQL queries must be valid {target_database} syntax for the database schema shown above",
+        "Use {target_database}-specific SQL syntax, functions, and conventions",
+        "Questions should vary in complexity (simple to advanced)",
+        "Use the database name \"{database_name}\" in your queries",
+        "CRITICAL: ONLY use tables and columns that are explicitly listed in the Database Context above",
+        "CRITICAL: Do NOT make assumptions about table names or column names - only use what you see in the schema",
+        "CRITICAL: Do NOT create joins between tables unless you can verify both tables exist in the schema"
+      ],
+      "output_format": "Return your response as a valid JSON array with this exact structure:\n[\n  {{\n    \"question\": \"What is the total revenue by product category?\",\n    \"sql\": \"SELECT ProductType, SUM(Price * StockQuantity) as TotalValue FROM {database_name}.Products GROUP BY ProductType;\"\n  }}\n]",
+      "critical_guidelines": [
+        "Write COMPLETE SQL queries - do NOT truncate them with \"...\" or similar",
+        "Your entire response must be ONLY the JSON array, with no other text before or after",
+        "Include all {count} question/SQL pairs requested",
+        "VALIDATE that every table and column in your SQL actually exists in the Database Context above",
+        "If the schema shows only one table, write queries for that single table only"
+      ]
+    }
+  },
+  "metadata": {
+    "category": "Database",
+    "difficulty": "beginner",
+    "estimated_tokens": {
+      "planning": 150,
+      "execution": 180
+    },
+    "tags": ["built-in", "sql", "data-retrieval"]
+  }
+}

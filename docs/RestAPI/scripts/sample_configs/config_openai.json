@@ -1,0 +1,13 @@
+{
+    "provider": "OpenAI",
+    "model": "gpt-4o-mini",
+    "credentials": {
+        "apiKey": "<YOUR_OPENAI_API_KEY>"
+    },
+    "mcp_server": {
+        "name": "Default MCP Server",
+        "host": "localhost",
+        "port": "8080",
+        "path": "/mcp"
+    }
+}

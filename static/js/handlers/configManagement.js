@@ -1,0 +1,841 @@
+/**
+ * handlers/configManagement.js
+ * * This module handles all logic related to the Configuration modal
+ * and the System Prompt Editor.
+ * NOTE: Many functions reference old config form DOM elements that may not exist.
+ * Null checks are added to prevent errors with the new configuration system.
+ */
+
+import * as DOM from '../domElements.js';
+import * as API from '../api.js';
+import * as UI from '../ui.js?v=1.5';
+import { state } from '../state.js';
+import { safeSetItem, safeGetItem } from '../storageUtils.js';
+import * as Utils from '../utils.js';
+import { handleLoadSession, handleStartNewSession } from './sessionManagement.js?v=3.6';
+// We need to import from eventHandlers for functions not yet moved
+import { handleLoadResources } from '../eventHandlers.js?v=3.4';
+// Note: openSystemPromptPopup is deprecated - welcome screen is now the unified interface
+import { handleViewSwitch, updateGenieMasterBadges, sortSessionsHierarchically } from '../ui.js?v=1.5';
+
+// ============================================================================
+// SESSION PAGINATION
+// ============================================================================
+
+const SESSION_PAGE_SIZE = 20;
+let sessionPaginationState = {
+    loadedOffset: 0,
+    totalCount: 0,
+    hasMore: false,
+    isLoading: false
+};
+
+/**
+ * Creates or updates the "Load More" button for sessions
+ */
+function showLoadMoreSessionsButton(remainingCount) {
+    hideLoadMoreSessionsButton();
+    if (remainingCount <= 0) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'load-more-sessions-btn';
+    btn.className = 'load-more-sessions-btn';
+    const loadCount = Math.min(remainingCount, SESSION_PAGE_SIZE);
+    btn.innerHTML = `
+        <svg class="load-more-sessions-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+        <span>Load ${loadCount} more</span>
+        <span class="load-more-sessions-count">${remainingCount} remaining</span>
+    `;
+    btn.onclick = handleLoadMoreSessions;
+
+    // Append INSIDE the session list so it scrolls with the sessions
+    if (DOM.sessionList) {
+        DOM.sessionList.appendChild(btn);
+        console.log('[Session Pagination] Button added inside session list');
+    } else {
+        console.error('[Session Pagination] DOM.sessionList not found!');
+    }
+}
+
+function hideLoadMoreSessionsButton() {
+    const existingBtn = document.getElementById('load-more-sessions-btn');
+    if (existingBtn) existingBtn.remove();
+}
+
+/**
+ * Refreshes the session list by fetching fresh data and re-rendering the DOM.
+ * Applies visibility filters (utility sessions, archived sessions).
+ * Call after operations that modify sessions (archive, delete, create).
+ *
+ * @param {boolean} resetPagination - If true, resets to first page (default: true)
+ * @returns {Promise<void>}
+ */
+export async function refreshSessionsList(resetPagination = true) {
+    try {
+        // Reset pagination if requested
+        if (resetPagination) {
+            sessionPaginationState = {
+                loadedOffset: 0,
+                totalCount: 0,
+                hasMore: false,
+                isLoading: false
+            };
+        }
+
+        // Fetch first page
+        const result = await API.loadSessions(SESSION_PAGE_SIZE, 0);
+        const sessions = result.sessions || [];
+
+        // Update pagination state
+        sessionPaginationState.totalCount = result.total_count;
+        sessionPaginationState.hasMore = result.has_more;
+
+        // Sort hierarchically (preserves Genie parent/child structure)
+        const sortedSessions = sortSessionsHierarchically(sessions);
+
+        // Clear DOM
+        DOM.sessionList.innerHTML = '';
+        hideLoadMoreSessionsButton();
+
+        // Build parent-to-children map for last-child detection
+        const parentToChildIds = new Map();
+        sortedSessions.forEach(session => {
+            const genie = session.genie_metadata || {};
+            if (genie.is_genie_slave && genie.parent_session_id) {
+                if (!parentToChildIds.has(genie.parent_session_id)) {
+                    parentToChildIds.set(genie.parent_session_id, []);
+                }
+                parentToChildIds.get(genie.parent_session_id).push(session.id);
+            }
+        });
+
+        // Render each session
+        sortedSessions.forEach(session => {
+            const isActive = session.id === state.currentSessionId;
+
+            // Check if last child (for tree connector styling)
+            const genie = session.genie_metadata || {};
+            let isLastChild = false;
+            if (genie.is_genie_slave && genie.parent_session_id) {
+                const childIds = parentToChildIds.get(genie.parent_session_id) || [];
+                isLastChild = session.id === childIds[childIds.length - 1];
+            }
+
+            const item = UI.addSessionToList(session, isActive, isLastChild);
+            DOM.sessionList.appendChild(item);
+        });
+
+        // Show "Load More" button if needed
+        if (result.has_more) {
+            const remaining = result.total_count - sessions.length;
+            showLoadMoreSessionsButton(remaining);
+        }
+
+        // Apply visibility filters
+        if (window.updateUtilitySessionsFilter) {
+            window.updateUtilitySessionsFilter();
+        }
+        if (window.updateArchivedSessionsFilter) {
+            window.updateArchivedSessionsFilter();
+        }
+
+        // Update Genie badges
+        if (typeof updateGenieMasterBadges === 'function') {
+            updateGenieMasterBadges();
+        }
+
+        console.log('[refreshSessionsList] Refreshed:', sessions.length, 'sessions loaded');
+
+        // Check if current session was archived and no active sessions remain
+        const activeSessions = sessions.filter(s => !s.archived && !s.is_archived);
+        const currentSessionStillActive = activeSessions.some(s => s.id === state.currentSessionId);
+
+        if (!currentSessionStillActive && activeSessions.length === 0) {
+            // Current session was archived and no active sessions remain
+            // Automatically create a new session
+            console.log('[refreshSessionsList] No active sessions remain, creating new session');
+            const { handleStartNewSession } = await import('./sessionManagement.js?v=3.6');
+            await handleStartNewSession();
+        } else if (!currentSessionStillActive && activeSessions.length > 0) {
+            // Current session was archived but other active sessions exist
+            // Switch to the most recent active session
+            console.log('[refreshSessionsList] Current session archived, switching to most recent active session');
+            const { handleLoadSession } = await import('./sessionManagement.js?v=3.6');
+            await handleLoadSession(activeSessions[0].id);
+        }
+    } catch (error) {
+        console.error('[refreshSessionsList] Failed:', error);
+        throw error;
+    }
+}
+
+async function handleLoadMoreSessions() {
+    if (sessionPaginationState.isLoading) return;
+
+    sessionPaginationState.isLoading = true;
+    const btn = document.getElementById('load-more-sessions-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.classList.add('loading');
+        btn.innerHTML = `
+            <svg class="load-more-sessions-icon animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Loading...</span>
+        `;
+    }
+
+    try {
+        const newOffset = sessionPaginationState.loadedOffset + SESSION_PAGE_SIZE;
+        const result = await API.loadSessions(SESSION_PAGE_SIZE, newOffset);
+
+        const newSessions = result.sessions || [];
+        sessionPaginationState.loadedOffset = newOffset;
+        sessionPaginationState.hasMore = result.has_more;
+        sessionPaginationState.totalCount = result.total_count;
+
+        // Sort ALL sessions (including archived) for rendering - visibility controlled by toggle
+        const sortedSessions = sortSessionsHierarchically(newSessions);
+
+        // Build parent-to-child map for last-child detection
+        const parentToChildIds = new Map();
+        sortedSessions.forEach((session) => {
+            const genieMetadata = session.genie_metadata || {};
+            const parentId = genieMetadata.parent_session_id;
+            if (genieMetadata.is_genie_slave && parentId) {
+                if (!parentToChildIds.has(parentId)) {
+                    parentToChildIds.set(parentId, []);
+                }
+                parentToChildIds.get(parentId).push(session.id);
+            }
+        });
+
+        sortedSessions.forEach((session) => {
+            // Check if this session is the last child of its parent
+            const genieMetadata = session.genie_metadata || {};
+            const parentId = genieMetadata.parent_session_id;
+            let isLastChild = false;
+
+            if (genieMetadata.is_genie_slave && parentId) {
+                const childIds = parentToChildIds.get(parentId) || [];
+                const lastChildId = childIds[childIds.length - 1];
+                isLastChild = session.id === lastChildId;
+            }
+
+            const sessionItem = UI.addSessionToList(session, false, isLastChild);
+            DOM.sessionList.appendChild(sessionItem);
+        });
+
+        if (window.updateUtilitySessionsFilter) window.updateUtilitySessionsFilter();
+        if (window.updateArchivedSessionsFilter) window.updateArchivedSessionsFilter();
+        updateGenieMasterBadges();
+
+        // Sync wrapper states to hide tree connectors for collapsed children
+        const { syncWrapperStates } = await import('../hierarchyHelpers.js');
+        syncWrapperStates();
+
+        if (result.has_more) {
+            const remaining = result.total_count - newOffset - newSessions.length;
+            showLoadMoreSessionsButton(remaining);
+        } else {
+            hideLoadMoreSessionsButton();
+        }
+    } catch (error) {
+        console.error('Failed to load more sessions:', error);
+    } finally {
+        sessionPaginationState.isLoading = false;
+    }
+}
+
+/**
+ * Helper to safely set config status message (old form element may not exist)
+ */
+function setConfigStatus(message, className = 'text-sm text-gray-400 text-center') {
+    if (DOM.configStatus) {
+        DOM.configStatus.textContent = message;
+        DOM.configStatus.className = className;
+    }
+}
+
+/**
+ * Gets the current core configuration from the form.
+ * @returns {object} The configuration object.
+ */
+function getCurrentCoreConfig() {
+    // Old config form no longer exists - return empty object
+    if (!DOM.configForm) {
+        return {};
+    }
+    const formData = new FormData(DOM.configForm);
+    return Object.fromEntries(formData.entries());
+}
+
+/**
+ * Finalizes the application configuration after a successful connection.
+ * Loads resources, sessions, and sets UI state.
+ * @param {object} config - The configuration object from the form.
+ */
+export async function finalizeConfiguration(config, switchToConversationView = true) {
+    // Update old config form status elements if they exist
+    setConfigStatus('Success! MCP & LLM services connected.', 'text-sm text-green-400 text-center');
+    DOM.mcpStatusDot.classList.remove('disconnected');
+    DOM.mcpStatusDot.classList.add('connected');
+    DOM.llmStatusDot.classList.remove('disconnected', 'busy');
+    DOM.llmStatusDot.classList.add('idle'); // Start as idle
+    DOM.contextStatusDot.classList.remove('disconnected');
+    DOM.contextStatusDot.classList.add('idle');
+    
+    // Update CCR (Champion Case Retrieval) indicator - check if active after configuration
+    if (DOM.ccrStatusDot) {
+        // Fetch fresh status after configuration to check if planner collections are loaded
+        const status = await API.checkServerStatus();
+        if (status.rag_active) {
+            DOM.ccrStatusDot.classList.remove('disconnected');
+            DOM.ccrStatusDot.classList.add('connected');
+        } else {
+            DOM.ccrStatusDot.classList.remove('connected');
+            DOM.ccrStatusDot.classList.add('disconnected');
+        }
+    }
+    
+    // Show conversation header after successful configuration
+    const conversationHeader = document.getElementById('conversation-header');
+    if (conversationHeader) {
+        conversationHeader.classList.remove('hidden');
+    } else {
+        console.error('Conversation header element not found!');
+    }
+    
+    // Show panel toggle buttons container after configuration
+    const topButtonsContainer = document.getElementById('top-buttons-container');
+    if (topButtonsContainer) {
+        topButtonsContainer.classList.remove('hidden');
+    }
+
+    safeSetItem('lastSelectedProvider', config.provider);
+
+    state.currentProvider = config.provider;
+    state.currentModel = config.model;
+
+    UI.updateStatusPromptName(config.provider, config.model);
+
+    // Panel initialization is now handled by initializePanels() in main.js
+    // which uses admin window_defaults settings. No need for manual setup here.
+
+    if (Utils.isPrivilegedUser()) {
+        const activePrompt = Utils.getSystemPromptForModel(state.currentProvider, state.currentModel);
+        // Only reset if we have a valid provider and model
+        if (!activePrompt && state.currentProvider && state.currentModel) {
+            await resetSystemPrompt(true);
+        }
+    }
+
+    // Show/hide prompt editor based on user privileges (if button exists in UI)
+    if (DOM.promptEditorButton?.parentElement) {
+        const promptEditorMenuItem = DOM.promptEditorButton.parentElement;
+        if (Utils.isPrivilegedUser()) {
+            promptEditorMenuItem.style.display = 'block';
+            DOM.promptEditorButton.disabled = false;
+        } else {
+            promptEditorMenuItem.style.display = 'none';
+            DOM.promptEditorButton.disabled = true;
+        }
+    }
+
+    // Load resources using profile-specific endpoint for ALL profile types
+    // This avoids reliance on active_for_consumption_profile_ids which can contain stale IDs
+    const defaultProfileId = window.configState?.defaultProfileId;
+    if (defaultProfileId && typeof window.updateResourcePanelForProfile === 'function') {
+        await window.updateResourcePanelForProfile(defaultProfileId);
+        const defaultProfile = window.configState?.profiles?.find(p => p.id === defaultProfileId);
+        console.log('[FinalizeConfig] Loaded resources for', defaultProfile?.profile_type || 'unknown', 'profile:', defaultProfileId);
+    } else {
+        // Fallback to legacy loading if no default profile or updateResourcePanelForProfile not available
+        await Promise.all([
+            handleLoadResources('tools'),
+            handleLoadResources('prompts'),
+            handleLoadResources('resources')
+        ]);
+        console.log('[FinalizeConfig] Loaded resources via legacy path (no default profile or function unavailable)');
+    }
+
+    const currentSessionId = state.currentSessionId;
+
+    try {
+        // Reset pagination state
+        sessionPaginationState = { loadedOffset: 0, totalCount: 0, hasMore: false, isLoading: false };
+
+        // Load first page of sessions with pagination
+        console.log('[Session Pagination] Loading sessions with PAGE_SIZE:', SESSION_PAGE_SIZE);
+        const result = await API.loadSessions(SESSION_PAGE_SIZE, 0);
+        console.log('[Session Pagination] API result:', {
+            sessionsCount: result.sessions?.length,
+            total_count: result.total_count,
+            has_more: result.has_more
+        });
+
+        const sessions = result.sessions || [];
+        sessionPaginationState.totalCount = result.total_count;
+        sessionPaginationState.hasMore = result.has_more;
+
+        // Filter out archived sessions from the conversation view selector
+        const activeSessions = sessions ? sessions.filter(s => !s.archived) : [];
+
+        // Check if all sessions are archived (or none exist)
+        if (activeSessions.length === 0) {
+            console.log('[Session Load] No active sessions available. Creating new session.');
+
+            // Clear stored session ID if it points to an archived session
+            if (currentSessionId) {
+                localStorage.removeItem('currentSessionId');
+                state.currentSessionId = null;
+            }
+
+            // Create a fresh session instead of loading archived one
+            await handleStartNewSession();
+            return;  // Exit early - new session is now loaded
+        }
+
+        // Sort sessions hierarchically so slave sessions appear under their parents
+        // Use ALL sessions (including archived) for rendering - visibility controlled by toggle
+        const allSessionsSorted = sortSessionsHierarchically(sessions || []);
+
+        // Keep sorted active sessions for session selection logic (which session to load)
+        const sortedActiveSessions = sortSessionsHierarchically(activeSessions);
+
+        DOM.sessionList.innerHTML = '';
+        hideLoadMoreSessionsButton();
+
+        if (allSessionsSorted && Array.isArray(allSessionsSorted) && allSessionsSorted.length > 0) {
+            // Build a map of parent_id -> list of child session ids (in sorted order)
+            // This allows us to detect which child is the last child of its parent
+            const parentToChildIds = new Map();
+            allSessionsSorted.forEach((session) => {
+                const genieMetadata = session.genie_metadata || {};
+                const parentId = genieMetadata.parent_session_id;
+                if (genieMetadata.is_genie_slave && parentId) {
+                    if (!parentToChildIds.has(parentId)) {
+                        parentToChildIds.set(parentId, []);
+                    }
+                    parentToChildIds.get(parentId).push(session.id);
+                }
+            });
+
+            allSessionsSorted.forEach((session) => {
+                const isActive = session.id === currentSessionId;
+
+                // Check if this session is the last child of its parent
+                const genieMetadata = session.genie_metadata || {};
+                const parentId = genieMetadata.parent_session_id;
+                let isLastChild = false;
+
+                if (genieMetadata.is_genie_slave && parentId) {
+                    const childIds = parentToChildIds.get(parentId) || [];
+                    const lastChildId = childIds[childIds.length - 1];
+                    isLastChild = session.id === lastChildId;
+                }
+
+                const sessionItem = UI.addSessionToList(session, isActive, isLastChild);
+                DOM.sessionList.appendChild(sessionItem);
+            });
+
+            // Show "Load More" button if there are more sessions
+            console.log('[Session Pagination] Checking has_more:', result.has_more, 'total_count:', result.total_count, 'loaded:', sessions.length);
+            if (result.has_more) {
+                const remainingCount = result.total_count - sessions.length;
+                console.log('[Session Pagination] Showing load more button, remainingCount:', remainingCount);
+                showLoadMoreSessionsButton(remainingCount);
+            }
+
+            // Update utility sessions filter visibility
+            if (window.updateUtilitySessionsFilter) {
+                window.updateUtilitySessionsFilter();
+            }
+
+            // Update archived sessions filter visibility
+            if (window.updateArchivedSessionsFilter) {
+                window.updateArchivedSessionsFilter();
+            }
+
+            // Update genie master badges (adds collapse toggles to sessions with slaves)
+            updateGenieMasterBadges();
+
+            // Sync wrapper states to hide tree connectors for collapsed children
+            const { syncWrapperStates } = await import('../hierarchyHelpers.js');
+            syncWrapperStates();
+
+            // Determine which session to load:
+            // 1. If currentSessionId exists (from localStorage), try to load it directly
+            // 2. The session may be beyond the paginated list - that's OK, try loading anyway
+            // 3. If that fails (session deleted), fall back to the first session
+            if (currentSessionId) {
+                const isInLoadedList = sortedActiveSessions.some(s => s.id === currentSessionId);
+                console.log('[Session Load] Attempting to load stored session:', currentSessionId,
+                    isInLoadedList ? '(found in loaded list)' : '(not in first page, loading directly)');
+
+                try {
+                    await handleLoadSession(currentSessionId);
+                } catch (loadError) {
+                    console.warn('[Session Load] Failed to load stored session, falling back to first active session:', loadError.message);
+                    localStorage.removeItem('currentSessionId');
+                    await handleLoadSession(sortedActiveSessions[0].id);
+                }
+            } else {
+                // No stored session ID, load the most recent active session
+                console.log('[Session Load] No stored session ID, loading most recent active session:', sortedActiveSessions[0].id);
+                await handleLoadSession(sortedActiveSessions[0].id);
+            }
+        } else if (currentSessionId) {
+            // No sessions loaded in first page, but we have a stored session ID
+            console.log('[Session Load] No sessions in list, but stored session exists. Attempting direct load:', currentSessionId);
+            try {
+                await handleLoadSession(currentSessionId);
+            } catch (loadError) {
+                console.warn('[Session Load] Stored session not found, creating new session:', loadError.message);
+                localStorage.removeItem('currentSessionId');
+                await handleStartNewSession();
+            }
+        } else {
+            // No active sessions exist, create a new one
+            await handleStartNewSession();
+        }
+    } catch (sessionError) {
+        console.error("Error loading previous sessions:", sessionError);
+        DOM.sessionList.innerHTML = '<li class="text-red-400 p-2">Error loading sessions</li>';
+        // Fallback to creating a new session if loading fails
+        await handleStartNewSession();
+    }
+
+    if (DOM.chatModalButton) DOM.chatModalButton.disabled = false;
+    DOM.userInput.placeholder = "Ask about databases, tables, users...";
+    UI.setExecutionState(false);
+
+    state.pristineConfig = getCurrentCoreConfig();
+    UI.updateConfigButtonState();
+    
+    // No longer showing the old popup - the welcome screen is now the unified interface
+    // setTimeout(UI.closeConfigModal, 1000); // REMOVED
+    // DOM.unconfiguredWrapper.classList.add('hidden'); // REMOVED
+    // DOM.configuredWrapper.classList.remove('hidden'); // REMOVED
+    
+    // Always hide welcome screen after successful configuration
+    // The welcome screen is only for unconfigured state
+    if (window.hideWelcomeScreen) {
+        window.hideWelcomeScreen();
+    }
+    
+    console.log('[finalizeConfiguration] switchToConversationView:', switchToConversationView);
+    if (switchToConversationView) {
+        console.log('[finalizeConfiguration] About to call handleViewSwitch(conversation-view)');
+        handleViewSwitch('conversation-view'); // Set the default view
+        console.log('[finalizeConfiguration] Called handleViewSwitch(conversation-view)');
+    }
+    
+    // Mark conversation mode as initialized for deploy button validation
+    // This ensures that after normal startup (page refresh), the system is marked as initialized
+    if (window.__conversationInitState) {
+        window.__conversationInitState.initialized = true;
+        window.__conversationInitState.lastInitTimestamp = Date.now();
+        window.__conversationInitState.inProgress = false;
+        console.log('[finalizeConfiguration] Marked conversation as initialized');
+    }
+}
+
+/**
+ * Handles the submission of the main configuration form.
+ * @param {Event} e - The submit event.
+ */
+export async function handleConfigFormSubmit(e) {
+    e.preventDefault();
+    await API.checkAndUpdateDefaultPrompts();
+
+    const selectedModel = DOM.llmModelSelect.value;
+    if (!selectedModel) {
+        setConfigStatus('Please select your LLM Model.', 'text-sm text-red-400 text-center');
+        return;
+    }
+
+    if (DOM.configLoadingSpinner) DOM.configLoadingSpinner.classList.remove('hidden');
+    if (DOM.configActionButton) DOM.configActionButton.disabled = true;
+    setConfigStatus('Connecting to MCP & LLM...', 'text-sm text-yellow-400 text-center');
+
+    const formData = new FormData(e.target);
+    const config = Object.fromEntries(formData.entries());
+
+    const mcpConfig = { server_name: config.server_name, host: config.host, port: config.port, path: config.path };
+    safeSetItem('mcpConfig', JSON.stringify(mcpConfig));
+
+    if (config.provider === 'Amazon') {
+        const awsCreds = { aws_access_key_id: config.aws_access_key_id, aws_secret_access_key: config.aws_secret_access_key, aws_region: config.aws_region };
+        safeSetItem('amazonApiKey', JSON.stringify(awsCreds));
+    } else if (config.provider === 'Ollama') {
+        safeSetItem('ollamaHost', config.ollama_host);
+    } else if (config.provider === 'Azure') {
+        const azureCreds = {
+            azure_api_key: config.azure_api_key,
+            azure_endpoint: config.azure_endpoint,
+            azure_deployment_name: config.azure_deployment_name,
+            azure_api_version: config.azure_api_version
+        };
+        safeSetItem('azureApiKey', JSON.stringify(azureCreds));
+    } else if (config.provider === 'Friendli') {
+        const friendliCreds = {
+            friendli_token: config.friendli_token,
+            friendli_endpoint_url: config.friendli_endpoint_url
+        };
+        safeSetItem('friendliApiKey', JSON.stringify(friendliCreds));
+    } else {
+        safeSetItem(`${config.provider.toLowerCase()}ApiKey`, config.apiKey);
+    }
+
+    // TTS credentials are now managed via dedicated TTS endpoints (admin/user)
+
+    try {
+        const res = await fetch('/configure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+
+        const result = await res.json();
+
+        if (res.ok) {
+            // Switch to Conversation view immediately after successful configuration.
+            // Previously passed 'false' to keep Credentials view; requirement changed.
+            await finalizeConfiguration(config, true);
+        } else {
+            throw new Error(result.message || 'An unknown configuration error occurred.');
+        }
+    } catch (error) {
+        setConfigStatus(`Error: ${error.message}`, 'text-sm text-red-400 text-center');
+        if (DOM.promptEditorButton) DOM.promptEditorButton.disabled = true;
+        if (DOM.chatModalButton) DOM.chatModalButton.disabled = true;
+        DOM.mcpStatusDot.classList.add('disconnected');
+        DOM.mcpStatusDot.classList.remove('connected');
+        DOM.llmStatusDot.classList.add('disconnected');
+        DOM.llmStatusDot.classList.remove('connected', 'idle');
+        DOM.contextStatusDot.classList.add('disconnected');
+        DOM.contextStatusDot.classList.remove('idle', 'context-active');
+    } finally {
+        if (DOM.configLoadingSpinner) DOM.configLoadingSpinner.classList.add('hidden');
+        if (DOM.configActionButton) DOM.configActionButton.disabled = false;
+        UI.updateConfigButtonState();
+    }
+}
+
+/**
+ * Loads saved credentials and fetches models for the selected provider.
+ */
+export async function loadCredentialsAndModels() {
+    const newProvider = DOM.llmProviderSelect.value;
+
+    DOM.apiKeyContainer.classList.add('hidden');
+    DOM.awsCredentialsContainer.classList.add('hidden');
+    DOM.awsListingMethodContainer.classList.add('hidden');
+    DOM.ollamaHostContainer.classList.add('hidden');
+    DOM.azureCredentialsContainer.classList.add('hidden');
+    DOM.friendliCredentialsContainer.classList.add('hidden');
+
+    if (newProvider === 'Amazon') {
+        DOM.awsCredentialsContainer.classList.remove('hidden');
+        DOM.awsListingMethodContainer.classList.remove('hidden');
+        const envCreds = await API.getApiKey('amazon');
+        DOM.awsAccessKeyIdInput.value = envCreds.aws_access_key_id || '';
+        DOM.awsSecretAccessKeyInput.value = envCreds.aws_secret_access_key || '';
+        DOM.awsRegionInput.value = envCreds.aws_region || '';
+    } else if (newProvider === 'Ollama') {
+        DOM.ollamaHostContainer.classList.remove('hidden');
+        const data = await API.getApiKey('ollama');
+        DOM.ollamaHostInput.value = data.host || 'http://localhost:11434';
+    } else if (newProvider === 'Azure') {
+        DOM.azureCredentialsContainer.classList.remove('hidden');
+        const envCreds = await API.getApiKey('azure');
+        DOM.azureApiKeyInput.value = envCreds.azure_api_key || '';
+        DOM.azureEndpointInput.value = envCreds.azure_endpoint || '';
+        DOM.azureDeploymentNameInput.value = envCreds.azure_deployment_name || '';
+        DOM.azureApiVersionInput.value = envCreds.azure_api_version || '2024-02-01';
+    } else if (newProvider === 'Friendli') {
+        DOM.friendliCredentialsContainer.classList.remove('hidden');
+        const envCreds = await API.getApiKey('friendli');
+        DOM.friendliTokenInput.value = envCreds.friendli_token || '';
+        DOM.friendliEndpointInput.value = envCreds.friendli_endpoint_url || '';
+    } else {
+        DOM.apiKeyContainer.classList.remove('hidden');
+        const data = await API.getApiKey(newProvider);
+        DOM.llmApiKeyInput.value = data.apiKey || '';
+    }
+
+    await handleRefreshModelsClick();
+}
+
+/**
+ * Handles the change event for the LLM provider dropdown.
+ */
+export async function handleProviderChange() {
+    DOM.llmModelSelect.innerHTML = '<option value="">-- Select Provider & Enter Credentials --</option>';
+    setConfigStatus('');
+
+    await loadCredentialsAndModels();
+}
+
+/**
+ * Handles the change event for the LLM model dropdown.
+ */
+export async function handleModelChange() {
+    state.currentModel = DOM.llmModelSelect.value;
+    state.currentProvider = DOM.llmProviderSelect.value;
+    if (!state.currentModel || !state.currentProvider) return;
+
+    if (Utils.isPrivilegedUser()) {
+        const activePrompt = Utils.getSystemPromptForModel(state.currentProvider, state.currentModel);
+        if (!activePrompt) {
+            setConfigStatus(`Fetching default prompt for ${Utils.getNormalizedModelId(state.currentModel)}...`);
+            await resetSystemPrompt(true);
+            setConfigStatus(`Default prompt for ${Utils.getNormalizedModelId(state.currentModel)} loaded.`);
+            setTimeout(() => { setConfigStatus(''); }, 2000);
+        }
+    }
+}
+
+/**
+ * Handles the click event for the "Refresh Models" button.
+ */
+export async function handleRefreshModelsClick() {
+    DOM.refreshIcon.classList.add('hidden');
+    DOM.refreshSpinner.classList.remove('hidden');
+    DOM.refreshModelsButton.disabled = true;
+    setConfigStatus('Fetching models...');
+    try {
+        const result = await API.fetchModels();
+        DOM.llmModelSelect.innerHTML = '';
+
+        // Separate recommended and other models
+        const recommendedModels = result.models.filter(m => m.recommended);
+        const otherModels = result.models.filter(m => !m.recommended);
+
+        // Add recommended models first (with star)
+        recommendedModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.name;
+            option.textContent = `★ ${model.name}`;
+            DOM.llmModelSelect.appendChild(option);
+        });
+
+        // Add separator if there are both types
+        if (recommendedModels.length > 0 && otherModels.length > 0) {
+            const separator = document.createElement('option');
+            separator.disabled = true;
+            separator.textContent = '─────────────────';
+            DOM.llmModelSelect.appendChild(separator);
+        }
+
+        // Add other models (all selectable)
+        otherModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.name;
+            option.textContent = model.name;
+            DOM.llmModelSelect.appendChild(option);
+        });
+
+        setConfigStatus(`Successfully fetched ${result.models.length} models.`, 'text-sm text-green-400 text-center');
+        if (DOM.llmModelSelect.value) {
+            await handleModelChange();
+        }
+    } catch (error) {
+        setConfigStatus(`Error: ${error.message}`, 'text-sm text-red-400 text-center');
+        DOM.llmModelSelect.innerHTML = '<option value="">-- Could not fetch models --</option>';
+    } finally {
+        DOM.refreshIcon.classList.remove('hidden');
+        DOM.refreshSpinner.classList.add('hidden');
+        DOM.refreshModelsButton.disabled = false;
+    }
+}
+
+/**
+ * Opens the System Prompt Editor modal.
+ */
+export function openPromptEditor() {
+    DOM.promptEditorTitle.innerHTML = `System Prompt Editor for: <code class="text-teradata-orange font-normal">${state.currentProvider} / ${Utils.getNormalizedModelId(state.currentModel)}</code>`;
+    const promptText = Utils.getSystemPromptForModel(state.currentProvider, state.currentModel);
+    DOM.promptEditorTextarea.value = promptText;
+    DOM.promptEditorTextarea.dataset.initialValue = promptText;
+
+    DOM.promptEditorOverlay.classList.remove('hidden', 'opacity-0');
+    DOM.promptEditorContent.classList.remove('scale-95', 'opacity-0');
+    UI.updatePromptEditorState();
+}
+
+/**
+ * Force-closes the System Prompt Editor modal without checking for changes.
+ */
+export function forceClosePromptEditor() {
+    DOM.promptEditorOverlay.classList.add('opacity-0');
+    DOM.promptEditorContent.classList.add('scale-95', 'opacity-0');
+    setTimeout(() => {
+        DOM.promptEditorOverlay.classList.add('hidden');
+        DOM.promptEditorStatus.textContent = '';
+    }, 300);
+}
+
+/**
+ * Handles request to close the System Prompt Editor, checking for unsaved changes.
+ */
+export function closePromptEditor() {
+    const hasChanged = DOM.promptEditorTextarea.value.trim() !== DOM.promptEditorTextarea.dataset.initialValue.trim();
+    if (hasChanged) {
+        UI.showConfirmation(
+            'Discard Changes?',
+            'You have unsaved changes that will be lost. Are you sure you want to close the editor?',
+            forceClosePromptEditor
+        );
+    } else {
+        forceClosePromptEditor();
+    }
+}
+
+/**
+ * Saves changes made in the System Prompt Editor.
+ */
+export async function saveSystemPromptChanges() {
+    const newPromptText = DOM.promptEditorTextarea.value;
+    const defaultPromptText = await Utils.getDefaultSystemPrompt(state.currentProvider, state.currentModel);
+
+    if (defaultPromptText === null) {
+        return;
+    }
+
+    const isCustom = newPromptText.trim() !== defaultPromptText.trim();
+
+    Utils.saveSystemPromptForModel(state.currentProvider, state.currentModel, newPromptText, isCustom);
+    UI.updateStatusPromptName();
+
+    DOM.promptEditorTextarea.dataset.initialValue = newPromptText;
+
+    DOM.promptEditorStatus.textContent = 'Saved!';
+    DOM.promptEditorStatus.className = 'text-sm text-green-400';
+    setTimeout(() => {
+        UI.updatePromptEditorState();
+    }, 2000);
+}
+
+/**
+ * Resets the System Prompt to its default value.
+ * @param {boolean} [force=false] - If true, saves the reset without confirmation.
+ */
+export async function resetSystemPrompt(force = false) {
+    const defaultPrompt = await Utils.getDefaultSystemPrompt(state.currentProvider, state.currentModel);
+    if (defaultPrompt) {
+        if (!force) {
+            DOM.promptEditorTextarea.value = defaultPrompt;
+            UI.updatePromptEditorState();
+        } else {
+            Utils.saveSystemPromptForModel(state.currentProvider, state.currentModel, defaultPrompt, false);
+            DOM.promptEditorTextarea.value = defaultPrompt;
+            UI.updateStatusPromptName();
+        }
+    }
+}
+

@@ -1,0 +1,127 @@
+{
+  "name": "knowledge-repository-basic",
+  "version": "1.0.0",
+  "template_id": "knowledge_repo_v1",
+  "display_name": "Knowledge Repository - Document Storage",
+  "description": "Document-based knowledge repository with chunking strategies for semantic search. Upload PDFs, DOCX, TXT, or MD files for RAG retrieval without MCP requirements.",
+  "author": "TDA Core Team",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/rgeissen/uderia",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rgeissen/uderia"
+  },
+  "keywords": [
+    "knowledge",
+    "documents",
+    "pdf",
+    "chunking",
+    "semantic-search",
+    "embeddings",
+    "rag"
+  ],
+  "compatibility": {
+    "min_app_version": "1.0.0",
+    "max_app_version": "2.x.x"
+  },
+  "dependencies": {
+    "templates": [],
+    "python_packages": [
+      "PyPDF2>=3.0.0",
+      "python-docx>=0.8.11"
+    ]
+  },
+  "files": {
+    "template": "knowledge_repo_v1.json",
+    "readme": "README.md"
+  },
+  "permissions": [
+    "file_upload",
+    "embeddings"
+  ],
+  "ui_components": {
+    "config_panel": false,
+    "preview_renderer": true,
+    "file_upload": true
+  },
+  "repository_config": {
+    "repository_type": "knowledge",
+    "requires_mcp_server": false,
+    "supports_documents": true,
+    "supported_file_types": ["pdf", "txt", "docx", "md"],
+    "max_file_size_mb": 50,
+    "chunking_strategies": {
+      "semantic": {
+        "description": "Split by semantic boundaries (currently falls back to paragraph)",
+        "configurable": false,
+        "default_chunk_size": 1000,
+        "default_overlap": 200
+      },
+      "paragraph": {
+        "description": "Split on paragraph boundaries (double newlines)",
+        "configurable": false,
+        "default_chunk_size": 1000,
+        "default_overlap": 200
+      },
+      "sentence": {
+        "description": "Group sentences up to chunk size",
+        "configurable": false,
+        "default_chunk_size": 1000,
+        "default_overlap": 200
+      },
+      "fixed_size": {
+        "description": "Fixed character count with overlap",
+        "configurable": true,
+        "default_chunk_size": 1000,
+        "default_overlap": 200,
+        "min_chunk_size": 100,
+        "max_chunk_size": 5000,
+        "min_overlap": 0,
+        "max_overlap": 500
+      }
+    },
+    "embedding_models": [
+      {
+        "id": "all-MiniLM-L6-v2",
+        "display_name": "all-MiniLM-L6-v2 (fast, lightweight)",
+        "description": "384-dimensional embeddings, 22M parameters",
+        "default": true
+      },
+      {
+        "id": "all-mpnet-base-v2",
+        "display_name": "all-mpnet-base-v2 (balanced)",
+        "description": "768-dimensional embeddings, 110M parameters"
+      }
+    ]
+  },
+  "population_modes": {
+    "document_upload": {
+      "supported": true,
+      "description": "Upload documents directly into the knowledge repository",
+      "workflow": "user_upload",
+      "required_fields": [],
+      "optional_metadata": ["category", "author", "tags"],
+      "processing": {
+        "chunking": true,
+        "embedding": true,
+        "auto_preview": true
+      }
+    },
+    "manual": {
+      "supported": false,
+      "description": "Knowledge repositories are populated via document upload only"
+    },
+    "auto_generate": {
+      "supported": false,
+      "description": "Knowledge repositories are populated via document upload only"
+    }
+  },
+  "metadata": {
+    "category": "Knowledge Management",
+    "difficulty": "beginner",
+    "estimated_tokens": {
+      "per_chunk": 250
+    },
+    "tags": ["built-in", "documents", "knowledge-base", "semantic-search"]
+  }
+}

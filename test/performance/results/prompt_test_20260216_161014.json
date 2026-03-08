@@ -1,0 +1,77 @@
+{
+  "test_metadata": {
+    "timestamp": "2026-02-16T16:10:14.585378",
+    "server_url": "http://localhost:5050",
+    "fixtures_file": "mcp_prompt_fixtures.json",
+    "filter": "dba_databaseHealthAssessment",
+    "tag": null,
+    "profile_tag": "OPTIM",
+    "profile_id": "profile-1764006444002-z0hdduce9"
+  },
+  "summary": {
+    "total_fixtures": 1,
+    "passed": 1,
+    "failed": 0,
+    "warned": 0,
+    "errored": 0,
+    "total_tokens": 34757,
+    "total_duration_ms": 93834,
+    "total_self_corrections": 0,
+    "avg_tokens_per_prompt": 34757.0,
+    "avg_duration_ms": 93834.0
+  },
+  "results": [
+    {
+      "fixture_id": "dba_databaseHealthAssessment_system",
+      "prompt_name": "dba_databaseHealthAssessment",
+      "verdict": "PASS",
+      "verdict_reasons": [
+        "All checks passed"
+      ],
+      "status": "complete",
+      "task_id": "task-12971643-414f-461c-b4ac-16312bd616b5",
+      "session_id": "bd83dbcf-257b-4446-9e98-5ae0523c491e",
+      "duration_ms": 93834,
+      "execution_mode": "tool_enabled",
+      "tokens": {
+        "input": 32030,
+        "output": 2727,
+        "total": 34757
+      },
+      "self_correction": {
+        "count": 0,
+        "types": [],
+        "none_value_errors": 0,
+        "llm_correction_calls": 0,
+        "details": []
+      },
+      "plan_quality": {
+        "phase_count": 0,
+        "tools_invoked": [
+          "TDA_CurrentDate",
+          "TDA_DateRange",
+          "base_readQuery",
+          "dba_databaseSpace",
+          "dba_resusageSummary",
+          "dba_flowControl",
+          "base_tableList",
+          "base_tableUsage"
+        ],
+        "orchestrators_used": [
+          "date_range"
+        ],
+        "fast_path_count": 0,
+        "slow_path_count": 0,
+        "safeguards_fired": [],
+        "has_final_report": true,
+        "rewrite_passes_fired": []
+      },
+      "parameter_resolution": {
+        "all_resolved": true,
+        "resolved": {},
+        "unresolved": []
+      },
+      "issues": []
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "name": "Uderia Simple Query",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "profile_id",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "query",
+              "value": "Show me all databases available",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2",
+      "name": "Set Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $input.first().json;\nconst profileId = config.profile_id || '';\nconst query = config.query || '';\n\nconst result = {\n  prompt: query\n};\n\nif (profileId) {\n  result.profile_id = profileId;\n}\n\nreturn { json: result };"
+      },
+      "id": "7",
+      "name": "Prepare Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://tda.uderia.com/api/v1/sessions"
+      },
+      "id": "3",
+      "name": "Create Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://tda.uderia.com/api/v1/sessions/{{ $json.session_id }}/query",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Prepare Prompt').item.json }}"
+      },
+      "id": "4",
+      "name": "Submit Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "amount": 8,
+        "unit": "seconds"
+      },
+      "id": "5",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://tda.uderia.com/api/v1/tasks/{{ $json.task_id }}"
+      },
+      "id": "6",
+      "name": "Get Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1450, 300]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{"node": "Set Config", "type": "main", "index": 0}]]
+    },
+    "Set Config": {
+      "main": [[{"node": "Prepare Prompt", "type": "main", "index": 0}]]
+    },
+    "Prepare Prompt": {
+      "main": [[{"node": "Create Session", "type": "main", "index": 0}]]
+    },
+    "Create Session": {
+      "main": [[{"node": "Submit Query", "type": "main", "index": 0}]]
+    },
+    "Submit Query": {
+      "main": [[{"node": "Wait", "type": "main", "index": 0}]]
+    },
+    "Wait": {
+      "main": [[{"node": "Get Result", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
