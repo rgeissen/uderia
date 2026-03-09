@@ -936,23 +936,36 @@ function openEditCollectionModal(collection) {
     const editCollectionIdInput = document.getElementById('edit-rag-collection-id');
     const editCollectionNameInput = document.getElementById('edit-rag-collection-name');
     const editCollectionMcpServerSelect = document.getElementById('edit-rag-collection-mcp-server');
+    const editCollectionMcpServerContainer = document.getElementById('edit-rag-collection-mcp-server-container');
     const editCollectionDescriptionInput = document.getElementById('edit-rag-collection-description');
-    
-    // Populate MCP server dropdown for edit modal
-    editCollectionMcpServerSelect.innerHTML = '<option value="">Select an MCP Server...</option>';
-    if (window.configState && window.configState.mcpServers && Array.isArray(window.configState.mcpServers)) {
-        window.configState.mcpServers.forEach(server => {
-            const option = document.createElement('option');
-            option.value = server.id;
-            option.textContent = server.name;
-            // Check if this server is the one assigned to the collection
-            if (server.id === collection.mcp_server_id) {
-                option.selected = true;
-            }
-            editCollectionMcpServerSelect.appendChild(option);
-        });
+
+    // Hide MCP server field for knowledge repositories (they don't use MCP connections)
+    const isKnowledgeRepository = collection.repository_type === 'knowledge';
+    if (isKnowledgeRepository) {
+        editCollectionMcpServerContainer.classList.add('hidden');
+        editCollectionMcpServerSelect.removeAttribute('required');
+    } else {
+        editCollectionMcpServerContainer.classList.remove('hidden');
+        editCollectionMcpServerSelect.setAttribute('required', 'required');
     }
-    
+
+    // Populate MCP server dropdown for edit modal (only for planner repositories)
+    if (!isKnowledgeRepository) {
+        editCollectionMcpServerSelect.innerHTML = '<option value="">Select an MCP Server...</option>';
+        if (window.configState && window.configState.mcpServers && Array.isArray(window.configState.mcpServers)) {
+            window.configState.mcpServers.forEach(server => {
+                const option = document.createElement('option');
+                option.value = server.id;
+                option.textContent = server.name;
+                // Check if this server is the one assigned to the collection
+                if (server.id === collection.mcp_server_id) {
+                    option.selected = true;
+                }
+                editCollectionMcpServerSelect.appendChild(option);
+            });
+        }
+    }
+
     // Populate form with collection data
     editCollectionIdInput.value = collection.id;
     editCollectionNameInput.value = collection.name;
@@ -992,26 +1005,31 @@ function closeEditCollectionModal() {
  */
 async function handleEditRagCollection(event) {
     event.preventDefault();
-    
+
     const editCollectionIdInput = document.getElementById('edit-rag-collection-id');
     const editCollectionNameInput = document.getElementById('edit-rag-collection-name');
     const editCollectionMcpServerSelect = document.getElementById('edit-rag-collection-mcp-server');
+    const editCollectionMcpServerContainer = document.getElementById('edit-rag-collection-mcp-server-container');
     const editCollectionDescriptionInput = document.getElementById('edit-rag-collection-description');
     const editSubmitBtn = document.getElementById('edit-rag-collection-submit');
-    
+
     // Get form values
     const collectionId = parseInt(editCollectionIdInput.value);
     const name = editCollectionNameInput.value.trim();
     const mcpServerId = editCollectionMcpServerSelect.value;  // This is now the server ID
     const description = editCollectionDescriptionInput.value.trim();
-    
+
+    // Check if this is a knowledge repository (MCP field is hidden)
+    const isKnowledgeRepository = editCollectionMcpServerContainer.classList.contains('hidden');
+
     // Validate
     if (!name) {
         showNotification('error', 'Collection name is required');
         return;
     }
-    
-    if (!mcpServerId) {
+
+    // Only validate MCP server for planner repositories
+    if (!isKnowledgeRepository && !mcpServerId) {
         showNotification('error', 'Please select an MCP server');
         return;
     }
@@ -1019,21 +1037,27 @@ async function handleEditRagCollection(event) {
     // Disable submit button
     editSubmitBtn.disabled = true;
     editSubmitBtn.textContent = 'Saving...';
-    
+
     try {
-        // Call API with mcp_server_id
+        // Call API with mcp_server_id (only for planner repositories)
         const token = localStorage.getItem('tda_auth_token');
+        const requestBody = {
+            name: name,
+            description: description || ''
+        };
+
+        // Only include mcp_server_id for planner repositories
+        if (!isKnowledgeRepository) {
+            requestBody.mcp_server_id = mcpServerId;
+        }
+
         const response = await fetch(`/api/v1/rag/collections/${collectionId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({
-                name: name,
-                mcp_server_id: mcpServerId,  // Send ID instead of name
-                description: description || ''
-            })
+            body: JSON.stringify(requestBody)
         });
         
         const data = await response.json();
