@@ -279,26 +279,7 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
             # Pass the raw file to the backend SDK — skip text extraction &
             # local chunking entirely.
             if chunking_strategy_str == "server_side":
-                # Phase 2 HIGH: Add timeout protection for backend initialization
-                try:
-                    backend = await asyncio.wait_for(
-                        retriever._get_knowledge_backend(collection_id),
-                        timeout=5.0
-                    )
-                except asyncio.TimeoutError:
-                    yield format_sse({
-                        "type": "error",
-                        "message": "Timeout connecting to repository backend - it may be unavailable. Please try again later."
-                    }, "error")
-                    os.unlink(temp_file.name)
-                    return
-                except Exception as e:
-                    yield format_sse({
-                        "type": "error",
-                        "message": f"Failed to connect to repository backend: {str(e)}"
-                    }, "error")
-                    os.unlink(temp_file.name)
-                    return
+                backend = await retriever._get_knowledge_backend(collection_id)
 
                 if not backend or not backend.has_capability(VectorStoreCapability.SERVER_SIDE_CHUNKING):
                     yield format_sse({
@@ -463,27 +444,7 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
             document_content = prepared_doc['content']
 
             # Create repository constructor (backend-abstracted path)
-            # Phase 2 HIGH: Add timeout protection for backend initialization
-            try:
-                backend = await asyncio.wait_for(
-                    retriever._get_knowledge_backend(collection_id),
-                    timeout=5.0
-                )
-            except asyncio.TimeoutError:
-                yield format_sse({
-                    "type": "error",
-                    "message": "Timeout connecting to repository backend - it may be unavailable. Please try again later."
-                }, "error")
-                os.unlink(temp_file.name)
-                return
-            except Exception as e:
-                yield format_sse({
-                    "type": "error",
-                    "message": f"Failed to connect to repository backend: {str(e)}"
-                }, "error")
-                os.unlink(temp_file.name)
-                return
-
+            backend = await retriever._get_knowledge_backend(collection_id)
             constructor = create_repository_constructor(
                 repository_type=RepositoryType.KNOWLEDGE,
                 chroma_client=retriever.client,
@@ -682,22 +643,7 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
             # local chunking entirely.  Follows the Chatbot PDF pattern:
             #   VectorStore.create(document_files=[...], chunk_size=500, ...)
             if chunking_strategy_str == "server_side":
-                # Phase 2 HIGH: Add timeout protection for backend initialization
-                try:
-                    backend = await asyncio.wait_for(
-                        retriever._get_knowledge_backend(collection_id),
-                        timeout=5.0
-                    )
-                except asyncio.TimeoutError:
-                    return jsonify({
-                        "status": "error",
-                        "message": "Timeout connecting to repository backend - it may be unavailable. Please try again later."
-                    }), 504
-                except Exception as e:
-                    return jsonify({
-                        "status": "error",
-                        "message": f"Failed to connect to repository backend: {str(e)}"
-                    }), 500
+                backend = await retriever._get_knowledge_backend(collection_id)
 
                 if not backend or not backend.has_capability(VectorStoreCapability.SERVER_SIDE_CHUNKING):
                     return jsonify({
@@ -708,10 +654,7 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
 
                 document_id = str(uuid4())
 
-                # Phase 2 HIGH: Add timeout protection for document upload (write operation)
-                try:
-                    await asyncio.wait_for(
-                        backend.add_document_files(
+                await backend.add_document_files(
                     collection_name=collection_name,
                     file_paths=[temp_file.name],
                     chunking_config=ServerSideChunkingConfig(
@@ -720,19 +663,7 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                         header_height=float(form.get("header_height", 0.0)),
                         footer_height=float(form.get("footer_height", 0.0)),
                     ),
-                ),
-                        timeout=30.0  # 30 seconds for document upload
-                    )
-                except asyncio.TimeoutError:
-                    return jsonify({
-                        "status": "error",
-                        "message": "Document upload timed out - backend may be processing slowly or unavailable."
-                    }), 504
-                except Exception as e:
-                    return jsonify({
-                        "status": "error",
-                        "message": f"Document upload failed: {str(e)}"
-                    }), 500
+                )
 
                 app_logger.info(
                     f"Successfully uploaded document '{file.filename}' to Knowledge "
@@ -809,23 +740,7 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
             document_content = prepared_doc['content']
 
             # Create repository constructor (backend-abstracted path)
-            # Phase 2 HIGH: Add timeout protection for backend initialization
-            try:
-                backend = await asyncio.wait_for(
-                    retriever._get_knowledge_backend(collection_id),
-                    timeout=5.0
-                )
-            except asyncio.TimeoutError:
-                return jsonify({
-                    "status": "error",
-                    "message": "Timeout connecting to repository backend - it may be unavailable. Please try again later."
-                }), 504
-            except Exception as e:
-                return jsonify({
-                    "status": "error",
-                    "message": f"Failed to connect to repository backend: {str(e)}"
-                }), 500
-
+            backend = await retriever._get_knowledge_backend(collection_id)
             constructor = create_repository_constructor(
                 repository_type=RepositoryType.KNOWLEDGE,
                 chroma_client=retriever.client,
@@ -1067,39 +982,23 @@ async def delete_knowledge_document(current_user: dict, collection_id: int, docu
         if result['owner_user_id'] != user_id:
             conn.close()
             return jsonify({"status": "error", "message": "Access denied"}), 403
-
+        
         # Delete all chunks for this document via backend
-        # Phase 2 HIGH: Add timeout protection for backend operations
-        try:
-            backend = await asyncio.wait_for(
-                retriever._get_knowledge_backend(collection_id),
-                timeout=5.0
+        backend = await retriever._get_knowledge_backend(collection_id)
+        if backend:
+            from trusted_data_agent.vectorstore import FieldFilter, FilterOp
+            coll_meta = retriever.get_collection_metadata(collection_id)
+            coll_name = coll_meta["collection_name"] if coll_meta else f"collection_{collection_id}"
+            get_result = await backend.get(
+                coll_name,
+                where=FieldFilter("document_id", FilterOp.EQ, document_id),
+                include_documents=False,
+                include_metadata=False,
             )
-            if backend:
-                from trusted_data_agent.vectorstore import FieldFilter, FilterOp
-                coll_meta = retriever.get_collection_metadata(collection_id)
-                coll_name = coll_meta["collection_name"] if coll_meta else f"collection_{collection_id}"
-                get_result = await asyncio.wait_for(
-                    backend.get(
-                        coll_name,
-                        where=FieldFilter("document_id", FilterOp.EQ, document_id),
-                        include_documents=False,
-                        include_metadata=False,
-                    ),
-                    timeout=10.0  # 10 seconds for get operation
-                )
-                if get_result.documents:
-                    chunk_ids = [d.id for d in get_result.documents]
-                    await asyncio.wait_for(
-                        backend.delete(coll_name, chunk_ids),
-                        timeout=30.0  # 30 seconds for delete operation
-                    )
-                    app_logger.info(f"Deleted {len(chunk_ids)} chunks via backend")
-        except asyncio.TimeoutError:
-            app_logger.warning(f"Timeout during backend deletion for document {document_id} - continuing with database cleanup")
-            # Continue with database deletion even if backend times out
-        except Exception as e:
-            app_logger.warning(f"Error during backend deletion for document {document_id}: {e} - continuing with database cleanup")
+            if get_result.documents:
+                chunk_ids = [d.id for d in get_result.documents]
+                await backend.delete(coll_name, chunk_ids)
+                app_logger.info(f"Deleted {len(chunk_ids)} chunks via backend")
         
         # Delete from database (reuse connection)
         
@@ -1176,19 +1075,9 @@ async def search_knowledge_repository(current_user: dict, collection_id: int):
         
         if not query:
             return jsonify({"status": "error", "message": "query is required"}), 400
-
+        
         # Search via backend
-        # Phase 2 HIGH: Add timeout protection for backend initialization
-        try:
-            backend = await asyncio.wait_for(
-                retriever._get_knowledge_backend(collection_id),
-                timeout=5.0
-            )
-        except asyncio.TimeoutError:
-            return jsonify({"status": "error", "message": "Timeout connecting to repository backend"}), 504
-        except Exception as e:
-            return jsonify({"status": "error", "message": f"Failed to connect to backend: {str(e)}"}), 500
-
+        backend = await retriever._get_knowledge_backend(collection_id)
         if not backend:
             return jsonify({"status": "error", "message": "Collection not loaded"}), 404
 
@@ -1204,19 +1093,10 @@ async def search_knowledge_repository(current_user: dict, collection_id: int):
         emb_model = coll_meta.get("embedding_model", "all-MiniLM-L6-v2") if coll_meta else "all-MiniLM-L6-v2"
         emb_provider = get_embedding_provider(emb_model)
 
-        # Phase 2 HIGH: Add timeout protection for query operation
-        try:
-            query_result = await asyncio.wait_for(
-                backend.query(
-                    coll_name, query_text=query, n_results=k, where=where_filter,
-                    embedding_provider=emb_provider,
-                ),
-                timeout=10.0  # 10 seconds for search operation
-            )
-        except asyncio.TimeoutError:
-            return jsonify({"status": "error", "message": "Search operation timed out"}), 504
-        except Exception as e:
-            return jsonify({"status": "error", "message": f"Search failed: {str(e)}"}), 500
+        query_result = await backend.query(
+            coll_name, query_text=query, n_results=k, where=where_filter,
+            embedding_provider=emb_provider,
+        )
 
         # Format results
         search_results = []
@@ -1313,19 +1193,9 @@ async def get_knowledge_chunks(current_user: dict, collection_id: int):
         light = request.args.get('light', default='true', type=str).lower() == 'true'
         sort_by = request.args.get('sort_by', default=None, type=str)
         sort_order = request.args.get('sort_order', default='asc', type=str)
-
+        
         # Get backend for this knowledge collection
-        # Phase 2 HIGH: Add timeout protection for backend initialization
-        try:
-            backend = await asyncio.wait_for(
-                retriever._get_knowledge_backend(collection_id),
-                timeout=5.0
-            )
-        except asyncio.TimeoutError:
-            return jsonify({"error": "Timeout connecting to repository backend"}), 504
-        except Exception as e:
-            return jsonify({"error": f"Failed to connect to backend: {str(e)}"}), 500
-
+        backend = await retriever._get_knowledge_backend(collection_id)
         if not backend:
             return jsonify({"error": "Collection not loaded"}), 404
 
@@ -1342,15 +1212,11 @@ async def get_knowledge_chunks(current_user: dict, collection_id: int):
                 emb_model = coll_meta_full.get("embedding_model", "all-MiniLM-L6-v2") if coll_meta_full else "all-MiniLM-L6-v2"
                 emb_provider = get_embedding_provider(emb_model)
 
-                # Phase 2 HIGH: Add timeout protection for query operation
-                query_result = await asyncio.wait_for(
-                    backend.query(
-                        coll_name_full,
-                        query_text=query_text,
-                        n_results=min(limit, 100),
-                        embedding_provider=emb_provider,
-                    ),
-                    timeout=10.0  # 10 seconds for search
+                query_result = await backend.query(
+                    coll_name_full,
+                    query_text=query_text,
+                    n_results=min(limit, 100),
+                    embedding_provider=emb_provider,
                 )
                 total = len(query_result.documents)
                 for doc, distance in query_result:
@@ -1484,19 +1350,9 @@ async def get_single_chunk(current_user: dict, collection_id: int, chunk_id: str
         user_id = current_user.id
         if owner_user_id != user_id:
             return jsonify({"error": "Access denied"}), 403
-
+        
         # Get chunk via backend
-        # Phase 2 HIGH: Add timeout protection for backend initialization
-        try:
-            backend = await asyncio.wait_for(
-                retriever._get_knowledge_backend(collection_id),
-                timeout=5.0
-            )
-        except asyncio.TimeoutError:
-            return jsonify({"error": "Timeout connecting to repository backend"}), 504
-        except Exception as e:
-            return jsonify({"error": f"Failed to connect to backend: {str(e)}"}), 500
-
+        backend = await retriever._get_knowledge_backend(collection_id)
         if not backend:
             return jsonify({"error": "Collection not loaded"}), 404
 
@@ -1504,11 +1360,7 @@ async def get_single_chunk(current_user: dict, collection_id: int, chunk_id: str
         coll_name_chunk = coll_meta_chunk["collection_name"] if coll_meta_chunk else f"collection_{collection_id}"
 
         try:
-            # Phase 2 HIGH: Add timeout protection for get operation
-            get_result = await asyncio.wait_for(
-                backend.get(coll_name_chunk, ids=[chunk_id]),
-                timeout=10.0  # 10 seconds for get operation
-            )
+            get_result = await backend.get(coll_name_chunk, ids=[chunk_id])
 
             if not get_result.documents:
                 return jsonify({"error": "Chunk not found"}), 404
