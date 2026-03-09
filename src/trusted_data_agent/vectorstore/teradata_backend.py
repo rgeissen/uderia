@@ -955,8 +955,14 @@ class TeradataVectorBackend(VectorStoreBackend):
         return CollectionInfo(name=name, document_count=count)
 
     async def delete_collection(self, name: str) -> bool:
-        """Destroy the VectorStore and drop the companion staging table."""
-        deleted = False
+        """Destroy the VectorStore and drop the companion staging table.
+
+        Returns True only when the VectorStore is confirmed absent from the
+        Teradata EVS (via ``VSManager.list()`` verification).  This prevents
+        the Uderia database record from being removed while the EVS object
+        still exists.
+        """
+        vs_confirmed_gone = False
 
         # 1. Destroy the VectorStore via EVS REST API.
         #    Use cached instance if available, otherwise create a fresh one
@@ -974,10 +980,21 @@ class TeradataVectorBackend(VectorStoreBackend):
             try:
                 await self._run_in_td_thread(vs.destroy)
                 await self._poll_status(vs, operation="destroy", timeout=120)
-                deleted = True
+                vs_confirmed_gone = True
                 logger.info(f"Teradata VS '{name}' destroyed")
             except Exception as exc:
-                logger.warning(f"VS destroy failed for '{name}': {exc}")
+                logger.warning(f"VS destroy/poll failed for '{name}': {exc}")
+                # destroy() may have succeeded but the poll timed out or hit a
+                # transient error (e.g. CloudFront 504).  Verify whether the VS
+                # actually still exists before giving up.
+                vs_confirmed_gone = await self._verify_vs_absent(name)
+
+        if not vs_confirmed_gone:
+            logger.error(
+                f"Teradata VS '{name}' could not be confirmed as destroyed — "
+                f"keeping Uderia record to avoid orphaned EVS objects"
+            )
+            return False
 
         self._collections.discard(name)
 
@@ -985,7 +1002,6 @@ class TeradataVectorBackend(VectorStoreBackend):
         qualified = self._qualified(self._staging_table(name))
         try:
             await self._execute_sql(f"DROP TABLE {qualified}")
-            deleted = True
         except Exception as exc:
             exc_str = str(exc)
             if "3807" in exc_str or "does not exist" in exc_str.lower():
@@ -993,7 +1009,57 @@ class TeradataVectorBackend(VectorStoreBackend):
             else:
                 logger.warning(f"Failed to drop staging table '{qualified}': {exc}")
 
-        return deleted
+        return True
+
+    async def _verify_vs_absent(self, name: str) -> bool:
+        """Check ``VSManager.list()`` to confirm a VectorStore no longer exists.
+
+        Returns True if the VS is confirmed absent, False if it still exists
+        or if the verification itself fails (conservative — assume it exists).
+        """
+        try:
+            from teradatagenai import VSManager  # type: ignore[import]
+
+            result = await asyncio.wait_for(
+                self._run_in_td_thread(VSManager.list),
+                timeout=self._VS_STATUS_CALL_TIMEOUT,
+            )
+
+            # VSManager.list() returns a teradataml DataFrame
+            if result is None:
+                logger.info(f"VSManager.list() returned None — assuming VS '{name}' is gone")
+                return True
+
+            pdf = await asyncio.wait_for(
+                self._run_in_td_thread(result.to_pandas),
+                timeout=self._VS_STATUS_CALL_TIMEOUT,
+            )
+
+            if pdf.empty:
+                logger.info(f"VSManager.list() returned empty — VS '{name}' confirmed absent")
+                return True
+
+            # Check if our VS name appears in the listing
+            # The column name may vary; check common variants
+            name_upper = name.upper()
+            for col in pdf.columns:
+                if any(kw in col.lower() for kw in ("name", "vectorstore")):
+                    if name_upper in pdf[col].astype(str).str.upper().values:
+                        logger.warning(
+                            f"VS '{name}' still present in VSManager.list() — "
+                            f"destroy did not complete"
+                        )
+                        return False
+
+            logger.info(f"VS '{name}' not found in VSManager.list() — confirmed absent")
+            return True
+
+        except Exception as exc:
+            logger.warning(
+                f"VSManager.list() verification failed for '{name}': {exc} — "
+                f"conservatively assuming VS still exists"
+            )
+            return False
 
     async def count(self, collection_name: str) -> int:
         """Return the number of documents (staging table or chunks_table)."""
