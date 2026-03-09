@@ -532,18 +532,8 @@ async def export_collection_to_zip(
         backend = None
 
         if use_backend:
-            # Phase 4 MEDIUM: Add timeout protection for collection export
-            try:
-                backend = await asyncio.wait_for(
-                    retriever._get_knowledge_backend(collection_id),
-                    timeout=5.0  # 5 seconds for backend init
-                )
-                total_count = await asyncio.wait_for(
-                    backend.count(collection_name),
-                    timeout=3.0  # 3 seconds for count
-                )
-            except asyncio.TimeoutError:
-                raise ValueError(f"Timeout accessing collection {collection_id} backend - export aborted")
+            backend = await retriever._get_knowledge_backend(collection_id)
+            total_count = await backend.count(collection_name)
         else:
             try:
                 chroma_collection = retriever.client.get_collection(name=collection_name)
