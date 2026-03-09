@@ -2711,7 +2711,14 @@ async def get_rag_collections():
             is_non_chromadb = coll.get("backend_type") and coll["backend_type"] != "chromadb"
             if retriever and (is_active or is_non_chromadb):
                 try:
-                    coll_copy["count"] = await retriever.get_collection_count(coll["id"])
+                    # Add timeout protection to prevent hanging on stuck backends
+                    coll_copy["count"] = await asyncio.wait_for(
+                        retriever.get_collection_count(coll["id"]),
+                        timeout=3.0  # 3 second timeout per collection
+                    )
+                except asyncio.TimeoutError:
+                    app_logger.warning(f"Timeout getting count for collection {coll['id']} - backend may be stuck")
+                    coll_copy["count"] = -1  # -1 indicates timeout/unavailable
                 except Exception as count_err:
                     app_logger.warning(f"Failed to get count for collection {coll['id']}: {count_err}")
                     coll_copy["count"] = 0
