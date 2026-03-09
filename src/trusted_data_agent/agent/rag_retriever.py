@@ -262,9 +262,20 @@ class RAGRetriever:
         coll_meta = self.get_collection_metadata(collection_id)
         if coll_meta and coll_meta.get("repository_type") == "knowledge":
             try:
-                backend = await self._get_knowledge_backend(collection_id)
+                # Phase 3 MEDIUM: Add timeout protection for backend count operation
+                backend = await asyncio.wait_for(
+                    self._get_knowledge_backend(collection_id),
+                    timeout=3.0  # 3 seconds for backend init
+                )
                 if backend:
-                    return await backend.count(coll_meta["collection_name"])
+                    count_result = await asyncio.wait_for(
+                        backend.count(coll_meta["collection_name"]),
+                        timeout=3.0  # 3 seconds for count query
+                    )
+                    return count_result
+            except asyncio.TimeoutError:
+                logger.warning(f"get_collection_count: timeout for collection {collection_id} - returning 0")
+                return 0  # Return 0 on timeout instead of blocking
             except Exception as e:
                 logger.warning(f"get_collection_count: backend count failed for {collection_id}: {e}")
         # Planner repo or fallback: raw ChromaDB object
@@ -718,7 +729,16 @@ class RAGRetriever:
             # Copy vector data — branch on backend type
             if not self._is_chromadb_backend(source_meta):
                 # ── Non-ChromaDB: copy via abstraction layer ─────────────
-                source_backend = await self._get_knowledge_backend(source_collection_id)
+                # Phase 3 MEDIUM: Add timeout protection for backend initialization during clone
+                try:
+                    source_backend = await asyncio.wait_for(
+                        self._get_knowledge_backend(source_collection_id),
+                        timeout=5.0  # 5 seconds for backend init
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"Timeout getting source backend for collection {source_collection_id} during clone")
+                    return None
+
                 source_coll_name = source_meta["collection_name"]
 
                 # Ensure target backend + collection exist
@@ -1049,11 +1069,25 @@ class RAGRetriever:
                 self.client.delete_collection(name=coll_meta["collection_name"])
             else:
                 # Non-ChromaDB backend: delete via abstraction layer
+                # Phase 3 MEDIUM: Add timeout protection for collection deletion
                 backend = self._knowledge_backends.get(collection_id)
                 if not backend:
-                    backend = await self._get_knowledge_backend(collection_id)
+                    try:
+                        backend = await asyncio.wait_for(
+                            self._get_knowledge_backend(collection_id),
+                            timeout=5.0  # 5 seconds for backend init
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Timeout getting backend for collection {collection_id} deletion - skipping backend cleanup")
+                        backend = None  # Continue with database cleanup even if backend times out
                 if backend:
-                    await backend.delete_collection(coll_meta["collection_name"])
+                    try:
+                        await asyncio.wait_for(
+                            backend.delete_collection(coll_meta["collection_name"]),
+                            timeout=60.0  # 60 seconds for delete operation (heavy)
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Timeout deleting collection {collection_id} from backend - continuing with database cleanup")
 
             # Remove from runtime (common path)
             if collection_id in self.collections:
@@ -1108,14 +1142,36 @@ class RAGRetriever:
                 # Non-ChromaDB backend: destroy and recreate the collection.
                 # This is necessary because server-side chunked collections
                 # have no staging table, so per-document delete() won't work.
-                backend = await self._get_knowledge_backend(collection_id)
+                # Phase 3 MEDIUM: Add timeout protection for collection reset operations
+                try:
+                    backend = await asyncio.wait_for(
+                        self._get_knowledge_backend(collection_id),
+                        timeout=5.0  # 5 seconds for backend init
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(f"Timeout getting backend for collection {collection_id} reset")
+                    return {"success": False, "items_deleted": 0, "message": "Timeout connecting to backend"}
+
                 if backend:
                     coll_name = coll_meta["collection_name"]
-                    items_deleted = await backend.count(coll_name)
-                    await backend.delete_collection(coll_name)
-                    from trusted_data_agent.vectorstore.types import CollectionConfig
-                    await backend.get_or_create_collection(CollectionConfig(name=coll_name))
-                    logger.info(f"Reset {items_deleted} documents from {coll_meta.get('backend_type')} for collection '{collection_id}' (destroy + recreate)")
+                    try:
+                        items_deleted = await asyncio.wait_for(
+                            backend.count(coll_name),
+                            timeout=3.0  # 3 seconds for count
+                        )
+                        await asyncio.wait_for(
+                            backend.delete_collection(coll_name),
+                            timeout=60.0  # 60 seconds for delete
+                        )
+                        from trusted_data_agent.vectorstore.types import CollectionConfig
+                        await asyncio.wait_for(
+                            backend.get_or_create_collection(CollectionConfig(name=coll_name)),
+                            timeout=10.0  # 10 seconds for recreate
+                        )
+                        logger.info(f"Reset {items_deleted} documents from {coll_meta.get('backend_type')} for collection '{collection_id}' (destroy + recreate)")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Timeout during collection {collection_id} reset operations")
+                        return {"success": False, "items_deleted": 0, "message": "Reset operation timed out"}
             elif collection_id in self.collections:
                 # ChromaDB path: delete via raw collection object
                 collection = self.collections[collection_id]
