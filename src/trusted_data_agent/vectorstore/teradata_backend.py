@@ -329,22 +329,42 @@ class TeradataVectorBackend(VectorStoreBackend):
                 self._pem_tempfile = tmpdir  # track dir for cleanup
                 self._pem_file = pem_path
 
-            if self._pat_token:
-                pat_kwargs: dict = {
-                    "base_url": base_url,
-                    "pat_token": self._pat_token,
-                }
-                if self._pem_file:
-                    pat_kwargs["pem_file"] = self._pem_file
-                await self._run_in_td_thread(set_auth_token, **pat_kwargs)
-            else:
-                # Fallback: username/password Basic auth
-                await self._run_in_td_thread(
-                    set_auth_token,
-                    base_url=base_url,
-                    username=self._username,
-                    password=self._password,
-                )
+            # set_auth_token also hits the REST API — retry on transient
+            # CloudFront gateway errors (502/503/504).
+            max_retries = 3
+            for attempt in range(1, max_retries + 1):
+                try:
+                    if self._pat_token:
+                        pat_kwargs: dict = {
+                            "base_url": base_url,
+                            "pat_token": self._pat_token,
+                        }
+                        if self._pem_file:
+                            pat_kwargs["pem_file"] = self._pem_file
+                        await self._run_in_td_thread(set_auth_token, **pat_kwargs)
+                    else:
+                        await self._run_in_td_thread(
+                            set_auth_token,
+                            base_url=base_url,
+                            username=self._username,
+                            password=self._password,
+                        )
+                    break  # success
+                except Exception as e:
+                    err = str(e)
+                    is_transient = any(
+                        s in err
+                        for s in ("502", "503", "504", "Gateway Timeout", "ECONNRESET")
+                    )
+                    if is_transient and attempt < max_retries:
+                        wait = attempt * 3
+                        logger.warning(
+                            f"set_auth_token attempt {attempt}/{max_retries} "
+                            f"failed (transient): {e} — retrying in {wait}s"
+                        )
+                        await asyncio.sleep(wait)
+                    else:
+                        raise
             self._initialized = True
             logger.info(
                 "TeradataVectorBackend initialized "
@@ -521,12 +541,59 @@ class TeradataVectorBackend(VectorStoreBackend):
             return [dict(zip(cols, row)) for row in result.fetchall()]
         return []
 
-    def _get_store(self, collection_name: str) -> Any:
+    async def _create_vs(self, collection_name: str) -> Any:
+        """Create a VectorStore instance on the dedicated teradataml thread with retry.
+
+        The SDK constructor calls ``VSManager.health()`` which hits the REST API.
+        Must run on ``_td_executor`` to share the auth context established by
+        ``set_auth_token()``.  Retries on transient CloudFront gateway errors.
+        """
+        from teradatagenai import VectorStore  # type: ignore[import]
+
+        max_retries = 3
+        t = self._VS_STATUS_CALL_TIMEOUT
+        for attempt in range(1, max_retries + 1):
+            try:
+                vs = await asyncio.wait_for(
+                    self._run_in_td_thread(VectorStore, collection_name),
+                    timeout=t,
+                )
+                return vs
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"VectorStore('{collection_name}') attempt {attempt}/{max_retries} "
+                    f"timed out after {t}s — thread may be stuck"
+                )
+                if attempt < max_retries:
+                    self._replace_stuck_executor()
+                    await self._reconnect_all()
+                    await asyncio.sleep(attempt * 3)
+                else:
+                    raise RuntimeError(
+                        f"VectorStore('{collection_name}') constructor timed out "
+                        f"after {max_retries} attempts ({t}s each)"
+                    )
+            except Exception as e:
+                err = str(e)
+                is_transient = any(
+                    s in err
+                    for s in ("502", "503", "504", "Gateway Timeout", "ECONNRESET")
+                )
+                if is_transient and attempt < max_retries:
+                    wait = attempt * 3
+                    logger.warning(
+                        f"VectorStore('{collection_name}') attempt {attempt}/{max_retries} "
+                        f"failed (transient): {e} — retrying in {wait}s"
+                    )
+                    await asyncio.sleep(wait)
+                else:
+                    raise
+
+    async def _get_store(self, collection_name: str) -> Any:
         """Return cached VectorStore, attaching to an existing store if not yet cached."""
         if collection_name not in self._stores:
             try:
-                from teradatagenai import VectorStore  # type: ignore[import]
-                vs = VectorStore(collection_name)
+                vs = await self._create_vs(collection_name)
                 self._stores[collection_name] = vs
                 self._collections.add(collection_name)
             except Exception as exc:
@@ -622,6 +689,27 @@ class TeradataVectorBackend(VectorStoreBackend):
             except RuntimeError:
                 self._vs_operation_active = False
                 raise
+            except asyncio.TimeoutError as texc:
+                consecutive_errors += 1
+                logger.warning(
+                    f"VS '{operation}' poll timeout #{consecutive_errors}: {texc}"
+                )
+                # The dedicated thread is likely stuck on a hanging REST call.
+                # Replace the executor so subsequent calls don't queue behind it.
+                if collection_name:
+                    logger.info(
+                        f"VS '{operation}': timeout — replacing stuck thread "
+                        f"and re-establishing connections"
+                    )
+                    try:
+                        self._replace_stuck_executor()
+                        await self._reconnect_all()
+                        from teradatagenai import VectorStore as _VS  # type: ignore[import]
+                        vs = await self._run_in_td_thread(_VS, collection_name)
+                        logger.info(f"VS '{operation}': fresh thread ready, polling resumed")
+                        consecutive_errors = 0
+                    except Exception as reconn_exc:
+                        logger.warning(f"VS '{operation}': thread replacement failed: {reconn_exc}")
             except Exception as exc:
                 consecutive_errors += 1
                 logger.warning(f"VS status poll error during '{operation}': {exc}")
@@ -637,7 +725,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                     try:
                         await self._reconnect_all()
                         from teradatagenai import VectorStore as _VS  # type: ignore[import]
-                        vs = _VS(collection_name)
+                        vs = await self._run_in_td_thread(_VS, collection_name)
                         logger.info(f"VS '{operation}': connections restored, polling resumed")
                         consecutive_errors = 0
                     except Exception as reconn_exc:
@@ -649,6 +737,30 @@ class TeradataVectorBackend(VectorStoreBackend):
         raise TimeoutError(
             f"Teradata VS operation '{operation}' timed out after {timeout}s "
             f"(last status: {last_status})"
+        )
+
+    _VS_STATUS_CALL_TIMEOUT = 60  # seconds – per REST call to Teradata
+
+    def _replace_stuck_executor(self) -> None:
+        """Abandon a stuck dedicated thread and create a fresh executor.
+
+        When ``_run_in_td_thread`` times out, the underlying OS thread is
+        still blocked on the network call.  ``ThreadPoolExecutor`` cannot
+        interrupt it.  We call ``shutdown(wait=False)`` to stop accepting
+        new work, then create a new single-thread pool.  The stuck thread
+        will eventually return (or be killed at process exit).
+
+        After replacement, ``_reconnect_all()`` **must** be called to
+        re-establish ``create_context`` and ``set_auth_token`` on the new
+        thread before any SDK work can proceed.
+        """
+        logger.warning("Replacing stuck teradataml executor with a fresh thread")
+        try:
+            self._td_executor.shutdown(wait=False)
+        except Exception:
+            pass
+        self._td_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="teradataml"
         )
 
     async def _get_vs_status(self, vs: Any) -> str:
@@ -664,30 +776,56 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         Falls back to ``vs.status()`` only when ``get_details()`` is
         unavailable.
+
+        Each REST call is wrapped with ``asyncio.wait_for`` to prevent a
+        hanging network call from blocking the poll loop indefinitely.
+        Raises ``asyncio.TimeoutError`` when both primary and fallback
+        time out, so the caller can trigger thread replacement.
         """
+        t = self._VS_STATUS_CALL_TIMEOUT
+        timed_out = False
+
         # Primary: get_details(return_type='json') — plain dict, reliable
         try:
-            details = await self._run_in_td_thread(
-                lambda: vs.get_details(return_type="json")
+            details = await asyncio.wait_for(
+                self._run_in_td_thread(
+                    lambda: vs.get_details(return_type="json")
+                ),
+                timeout=t,
             )
             if details and isinstance(details, dict):
                 vs_status = details.get("vs_status")
                 if vs_status is not None:
                     return str(vs_status).upper()
+        except asyncio.TimeoutError:
+            logger.warning(f"VS get_details() timed out after {t}s")
+            timed_out = True
         except Exception:
             pass  # fall through to status()
 
         # Fallback: status() — works once the VS is past the initial phase
         try:
-            status = await self._run_in_td_thread(vs.status)
+            status = await asyncio.wait_for(
+                self._run_in_td_thread(vs.status),
+                timeout=t,
+            )
             if status is not None:
                 # status() returns a teradataml DataFrame
-                pdf = await self._run_in_td_thread(status.to_pandas)
+                pdf = await asyncio.wait_for(
+                    self._run_in_td_thread(status.to_pandas),
+                    timeout=t,
+                )
                 if not pdf.empty and "status" in pdf.columns:
                     return str(pdf["status"].iloc[0]).upper()
                 return str(status).upper()
+        except asyncio.TimeoutError:
+            logger.warning(f"VS status() timed out after {t}s")
+            timed_out = True
         except Exception:
             pass
+
+        if timed_out:
+            raise asyncio.TimeoutError("VS status calls timed out — dedicated thread may be stuck")
 
         return "UNKNOWN"
 
@@ -890,7 +1028,6 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         import pandas as pd  # type: ignore[import]
         from teradataml import copy_to_sql  # type: ignore[import]
-        from teradatagenai import VectorStore  # type: ignore[import]
 
         staging = self._staging_table(collection_name)
         staging_qualified = self._qualified(staging)
@@ -930,7 +1067,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
             if collection_name not in self._stores:
                 # First add: create the VectorStore from the full staging table
-                vs = VectorStore(collection_name)
+                vs = await self._create_vs(collection_name)
                 await self._run_in_td_thread(
                     vs.create,
                     embeddings_model=self._embedding_model,
@@ -999,10 +1136,8 @@ class TeradataVectorBackend(VectorStoreBackend):
         if not self._initialized:
             await self.initialize()
 
-        from teradatagenai import VectorStore  # type: ignore[import]
-
         config = chunking_config or ServerSideChunkingConfig()
-        vs = VectorStore(collection_name)
+        vs = await self._create_vs(collection_name)
 
         create_kwargs: dict = {
             "embeddings_model": self._embedding_model,
@@ -1064,7 +1199,7 @@ class TeradataVectorBackend(VectorStoreBackend):
         import pandas as pd  # type: ignore[import]
         from teradataml import copy_to_sql  # type: ignore[import]
 
-        vs = self._get_store(collection_name)
+        vs = await self._get_store(collection_name)
         staging_qualified = self._qualified(self._staging_table(collection_name))
 
         # Build SQL IN clause — chunk IDs are SHA-256 hex strings, safe to embed
@@ -1156,7 +1291,7 @@ class TeradataVectorBackend(VectorStoreBackend):
         include_metadata: bool = True,
     ) -> QueryResult:
         """Semantic similarity search via the Teradata VectorStore."""
-        vs = self._get_store(collection_name)
+        vs = await self._get_store(collection_name)
 
         if where is not None:
             logger.warning(
@@ -1179,7 +1314,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             logger.info("teradataml connection lost during query — reconnecting")
             await self._reconnect_all()
             # Re-acquire VectorStore handle (SDK object may be invalidated)
-            vs = self._get_store(collection_name)
+            vs = await self._get_store(collection_name)
             result_df_raw = await self._run_in_td_thread(
                 vs.similarity_search,
                 question=query_text,
