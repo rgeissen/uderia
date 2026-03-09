@@ -1791,11 +1791,7 @@ class RAGRetriever:
                 if coll_id in self.collections:
                     continue  # Safety: already queried above
                 try:
-                    # Phase 1 CRITICAL: Add timeout protection for backend initialization
-                    backend = await asyncio.wait_for(
-                        self._get_knowledge_backend(coll_id),
-                        timeout=5.0  # 5 seconds for backend resolution
-                    )
+                    backend = await self._get_knowledge_backend(coll_id)
                     if not backend:
                         continue
                     coll_meta = self.get_collection_metadata(coll_id)
@@ -1807,13 +1803,9 @@ class RAGRetriever:
                     emb_model = (coll_meta or db_coll).get("embedding_model", self.embedding_model_name)
                     emb_provider = get_embedding_provider(emb_model)
 
-                    # Phase 1 CRITICAL: Add timeout protection for query operation
-                    query_result = await asyncio.wait_for(
-                        backend.query(
-                            coll_name, query_text=query, n_results=k * 10,
-                            embedding_provider=emb_provider,
-                        ),
-                        timeout=10.0  # 10 seconds for query operation
+                    query_result = await backend.query(
+                        coll_name, query_text=query, n_results=k * 10,
+                        embedding_provider=emb_provider,
                     )
 
                     for doc, distance in query_result:
@@ -1839,9 +1831,6 @@ class RAGRetriever:
                             candidate["collection_name"] = coll_meta.get("name")
                             candidate["repository_type"] = "knowledge"
                         all_candidate_cases.append(candidate)
-                except asyncio.TimeoutError:
-                    logger.warning(f"Timeout getting/querying backend for knowledge collection '{coll_id}' - skipping")
-                    continue
                 except Exception as e:
                     logger.error(f"Error querying non-ChromaDB knowledge collection '{coll_id}': {e}", exc_info=True)
 
