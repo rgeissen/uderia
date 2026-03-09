@@ -6018,13 +6018,22 @@ async def _test_vectorstore_backend(backend_type: str, backend_config: dict) -> 
 
         backend = QdrantBackend(connection_config=backend_config)
         try:
-            await backend.initialize()
-            collections = await backend._client.get_collections()
+            # Phase 4 MEDIUM: Add timeout protection for test connection
+            await asyncio.wait_for(
+                backend.initialize(),
+                timeout=5.0  # 5 seconds for test connection
+            )
+            collections = await asyncio.wait_for(
+                backend._client.get_collections(),
+                timeout=5.0  # 5 seconds for collection list
+            )
             server_info = {
                 "url": backend_config["url"],
                 "collections": len(collections.collections),
             }
             return True, "Connection successful", server_info
+        except asyncio.TimeoutError:
+            return False, "Connection test timed out - backend may be slow or unavailable", None
         except Exception as e:
             error_msg = str(e)
             if "401" in error_msg or "Unauthorized" in error_msg:
@@ -6057,12 +6066,18 @@ async def _test_vectorstore_backend(backend_type: str, backend_config: dict) -> 
 
     backend = TeradataVectorBackend(connection_config=backend_config)
     try:
-        await backend.initialize()
+        # Phase 4 MEDIUM: Add timeout protection for test connection
+        await asyncio.wait_for(
+            backend.initialize(),
+            timeout=5.0  # 5 seconds for test connection
+        )
         server_info = {
             "host": backend_config["host"],
             "database": backend_config.get("database"),
         }
         return True, "Connection successful", server_info
+    except asyncio.TimeoutError:
+        return False, "Connection test timed out - backend may be slow or unavailable", None
     except Exception as e:
         error_msg = str(e)
         # Add diagnostic hints for common SDK errors
