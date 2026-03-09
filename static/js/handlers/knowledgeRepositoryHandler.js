@@ -151,6 +151,7 @@ function _knowledgeBackendBadge(backendType) {
     const backends = {
         chromadb: { label: 'ChromaDB', color: '#4ade80', bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.3)' },
         teradata: { label: 'Teradata', color: '#F15F22', bg: 'rgba(241,95,34,0.12)', border: 'rgba(241,95,34,0.3)' },
+        qdrant: { label: 'Qdrant', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.3)' }
     };
     const c = backends[backendType] || backends.chromadb;
     return `<span style="display:inline-flex;align-items:center;padding:1px 5px;font-size:10px;font-weight:600;border-radius:3px;background:${c.bg};color:${c.color};border:1px solid ${c.border};">${c.label}:</span>`;

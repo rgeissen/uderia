@@ -107,6 +107,20 @@ function getEventCategory(eventType) {
     return EVENT_CATEGORY_MAP[eventType] || 'success';
 }
 
+/**
+ * Get human-readable backend label from backend_type string
+ * @param {string} backendType - Backend type (chromadb, qdrant, teradata)
+ * @returns {string} - Formatted label (ChromaDB, Qdrant, Teradata)
+ */
+function _getBackendLabel(backendType) {
+    const labels = {
+        'chromadb': 'ChromaDB',
+        'qdrant': 'Qdrant',
+        'teradata': 'Teradata'
+    };
+    return labels[backendType] || backendType.charAt(0).toUpperCase() + backendType.slice(1);
+}
+
 // ============================================================================
 // EVENT FILTER CATEGORY SYSTEM
 // Maps (source, type) to one of 7 filter categories for the header filter chips.
@@ -6444,11 +6458,12 @@ function createKnowledgeRepositoryCard(col) {
         return d;
     })() : null;
     
-    // Metadata (ChromaDB name and chunking info)
+    // Metadata (backend name and chunking info)
     const meta = document.createElement('p');
     meta.className = 'text-xs text-gray-500';
     const chunkInfo = col.chunking_strategy ? ` | ${col.chunking_strategy} chunking` : '';
-    meta.textContent = `ChromaDB: ${col.collection_name}${chunkInfo}`;
+    const backendLabel = _getBackendLabel(col.backend_type || 'chromadb');
+    meta.textContent = `${backendLabel}: ${col.collection_name}${chunkInfo}`;
 
     // Embedding model info
     const embeddingInfo = document.createElement('p');
@@ -6720,10 +6735,11 @@ function createCollectionCard(col) {
                 return d;
             })() : null;
             
-            // Metadata (collection_name from ChromaDB)
+            // Metadata (collection_name from backend)
             const meta = document.createElement('p');
             meta.className = 'text-xs text-gray-500';
-            meta.textContent = `ChromaDB: ${col.collection_name}`;
+            const backendLabel = _getBackendLabel(col.backend_type || 'chromadb');
+            meta.textContent = `${backendLabel}: ${col.collection_name}`;
 
             // Embedding model info
             const embeddingInfo = document.createElement('p');
@@ -7986,11 +8002,12 @@ function openKnowledgeRepositoryView(collection) {
     state.currentKnowledgeRepository = collection;
     
     // For now, show an alert with details - we'll create a proper view modal later
+    const backendLabel = _getBackendLabel(collection.backend_type || 'chromadb');
     const msg = `Knowledge Repository: ${collection.name}\n\n` +
                 `Description: ${collection.description || 'N/A'}\n` +
                 `Chunking: ${collection.chunking_strategy || 'semantic'}\n` +
                 `Collection ID: ${collection.id}\n` +
-                `ChromaDB: ${collection.collection_name}\n\n` +
+                `Backend: ${backendLabel} (${collection.collection_name})\n\n` +
                 `View modal coming soon...`;
     
     // Using info banner as temporary solution until proper modal is implemented
