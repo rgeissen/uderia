@@ -10,6 +10,7 @@ Key features:
 - Configurable parameters for agent pack vs standalone use
 """
 
+import asyncio
 import json
 import logging
 import re
