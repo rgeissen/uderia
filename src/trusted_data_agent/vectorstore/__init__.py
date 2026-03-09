@@ -105,12 +105,21 @@ __all__ = [
 ]
 
 # Auto-register optional backends (no-op if SDKs not installed)
+import logging
+logger = logging.getLogger("quart.app")
+
 try:
     from . import teradata_backend as _teradata_backend  # noqa: F401
-except Exception:
-    pass  # teradatagenai/teradataml not installed — Teradata backend unavailable
+    logger.info("Teradata backend registered successfully")
+except ImportError:
+    logger.info("Teradata backend unavailable (teradatagenai/teradataml not installed)")
+except Exception as e:
+    logger.error(f"Failed to register Teradata backend: {e}", exc_info=True)
 
 try:
     from . import qdrant_backend as _qdrant_backend  # noqa: F401
-except Exception:
-    pass  # qdrant-client not installed — Qdrant backend unavailable
+    logger.info("Qdrant backend registered successfully")
+except ImportError:
+    logger.info("Qdrant backend unavailable (qdrant-client not installed)")
+except Exception as e:
+    logger.error(f"Failed to register Qdrant backend: {e}", exc_info=True)

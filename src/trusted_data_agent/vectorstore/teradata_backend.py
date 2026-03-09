@@ -192,6 +192,9 @@ class TeradataVectorBackend(VectorStoreBackend):
             "search_algorithm", "VECTORDISTANCE"
         )
         self._top_k: int = int(connection_config.get("top_k", 10))
+        # Configurable polling for large document ingestion
+        self._poll_interval: float = float(connection_config.get("poll_interval", 5.0))
+        self._poll_timeout: int = int(connection_config.get("poll_timeout", 1800))  # 30 minutes default
 
         # VectorStore cache: collection_name -> VectorStore instance
         self._stores: Dict[str, Any] = {}
@@ -257,12 +260,17 @@ class TeradataVectorBackend(VectorStoreBackend):
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    async def initialize(self) -> None:
+    async def initialize(self, rest_only: bool = False) -> None:
         """Open connections to the Teradata Vector Store API and direct SQL interface.
 
         Follows the VantageCloud Lake Getting Started pattern:
-          1. ``create_context(host, username, password)``  — SQL context
+          1. ``create_context(host, username, password)``  — SQL context (skipped if rest_only=True)
           2. ``set_auth_token(base_url, pat_token, pem_file)`` — VS REST API auth
+
+        Args:
+            rest_only: If True, skip SQL connection (create_context). Use for pure
+                      server-side chunking where SDK handles all SQL operations internally.
+                      Prevents character encoding issues with active SQL connections.
         """
         try:
             from teradatagenai import set_auth_token  # type: ignore[import]
@@ -290,12 +298,17 @@ class TeradataVectorBackend(VectorStoreBackend):
             # 1. SQL context — must be established BEFORE set_auth_token (SDK requirement).
             #    Matches Getting Started cell [4]:
             #      create_context(host=host, username=username, password=my_variable)
-            ctx_kwargs: dict = {"host": self._host, "username": self._username}
-            if self._password:
-                ctx_kwargs["password"] = self._password
-            if self._database:
-                ctx_kwargs["database"] = self._database
-            await self._run_in_td_thread(create_context, **ctx_kwargs)
+            #    SKIP for rest_only mode to avoid character encoding issues with active SQL connections.
+            if not rest_only:
+                ctx_kwargs: dict = {"host": self._host, "username": self._username}
+                if self._password:
+                    ctx_kwargs["password"] = self._password
+                if self._database:
+                    ctx_kwargs["database"] = self._database
+                await self._run_in_td_thread(create_context, **ctx_kwargs)
+                logger.info("SQL context established via create_context()")
+            else:
+                logger.info("Skipping SQL context (REST-only mode for server-side chunking)")
 
             # 2. VS REST API auth — matches Getting Started cell [5]:
             #      ues_uri = env_vars.get("ues_uri")
@@ -319,15 +332,24 @@ class TeradataVectorBackend(VectorStoreBackend):
                         "PEM Key Name is required when providing PEM content. "
                         "Use the key name from VantageCloud Lake Console."
                     )
-                tmpdir = tempfile.mkdtemp(prefix="tda_vs_")
-                pem_path = os.path.join(tmpdir, f"{self._pem_key_name}.pem")
-                with open(pem_path, "w") as f:
-                    content = self._pem_content
-                    if not content.endswith("\n"):
-                        content += "\n"
-                    f.write(content)
-                self._pem_tempfile = tmpdir  # track dir for cleanup
-                self._pem_file = pem_path
+                tmpdir = None
+                pem_path = None
+                try:
+                    tmpdir = tempfile.mkdtemp(prefix="tda_vs_")
+                    pem_path = os.path.join(tmpdir, f"{self._pem_key_name}.pem")
+                    with open(pem_path, "w") as f:
+                        content = self._pem_content
+                        if not content.endswith("\n"):
+                            content += "\n"
+                        f.write(content)
+                    self._pem_tempfile = tmpdir  # track dir for cleanup
+                    self._pem_file = pem_path
+                except Exception:
+                    # Clean up temp dir if PEM write failed
+                    if tmpdir and os.path.exists(tmpdir):
+                        import shutil
+                        shutil.rmtree(tmpdir, ignore_errors=True)
+                    raise
 
             # set_auth_token also hits the REST API — retry on transient
             # CloudFront gateway errors (502/503/504).
@@ -1198,9 +1220,13 @@ class TeradataVectorBackend(VectorStoreBackend):
         When ``progress_callback`` is provided, it is invoked with real EVS
         phase information (PREPARING INPUT → CHUNKING → EMBEDDING → INDEXING
         → READY) so callers can relay progress to the UI.
+
+        IMPORTANT: Uses REST-only initialization (skips create_context SQL connection)
+        to avoid character encoding issues. The SDK handles all SQL operations
+        internally during server-side chunking.
         """
         if not self._initialized:
-            await self.initialize()
+            await self.initialize(rest_only=True)
 
         config = chunking_config or ServerSideChunkingConfig()
         vs = await self._create_vs(collection_name)
@@ -1209,7 +1235,11 @@ class TeradataVectorBackend(VectorStoreBackend):
             "embeddings_model": self._embedding_model,
             "search_algorithm": self._search_algorithm,
             "top_k": self._top_k,
-            "target_database": self._database,
+            # IMPORTANT: Do NOT pass target_database for server-side chunking.
+            # Let the SDK use its default database to avoid character set encoding issues.
+            # The user's database (self._database) may have restrictive character sets
+            # (e.g., LATIN1) that fail on UTF-8 characters in PDFs at SQL insertion time.
+            # "target_database": self._database,  # REMOVED
             "document_files": file_paths,
             "chunk_size": config.chunk_size,
             "optimized_chunking": config.optimized_chunking,
@@ -1229,15 +1259,18 @@ class TeradataVectorBackend(VectorStoreBackend):
         logger.info(
             f"VS create kwargs: embeddings_model={create_kwargs['embeddings_model']}, "
             f"search_algorithm={create_kwargs['search_algorithm']}, "
-            f"target_database={create_kwargs['target_database']}, "
             f"document_files={create_kwargs['document_files']}, "
             f"chunk_size={create_kwargs['chunk_size']}, "
-            f"optimized_chunking={create_kwargs['optimized_chunking']}"
+            f"optimized_chunking={create_kwargs['optimized_chunking']} "
+            f"(target_database removed to avoid character set encoding issues)"
         )
         await self._run_in_td_thread(vs.create, **create_kwargs)
         # PDF processing with Bedrock embeddings can take 15–30+ minutes
+        # Use configurable timeout for large document ingestion
         vs = await self._poll_status(
-            vs, operation="create_from_files", timeout=1800,
+            vs, operation="create_from_files",
+            timeout=self._poll_timeout,
+            interval=int(self._poll_interval),
             progress_callback=progress_callback,
         )
 

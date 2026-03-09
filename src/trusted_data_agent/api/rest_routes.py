@@ -2793,6 +2793,26 @@ async def create_rag_collection():
             else:
                 return jsonify({"status": "error", "message": f"Vector store configuration '{vector_store_config_id}' not found"}), 400
 
+        # Validate backend configuration before creating collection (fail fast)
+        if backend_type != "chromadb":
+            # Decrypt credentials and merge for validation
+            from trusted_data_agent.auth import encryption
+            full_config = dict(backend_config)
+            if vector_store_config_id:
+                credentials = encryption.decrypt_credentials(user_uuid, f"vectorstore_{vector_store_config_id}")
+                if credentials:
+                    full_config.update(credentials)
+
+            # Validate using existing test infrastructure
+            success, message, _ = await _test_vectorstore_backend(backend_type, full_config)
+            if not success:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Vector store connection validation failed: {message}"
+                }), 400
+
+            app_logger.info(f"Validated {backend_type} configuration for new collection")
+
         # Enforce vector store governance for knowledge repositories
         if repository_type == "knowledge":
             from trusted_data_agent.auth.middleware import get_current_user

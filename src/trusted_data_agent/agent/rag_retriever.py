@@ -984,8 +984,20 @@ class RAGRetriever:
                             "owner_user_id": owner_user_id,
                             "vector_store_config_id": vector_store_config_id,
                         }
-                        loop.create_task(self._register_non_chromadb_backend(
+
+                        # Schedule registration task with error callback
+                        task = loop.create_task(self._register_non_chromadb_backend(
                             collection_id, coll_meta_for_factory))
+
+                        def handle_registration_error(task_future):
+                            try:
+                                task_future.result()  # Re-raises any exception
+                            except Exception as e:
+                                logger.error(f"Failed to register backend for collection {collection_id}: {e}", exc_info=True)
+                                # Remove from collections list on registration failure
+                                APP_STATE["rag_collections"] = [c for c in collections_list if c["id"] != collection_id]
+
+                        task.add_done_callback(handle_registration_error)
                     except RuntimeError:
                         pass  # No running loop — backend will be resolved lazily
                     logger.info(f"Added new {repository_type} collection '{collection_id}' (backend: {backend_type}, MCP Server ID: '{mcp_server_id or 'N/A'}')")
