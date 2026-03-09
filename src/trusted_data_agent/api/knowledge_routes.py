@@ -829,6 +829,50 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
     
     except Exception as e:
         app_logger.error(f"Error uploading document to Knowledge repository: {e}", exc_info=True)
+
+        # ATOMIC CREATION: Delete repository if this was the first upload and it failed
+        # This prevents orphaned empty repositories from cluttering the UI
+        try:
+            from trusted_data_agent.core.collection_db import CollectionDatabase
+            db = CollectionDatabase()
+            conn = db._get_connection()
+            cursor = conn.cursor()
+
+            # Check if repository has any documents
+            cursor.execute("""
+                SELECT COUNT(*) as doc_count FROM knowledge_documents
+                WHERE collection_id = ?
+            """, (collection_id,))
+
+            doc_count = cursor.fetchone()['doc_count']
+            conn.close()
+
+            if doc_count == 0:
+                # No documents exist - this was the first upload attempt
+                # Delete the orphaned repository
+                app_logger.warning(f"First document upload failed for collection {collection_id}. Deleting orphaned repository...")
+
+                # Delete collection from database
+                db.delete_collection(collection_id)
+
+                # Remove from APP_STATE
+                from trusted_data_agent.core.config import APP_STATE
+                APP_STATE["rag_collections"] = [
+                    c for c in APP_STATE.get("rag_collections", [])
+                    if c.get("id") != collection_id
+                ]
+
+                app_logger.info(f"Deleted orphaned repository {collection_id} (0 documents)")
+
+                # Return more helpful error message
+                return jsonify({
+                    "status": "error",
+                    "message": f"Upload failed and repository was deleted: {str(e)}",
+                    "hint": "The repository had no documents and was automatically cleaned up. Please fix the issue and try creating a new repository."
+                }), 500
+        except Exception as cleanup_error:
+            app_logger.error(f"Failed to cleanup orphaned repository: {cleanup_error}", exc_info=True)
+
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
