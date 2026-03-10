@@ -949,6 +949,16 @@ function openEditCollectionModal(collection) {
         editCollectionMcpServerSelect.setAttribute('required', 'required');
     }
 
+    // Show "Refresh Counts" button only for knowledge repositories
+    const refreshCountsBtn = document.getElementById('edit-rag-collection-refresh-counts');
+    if (refreshCountsBtn) {
+        if (isKnowledgeRepository) {
+            refreshCountsBtn.classList.remove('hidden');
+        } else {
+            refreshCountsBtn.classList.add('hidden');
+        }
+    }
+
     // Populate MCP server dropdown for edit modal (only for planner repositories)
     if (!isKnowledgeRepository) {
         editCollectionMcpServerSelect.innerHTML = '<option value="">Select an MCP Server...</option>';
@@ -1175,6 +1185,48 @@ if (editRagCollectionModalOverlay) {
 
 if (editRagCollectionForm) {
     editRagCollectionForm.addEventListener('submit', handleEditRagCollection);
+}
+
+// Refresh Counts button (knowledge repositories only)
+const editRagCollectionRefreshCounts = document.getElementById('edit-rag-collection-refresh-counts');
+if (editRagCollectionRefreshCounts) {
+    editRagCollectionRefreshCounts.addEventListener('click', async () => {
+        const collectionId = document.getElementById('edit-rag-collection-id')?.value;
+        if (!collectionId) return;
+
+        const btn = editRagCollectionRefreshCounts;
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `
+            <svg class="w-4 h-4 mr-1.5 inline-block -mt-0.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            Refreshing...`;
+
+        try {
+            const token = localStorage.getItem('tda_auth_token');
+            const response = await fetch(`/api/v1/rag/collections/${collectionId}/refresh-counts`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            const data = await response.json();
+            if (response.ok) {
+                showNotification('success', `Counts refreshed: ${data.document_count} documents, ${data.chunk_count} chunks`);
+                // Refresh knowledge repository cards
+                if (window.knowledgeRepositoryHandler?.loadKnowledgeRepositories) {
+                    window.knowledgeRepositoryHandler.loadKnowledgeRepositories();
+                }
+            } else {
+                showNotification('error', data.message || 'Failed to refresh counts');
+            }
+        } catch (err) {
+            console.error('[RAG] Refresh counts error:', err);
+            showNotification('error', 'Failed to refresh counts');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    });
 }
 
 /**
