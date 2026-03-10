@@ -418,14 +418,78 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 conn.commit()
                 conn.close()
 
-                # Persist counts — fetch total chunk count from backend
-                try:
-                    total_chunks = await backend.count(collection_name)
-                except Exception:
-                    total_chunks = None
+                # Persist document count immediately (we know we added 1 doc).
+                # Do NOT call backend.count() here — after Teradata EVS
+                # reports READY, the chunks table may not be queryable yet.
+                # A blocking count would either return 0/stale or delay the
+                # dialog close.  Instead, schedule a deferred background
+                # task that retries count() and pushes a notification to
+                # the frontend when the real chunk count is available.
                 get_collection_db().increment_counts(collection_id, document_delta=1)
-                if total_chunks is not None:
-                    get_collection_db().update_counts(collection_id, chunk_count=total_chunks)
+
+                async def _deferred_chunk_count(
+                    _backend, _coll_name, _coll_id, _user_uuid,
+                    initial_delay=30, interval=30, max_retries=3,
+                ):
+                    """Background: retry count() until non-zero, then persist & notify.
+
+                    Schedule: 30s → 60s → 90s (3 attempts over ~90s window).
+                    """
+                    await asyncio.sleep(initial_delay)
+                    for attempt in range(max_retries):
+                        if attempt > 0:
+                            await asyncio.sleep(interval)
+                        try:
+                            total = await _backend.count(_coll_name)
+                            if total and total > 0:
+                                # "Max wins" guard: only update if the
+                                # new count exceeds the persisted value.
+                                # Prevents an older deferred task from
+                                # overwriting a newer, higher count.
+                                current = get_collection_db().get_collection_by_id(_coll_id)
+                                current_chunks = (current or {}).get("chunk_count", 0) or 0
+                                if total <= current_chunks:
+                                    app_logger.info(
+                                        f"Deferred count for collection "
+                                        f"{_coll_id}: {total} <= current "
+                                        f"{current_chunks}, skipping"
+                                    )
+                                    return
+                                get_collection_db().update_counts(
+                                    _coll_id, chunk_count=total
+                                )
+                                app_logger.info(
+                                    f"Deferred chunk count for collection "
+                                    f"{_coll_id}: {total} chunks"
+                                )
+                                # Notify frontend to refresh cards
+                                queues = APP_STATE.get(
+                                    "notification_queues", {}
+                                ).get(_user_uuid, set())
+                                for q in queues:
+                                    asyncio.create_task(q.put({
+                                        "type": "knowledge_counts_updated",
+                                        "payload": {
+                                            "collection_id": _coll_id,
+                                            "chunk_count": total,
+                                        },
+                                    }))
+                                return
+                        except Exception as exc:
+                            app_logger.debug(
+                                f"Deferred count attempt {attempt+1} for "
+                                f"collection {_coll_id}: {exc}"
+                            )
+                    app_logger.warning(
+                        f"Deferred chunk count gave up after {max_retries} "
+                        f"attempts for collection {_coll_id}"
+                    )
+
+                asyncio.create_task(
+                    _deferred_chunk_count(
+                        backend, collection_name, collection_id, user_id,
+                    )
+                )
 
                 os.unlink(temp_file.name)
 
@@ -434,8 +498,9 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                     "status": "success",
                     "message": f"Document '{filename}' ingested via server-side chunking",
                     "document_id": document_id,
-                    "chunks_stored": total_chunks or 0,
+                    "chunks_stored": 0,
                     "chunking_mode": "server_side",
+                    "deferred_count": True,
                 }, "complete")
                 return
 

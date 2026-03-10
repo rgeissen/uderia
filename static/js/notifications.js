@@ -741,6 +741,16 @@ export function subscribeToNotifications() {
                 }, false, 'knowledge_retrieval');
                 break;
             }
+            case 'knowledge_counts_updated': {
+                // Deferred chunk count from Teradata server-side chunking
+                // completed — refresh the knowledge repository cards.
+                const { collection_id, chunk_count } = data.payload || {};
+                console.log(`[notification] Chunk count ready for collection ${collection_id}: ${chunk_count}`);
+                if (typeof window.loadKnowledgeRepositories === 'function') {
+                    window.loadKnowledgeRepositories();
+                }
+                break;
+            }
             default:
                 // console.warn("Unknown notification type:", data.type);
         }
