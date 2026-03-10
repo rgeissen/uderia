@@ -711,7 +711,7 @@ async function handleCreateAgentPack() {
 
 async function _fetchCollections() {
     try {
-        const res = await fetch('/api/v1/rag/collections', { headers: _headers(false) });
+        const res = await fetch('/api/v1/rag/collections?light=true', { headers: _headers(false) });
         if (!res.ok) return [];
         const data = await res.json();
         return data.collections || [];

@@ -15,6 +15,7 @@ Endpoints:
 import os
 import logging
 import tempfile
+import time
 from datetime import datetime, timezone
 from uuid import uuid4
 from quart import Blueprint, request, jsonify, Response
@@ -321,11 +322,14 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 )
 
                 last_pct = 10
+                last_phase = "Processing"
+                ingest_start = time.monotonic()
                 while not ingest_task.done():
                     try:
                         update = await _asyncio.wait_for(progress_queue.get(), timeout=10)
                         pct = max(update.percentage, last_pct)  # never go backwards
                         last_pct = pct
+                        last_phase = update.phase
                         minutes = update.elapsed_seconds // 60
                         seconds = update.elapsed_seconds % 60
                         time_str = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
@@ -335,7 +339,17 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                             "percentage": pct
                         }, "progress")
                     except _asyncio.TimeoutError:
-                        continue  # no status update in 10s — keep waiting
+                        # No status from backend in 10s — send heartbeat with
+                        # updated elapsed time so the UI shows the clock ticking.
+                        elapsed = int(time.monotonic() - ingest_start)
+                        minutes = elapsed // 60
+                        seconds = elapsed % 60
+                        time_str = f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+                        yield format_sse({
+                            "type": "progress",
+                            "message": f"{last_phase} ({time_str} elapsed)",
+                            "percentage": last_pct
+                        }, "progress")
 
                 # Retrieve result — raises if the task failed
                 try:

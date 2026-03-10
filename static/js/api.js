@@ -646,8 +646,9 @@ export async function fetchResourcesForServer(mcpServer) {
     return await res.json();
 }
 
-export async function getRagCollections() {
-    const res = await fetch('/api/v1/rag/collections', { headers: _getHeaders(false) });
+export async function getRagCollections(light = false) {
+    const url = light ? '/api/v1/rag/collections?light=true' : '/api/v1/rag/collections';
+    const res = await fetch(url, { headers: _getHeaders(false) });
     if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.message || 'Failed to fetch RAG collections');

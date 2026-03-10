@@ -201,6 +201,8 @@ class TeradataVectorBackend(VectorStoreBackend):
         # Known collections (VS creation may be deferred until first add)
         self._collections: Set[str] = set()
         self._initialized: bool = False
+        self._init_started: bool = False
+        self._init_event: asyncio.Event = asyncio.Event()
         # Guard against concurrent create_context() calls invalidating
         # in-flight VS operations (e.g. UI auto-refresh triggering count()
         # while VectorStore.create() is being polled).
@@ -267,11 +269,26 @@ class TeradataVectorBackend(VectorStoreBackend):
           1. ``create_context(host, username, password)``  — SQL context (skipped if rest_only=True)
           2. ``set_auth_token(base_url, pat_token, pem_file)`` — VS REST API auth
 
+        Idempotent: returns immediately if already initialized.  Concurrent-safe:
+        if another caller is already running ``initialize()``, this method waits
+        for it to complete instead of starting a duplicate ``create_context()``.
+
         Args:
             rest_only: If True, skip SQL connection (create_context). Use for pure
                       server-side chunking where SDK handles all SQL operations internally.
                       Prevents character encoding issues with active SQL connections.
         """
+        if self._initialized:
+            return
+
+        # Another caller is already initializing — wait for it to finish.
+        if self._init_started:
+            logger.debug("initialize() waiting for in-progress init to complete")
+            await self._init_event.wait()
+            return
+
+        self._init_started = True
+
         try:
             from teradatagenai import set_auth_token  # type: ignore[import]
         except ImportError as exc:
@@ -305,6 +322,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                     ctx_kwargs["password"] = self._password
                 if self._database:
                     ctx_kwargs["database"] = self._database
+                logger.info(f"[TD-SDK] create_context(host={self._host}, database={self._database}, username={self._username})")
                 await self._run_in_td_thread(create_context, **ctx_kwargs)
                 logger.info("SQL context established via create_context()")
             else:
@@ -363,8 +381,10 @@ class TeradataVectorBackend(VectorStoreBackend):
                         }
                         if self._pem_file:
                             pat_kwargs["pem_file"] = self._pem_file
+                        logger.info(f"[TD-SDK] set_auth_token(base_url={base_url}, pat_token=***{self._pat_token[-6:]}, pem_file={self._pem_file})")
                         await self._run_in_td_thread(set_auth_token, **pat_kwargs)
                     else:
+                        logger.info(f"[TD-SDK] set_auth_token(base_url={base_url}, username={self._username})")
                         await self._run_in_td_thread(
                             set_auth_token,
                             base_url=base_url,
@@ -388,6 +408,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                     else:
                         raise
             self._initialized = True
+            self._init_event.set()  # Wake up any concurrent waiters
             logger.info(
                 "TeradataVectorBackend initialized "
                 f"(host={self._host}, database={self._database}, "
@@ -395,8 +416,12 @@ class TeradataVectorBackend(VectorStoreBackend):
                 f"auth={'pat_token' if self._pat_token else 'user/pass'})"
             )
         except RuntimeError:
+            self._init_started = False  # Allow retry on failure
+            self._init_event.set()  # Wake up waiters so they can see failure
             raise
         except Exception as exc:
+            self._init_started = False  # Allow retry on failure
+            self._init_event.set()  # Wake up waiters so they can see failure
             raise RuntimeError(
                 f"Failed to initialize Teradata backend: {exc}"
             ) from exc
@@ -435,12 +460,19 @@ class TeradataVectorBackend(VectorStoreBackend):
         """Return fully qualified Teradata table name (database.table)."""
         return f"{self._database}.{table_name}"
 
-    async def _reconnect_all(self) -> None:
+    async def _reconnect_all(self, *, rest_only: bool = False) -> None:
         """Re-establish both SQL context and VS REST API auth.
 
         Uses ``_reconnect_lock`` to serialise: if another coroutine already
         reconnected after the caller's failure timestamp, the lock winner's
         fresh connection is reused (no second ``create_context()`` needed).
+
+        Args:
+            rest_only: If True, skip SQL ``create_context()`` and only refresh
+                      REST API auth.  Used during VS operations (create/add/
+                      destroy) where calling ``create_context()`` would
+                      overwrite the global teradataml singleton and invalidate
+                      the active ``VectorStore`` instance.
         """
         ts_before = time.monotonic()
         async with self._reconnect_lock:
@@ -449,33 +481,47 @@ class TeradataVectorBackend(VectorStoreBackend):
                 logger.debug("Skipping reconnect — another coroutine already reconnected")
                 return
 
-            from teradataml import create_context  # type: ignore[import]
             from teradatagenai import set_auth_token  # type: ignore[import]
 
-            logger.info("teradataml connection lost — re-establishing create_context()")
-            ctx_kwargs: dict = {"host": self._host, "username": self._username}
-            if self._password:
-                ctx_kwargs["password"] = self._password
-            if self._database:
-                ctx_kwargs["database"] = self._database
+            # Guard: skip create_context() while a VS operation is in progress.
+            # The VectorStore SDK holds internal state tied to the global
+            # teradataml context.  Calling create_context() would overwrite
+            # that context, invalidating the VS instance being polled.
+            skip_sql = rest_only or self._vs_operation_active
+            if skip_sql:
+                logger.info(
+                    "Reconnect: skipping create_context() — VS operation active "
+                    f"(_vs_operation_active={self._vs_operation_active}, rest_only={rest_only}). "
+                    "Refreshing REST API auth only."
+                )
+            else:
+                from teradataml import create_context  # type: ignore[import]
 
-            try:
-                await self._run_in_td_thread(create_context, **ctx_kwargs)
-            except Exception as ce:
-                ce_str = str(ce)
-                if "TDML_2006" not in ce_str and "Failed to disconnect" not in ce_str:
-                    raise
-                # Pool disposal race: remove_context() inside create_context()
-                # failed because another thread was iterating the connection set.
-                # Best-effort cleanup, then retry once.
-                logger.warning(f"create_context() pool disposal race — retrying: {ce}")
+                logger.info("teradataml connection lost — re-establishing create_context()")
+                ctx_kwargs: dict = {"host": self._host, "username": self._username}
+                if self._password:
+                    ctx_kwargs["password"] = self._password
+                if self._database:
+                    ctx_kwargs["database"] = self._database
+
                 try:
-                    from teradataml import remove_context  # type: ignore[import]
-                    await self._run_in_td_thread(remove_context)
-                except Exception:
-                    pass  # Pool may still be busy — proceed anyway
-                await asyncio.sleep(1.0)
-                await self._run_in_td_thread(create_context, **ctx_kwargs)
+                    logger.info(f"[TD-SDK] create_context(host={self._host}, database={self._database}, username={self._username})")
+                    await self._run_in_td_thread(create_context, **ctx_kwargs)
+                except Exception as ce:
+                    ce_str = str(ce)
+                    if "TDML_2006" not in ce_str and "Failed to disconnect" not in ce_str:
+                        raise
+                    # Pool disposal race: remove_context() inside create_context()
+                    # failed because another thread was iterating the connection set.
+                    # Best-effort cleanup, then retry once.
+                    logger.warning(f"create_context() pool disposal race — retrying: {ce}")
+                    try:
+                        from teradataml import remove_context  # type: ignore[import]
+                        await self._run_in_td_thread(remove_context)
+                    except Exception:
+                        pass  # Pool may still be busy — proceed anyway
+                    await asyncio.sleep(1.0)
+                    await self._run_in_td_thread(create_context, **ctx_kwargs)
 
             if self._pat_token:
                 base_url = self._base_url
@@ -484,6 +530,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                 pat_kwargs: dict = {"base_url": base_url, "pat_token": self._pat_token}
                 if self._pem_file:
                     pat_kwargs["pem_file"] = self._pem_file
+                logger.info(f"[TD-SDK] set_auth_token(base_url={base_url}, pat_token=***{self._pat_token[-6:]}, pem_file={self._pem_file})")
                 await self._run_in_td_thread(set_auth_token, **pat_kwargs)
 
             self._last_reconnect_ts = time.monotonic()
@@ -529,6 +576,7 @@ class TeradataVectorBackend(VectorStoreBackend):
         """
         from teradataml import execute_sql  # type: ignore[import]
 
+        logger.info(f"[TD-SQL] {sql}")
         try:
             return await self._run_in_td_thread(execute_sql, sql)
         except Exception as exc:
@@ -576,6 +624,7 @@ class TeradataVectorBackend(VectorStoreBackend):
         t = self._VS_STATUS_CALL_TIMEOUT
         for attempt in range(1, max_retries + 1):
             try:
+                logger.info(f"[TD-SDK] VectorStore('{collection_name}')")
                 vs = await asyncio.wait_for(
                     self._run_in_td_thread(VectorStore, collection_name),
                     timeout=t,
@@ -675,7 +724,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                     logger.info(f"VS '{operation}' status: {status_str}")
                     last_status = status_str
                     emit_progress = True
-                elif poll_count % 12 == 0:  # Every ~60s at 5s interval
+                elif poll_count % 3 == 0:  # Every ~15s at 5s interval
                     elapsed = int(time.monotonic() - (deadline - timeout))
                     logger.info(f"VS '{operation}' still {status_str} ({elapsed}s elapsed)")
                     emit_progress = True
@@ -721,11 +770,15 @@ class TeradataVectorBackend(VectorStoreBackend):
                 if collection_name:
                     logger.info(
                         f"VS '{operation}': timeout — replacing stuck thread "
-                        f"and re-establishing connections"
+                        f"(auth token still valid, skipping re-authentication)"
                     )
                     try:
                         self._replace_stuck_executor()
-                        await self._reconnect_all()
+                        # Skip _reconnect_all() — the auth token from initialize()
+                        # is still valid (JWT tokens last 1+ hours).  Calling
+                        # set_auth_token() here is an unnecessary REST call that
+                        # can 504 when the server is busy processing documents,
+                        # causing the entire thread replacement to fail.
                         from teradatagenai import VectorStore as _VS  # type: ignore[import]
                         vs = await self._run_in_td_thread(_VS, collection_name)
                         logger.info(f"VS '{operation}': fresh thread ready, polling resumed")
@@ -742,13 +795,12 @@ class TeradataVectorBackend(VectorStoreBackend):
                 if consecutive_errors == 3 and collection_name:
                     logger.info(
                         f"VS '{operation}': 3 consecutive poll errors — "
-                        f"re-establishing connections and rebuilding VS instance"
+                        f"rebuilding VS instance (auth token still valid)"
                     )
                     try:
-                        await self._reconnect_all()
                         from teradatagenai import VectorStore as _VS  # type: ignore[import]
                         vs = await self._run_in_td_thread(_VS, collection_name)
-                        logger.info(f"VS '{operation}': connections restored, polling resumed")
+                        logger.info(f"VS '{operation}': VS instance rebuilt, polling resumed")
                         consecutive_errors = 0
                     except Exception as reconn_exc:
                         logger.warning(f"VS '{operation}': reconnection failed: {reconn_exc}")
@@ -809,6 +861,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         # Primary: get_details(return_type='json') — plain dict, reliable
         try:
+            logger.info("[TD-SDK] vs.get_details(return_type='json')")
             details = await asyncio.wait_for(
                 self._run_in_td_thread(
                     lambda: vs.get_details(return_type="json")
@@ -819,6 +872,10 @@ class TeradataVectorBackend(VectorStoreBackend):
                 vs_status = details.get("vs_status")
                 if vs_status is not None:
                     return str(vs_status).upper()
+                # Log full response when vs_status is missing to diagnose UNKNOWN
+                logger.warning(f"[TD-SDK] get_details() returned dict without 'vs_status': keys={list(details.keys())}, values={details}")
+            elif details is not None:
+                logger.warning(f"[TD-SDK] get_details() returned unexpected type {type(details).__name__}: {details}")
         except asyncio.TimeoutError:
             logger.warning(f"VS get_details() timed out after {t}s")
             timed_out = True
@@ -827,6 +884,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         # Fallback: status() — works once the VS is past the initial phase
         try:
+            logger.info("[TD-SDK] vs.status()")
             status = await asyncio.wait_for(
                 self._run_in_td_thread(vs.status),
                 timeout=t,
@@ -839,12 +897,16 @@ class TeradataVectorBackend(VectorStoreBackend):
                 )
                 if not pdf.empty and "status" in pdf.columns:
                     return str(pdf["status"].iloc[0]).upper()
+                # Log full DataFrame when status column missing
+                logger.warning(f"[TD-SDK] status() DataFrame: empty={pdf.empty}, columns={list(pdf.columns) if not pdf.empty else []}, values={pdf.to_dict() if not pdf.empty else 'empty'}")
                 return str(status).upper()
+            else:
+                logger.warning("[TD-SDK] status() returned None")
         except asyncio.TimeoutError:
             logger.warning(f"VS status() timed out after {t}s")
             timed_out = True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"[TD-SDK] status() exception: {type(exc).__name__}: {exc}")
 
         if timed_out:
             raise asyncio.TimeoutError("VS status calls timed out — dedicated thread may be stuck")
@@ -1000,6 +1062,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         if vs is not None:
             try:
+                logger.info(f"[TD-SDK] vs.destroy() for '{name}'")
                 await self._run_in_td_thread(vs.destroy)
                 await self._poll_status(vs, operation="destroy", timeout=120)
                 vs_confirmed_gone = True
@@ -1042,6 +1105,7 @@ class TeradataVectorBackend(VectorStoreBackend):
         try:
             from teradatagenai import VSManager  # type: ignore[import]
 
+            logger.info(f"[TD-SDK] VSManager.list() (verifying '{name}' absent)")
             result = await asyncio.wait_for(
                 self._run_in_td_thread(VSManager.list),
                 timeout=self._VS_STATUS_CALL_TIMEOUT,
@@ -1134,6 +1198,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         try:
             # Write delta to a named temp table (used for incremental VS ingestion)
+            logger.info(f"[TD-SDK] copy_to_sql(table={delta_table}, schema={self._database}, rows={len(df)}, if_exists=replace)")
             await self._run_in_td_thread(
                 copy_to_sql,
                 df=df,
@@ -1144,6 +1209,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             )
 
             # Append to staging table for ID tracking
+            logger.info(f"[TD-SDK] copy_to_sql(table={staging}, schema={self._database}, rows={len(df)}, if_exists=append)")
             await self._run_in_td_thread(
                 copy_to_sql,
                 df=df,
@@ -1156,6 +1222,10 @@ class TeradataVectorBackend(VectorStoreBackend):
             if collection_name not in self._stores:
                 # First add: create the VectorStore from the full staging table
                 vs = await self._create_vs(collection_name)
+                logger.info(
+                    f"[TD-SDK] vs.create(embeddings_model={self._embedding_model}, "
+                    f"object_names={staging}, key_columns=['CHUNK_ID'], data_columns=['CONTENT'])"
+                )
                 await self._run_in_td_thread(
                     vs.create,
                     embeddings_model=self._embedding_model,
@@ -1176,6 +1246,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             else:
                 # Subsequent adds: ingest only the delta into the existing VS
                 vs = self._stores[collection_name]
+                logger.info(f"[TD-SDK] vs.add_datasets(data={delta_qualified}, key_columns=['CHUNK_ID'], update_style=MINOR)")
                 await self._run_in_td_thread(
                     vs.add_datasets,
                     data=delta_qualified,
@@ -1257,12 +1328,11 @@ class TeradataVectorBackend(VectorStoreBackend):
             create_kwargs["footer_height"] = config.footer_height
 
         logger.info(
-            f"VS create kwargs: embeddings_model={create_kwargs['embeddings_model']}, "
+            f"[TD-SDK] vs.create(embeddings_model={create_kwargs['embeddings_model']}, "
             f"search_algorithm={create_kwargs['search_algorithm']}, "
             f"document_files={create_kwargs['document_files']}, "
             f"chunk_size={create_kwargs['chunk_size']}, "
-            f"optimized_chunking={create_kwargs['optimized_chunking']} "
-            f"(target_database removed to avoid character set encoding issues)"
+            f"optimized_chunking={create_kwargs['optimized_chunking']})"
         )
         await self._run_in_td_thread(vs.create, **create_kwargs)
         # PDF processing with Bedrock embeddings can take 15–30+ minutes
@@ -1330,6 +1400,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         try:
             # 2. Load the deleted rows into a temp table for VS removal
+            logger.info(f"[TD-SDK] copy_to_sql(table={del_table}, schema={self._database}, rows={len(rows_df)}, if_exists=replace)")
             await self._run_in_td_thread(
                 copy_to_sql,
                 df=rows_df,
@@ -1340,6 +1411,7 @@ class TeradataVectorBackend(VectorStoreBackend):
             )
 
             # 3. Remove from the VectorStore
+            logger.info(f"[TD-SDK] vs.delete_datasets(data={del_qualified}, key_columns=['CHUNK_ID'], update_style=MINOR)")
             await self._run_in_td_thread(
                 vs.delete_datasets,
                 data=del_qualified,
@@ -1398,6 +1470,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                 "Results will be unfiltered. (TODO: translate MetadataFilter to staging SQL)"
             )
 
+        logger.info(f"[TD-SDK] vs.similarity_search(question='{query_text[:80]}...', return_type='pandas')")
         try:
             result_df_raw = await self._run_in_td_thread(
                 vs.similarity_search,

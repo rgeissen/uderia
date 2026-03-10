@@ -6270,14 +6270,14 @@ export async function loadRagCollections() {
         }
         // Get authentication token
         const token = localStorage.getItem('tda_auth_token');
-        const res = await fetch('/api/v1/rag/collections', {
+        const res = await fetch('/api/v1/rag/collections?light=true', {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
         const data = await res.json();
         let collections = (data && data.collections) ? data.collections : [];
-        
+
         // Separate collections by repository type
         const plannerCollections = collections.filter(c => c.repository_type === 'planner');
         const knowledgeCollections = collections.filter(c => c.repository_type === 'knowledge');
