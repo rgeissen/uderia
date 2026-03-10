@@ -980,7 +980,56 @@ function openEditCollectionModal(collection) {
     editCollectionIdInput.value = collection.id;
     editCollectionNameInput.value = collection.name;
     editCollectionDescriptionInput.value = collection.description || '';
-    
+
+    // --- Search mode controls (knowledge repos only) ---
+    const editSearchSection = document.getElementById('edit-rag-search-mode-section');
+    if (editSearchSection && isKnowledgeRepository) {
+        const backendType = collection.backend_type || 'chromadb';
+        // Fetch capabilities to decide whether to show
+        const token = localStorage.getItem('tda_auth_token');
+        fetch(`/api/v1/vectorstore/capabilities?backend_type=${encodeURIComponent(backendType)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        }).then(r => r.json()).then(data => {
+            const caps = data.capabilities || [];
+            if (caps.includes('HYBRID_SEARCH')) {
+                editSearchSection.classList.remove('hidden');
+                // Pre-select current search mode
+                const currentMode = collection.search_mode || 'semantic';
+                const radio = editSearchSection.querySelector(`input[value="${currentMode}"]`);
+                if (radio) radio.checked = true;
+                // Show/hide keyword weight row
+                const kwRow = document.getElementById('edit-rag-keyword-weight-row');
+                if (kwRow) kwRow.classList.toggle('hidden', currentMode !== 'hybrid');
+                // Set keyword weight slider
+                const kwSlider = document.getElementById('edit-rag-keyword-weight');
+                const kwLabel = document.getElementById('edit-rag-keyword-weight-value');
+                if (kwSlider) kwSlider.value = collection.hybrid_keyword_weight || 0.3;
+                if (kwLabel) kwLabel.textContent = parseFloat(kwSlider?.value || 0.3).toFixed(2);
+            } else {
+                editSearchSection.classList.add('hidden');
+            }
+        }).catch(() => editSearchSection.classList.add('hidden'));
+
+        // Wire radio change events
+        const editRadios = editSearchSection.querySelectorAll('input[name="edit_search_mode"]');
+        const editKwRow = document.getElementById('edit-rag-keyword-weight-row');
+        editRadios.forEach(r => {
+            r.addEventListener('change', () => {
+                if (editKwRow) editKwRow.classList.toggle('hidden', r.value !== 'hybrid');
+            });
+        });
+        // Wire slider live value
+        const editKwSlider = document.getElementById('edit-rag-keyword-weight');
+        const editKwLabel = document.getElementById('edit-rag-keyword-weight-value');
+        if (editKwSlider && editKwLabel) {
+            editKwSlider.addEventListener('input', () => {
+                editKwLabel.textContent = parseFloat(editKwSlider.value).toFixed(2);
+            });
+        }
+    } else if (editSearchSection) {
+        editSearchSection.classList.add('hidden');
+    }
+
     // Show modal with animation
     editModalOverlay.classList.remove('hidden');
     requestAnimationFrame(() => {
@@ -1059,6 +1108,15 @@ async function handleEditRagCollection(event) {
         // Only include mcp_server_id for planner repositories
         if (!isKnowledgeRepository) {
             requestBody.mcp_server_id = mcpServerId;
+        }
+
+        // Include search mode if the section is visible (knowledge repo with hybrid-capable backend)
+        const editSearchSection = document.getElementById('edit-rag-search-mode-section');
+        if (editSearchSection && !editSearchSection.classList.contains('hidden')) {
+            const modeRadio = document.querySelector('input[name="edit_search_mode"]:checked');
+            if (modeRadio) requestBody.search_mode = modeRadio.value;
+            const kwSlider = document.getElementById('edit-rag-keyword-weight');
+            if (kwSlider) requestBody.hybrid_keyword_weight = parseFloat(kwSlider.value);
         }
 
         const response = await fetch(`/api/v1/rag/collections/${collectionId}`, {

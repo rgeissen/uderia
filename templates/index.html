@@ -7997,6 +7997,39 @@
                               placeholder="Brief description of this collection's purpose..."></textarea>
                 </div>
                 
+                <!-- Search Mode (shown only for backends with HYBRID_SEARCH capability) -->
+                <div id="edit-rag-search-mode-section" class="hidden">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Search Mode</label>
+                    <div class="flex gap-4">
+                        <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                            <input type="radio" name="edit_search_mode" value="semantic" checked
+                                   class="text-teradata-orange focus:ring-teradata-orange">
+                            Semantic
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                            <input type="radio" name="edit_search_mode" value="hybrid"
+                                   class="text-teradata-orange focus:ring-teradata-orange">
+                            Hybrid
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                            <input type="radio" name="edit_search_mode" value="keyword"
+                                   class="text-teradata-orange focus:ring-teradata-orange">
+                            Keyword
+                        </label>
+                    </div>
+                    <div id="edit-rag-keyword-weight-row" class="mt-2 hidden">
+                        <label class="block text-xs text-gray-400 mb-1">
+                            Keyword Weight: <span id="edit-rag-keyword-weight-value">0.30</span>
+                        </label>
+                        <input type="range" id="edit-rag-keyword-weight" min="0" max="1" step="0.05" value="0.3"
+                               class="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-teradata-orange">
+                        <div class="flex justify-between text-xs text-gray-500 mt-0.5">
+                            <span>0.0 (pure semantic)</span>
+                            <span>1.0 (pure keyword)</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Modal Footer -->
                 <div class="flex justify-between items-center mt-6 pt-4 border-t border-gray-600">
                     <button type="button" id="edit-rag-collection-refresh-counts"
