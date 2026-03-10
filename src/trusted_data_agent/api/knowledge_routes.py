@@ -302,14 +302,28 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 # Run server-side chunking as a background task.
                 # The progress_callback feeds real EVS status phases into
                 # the queue so we can relay them as SSE events.
+                #
+                # IMPORTANT: The wrapper task handles ALL critical DB
+                # writes (document metadata + count persistence) so they
+                # execute even when the SSE connection drops during long
+                # Teradata processing (15-30+ min for large PDFs).
                 import asyncio as _asyncio
                 progress_queue = _asyncio.Queue()
 
                 def _on_ingest_progress(update):
                     progress_queue.put_nowait(update)
 
-                ingest_task = _asyncio.create_task(
-                    backend.add_document_files(
+                # Shared dict for the wrapper to communicate results back
+                # to the SSE generator (if it's still alive).
+                _ingest_result: dict = {"success": False}
+
+                async def _ingest_and_persist():
+                    """Wrapper: ingest file → persist metadata & counts.
+
+                    Runs as an asyncio task so DB writes happen even if
+                    the SSE generator is abandoned by client disconnect.
+                    """
+                    await backend.add_document_files(
                         collection_name=collection_name,
                         file_paths=[temp_file.name],
                         chunking_config=ServerSideChunkingConfig(
@@ -320,7 +334,54 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                         ),
                         progress_callback=_on_ingest_progress,
                     )
-                )
+
+                    # ── Persist document metadata (fast SQLite write) ────
+                    try:
+                        from trusted_data_agent.core.collection_db import CollectionDatabase
+                        _db = CollectionDatabase()
+                        _conn = _db._get_connection()
+                        _cur = _conn.cursor()
+                        _cur.execute("""
+                            INSERT OR IGNORE INTO knowledge_documents
+                            (collection_id, document_id, filename,
+                             document_type, title, author, source,
+                             category, tags, file_size, content_hash,
+                             created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            collection_id, document_id, filename,
+                            os.path.splitext(filename)[1].lstrip('.'),
+                            title, author, 'upload', category,
+                            ','.join(tags), len(file_content),
+                            content_hash,
+                            datetime.now(timezone.utc).isoformat(),
+                        ))
+                        _conn.commit()
+                        _conn.close()
+                    except Exception as meta_err:
+                        app_logger.warning(
+                            f"Failed to persist document metadata for "
+                            f"'{filename}': {meta_err}"
+                        )
+
+                    # ── Increment document count ─────────────────────────
+                    get_collection_db().increment_counts(
+                        collection_id, document_delta=1
+                    )
+
+                    # ── Clean up temp file ────────────────────────────────
+                    try:
+                        os.unlink(temp_file.name)
+                    except OSError:
+                        pass
+
+                    _ingest_result["success"] = True
+                    app_logger.info(
+                        f"Server-side ingest of '{filename}' complete "
+                        f"(collection={collection_id})"
+                    )
+
+                ingest_task = _asyncio.create_task(_ingest_and_persist())
 
                 last_pct = 10
                 last_phase = "Processing"
@@ -395,38 +456,12 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                         "type": "error",
                         "message": f"Server-side chunking failed: {ingest_err}"
                     }, "error")
-                    os.unlink(temp_file.name)
                     return
 
-                # Store document metadata
-                from trusted_data_agent.core.collection_db import CollectionDatabase
-                db = CollectionDatabase()
-                conn = db._get_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO knowledge_documents
-                    (collection_id, document_id, filename, document_type, title, author,
-                     source, category, tags, file_size, content_hash, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    collection_id, document_id, filename,
-                    os.path.splitext(filename)[1].lstrip('.'), title, author,
-                    'upload', category, ','.join(tags),
-                    len(file_content), content_hash,
-                    datetime.now(timezone.utc).isoformat(),
-                ))
-                conn.commit()
-                conn.close()
-
-                # Persist document count immediately (we know we added 1 doc).
-                # Do NOT call backend.count() here — after Teradata EVS
-                # reports READY, the chunks table may not be queryable yet.
-                # A blocking count would either return 0/stale or delay the
-                # dialog close.  Instead, schedule a deferred background
-                # task that retries count() and pushes a notification to
-                # the frontend when the real chunk count is available.
-                get_collection_db().increment_counts(collection_id, document_delta=1)
-
+                # Document metadata + document count already persisted
+                # inside _ingest_and_persist().  Schedule deferred chunk
+                # count (backend may not be queryable immediately after
+                # EVS reports READY).
                 async def _deferred_chunk_count(
                     _backend, _coll_name, _coll_id, _user_uuid,
                     initial_delay=30, interval=30, max_retries=3,
@@ -490,8 +525,6 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                         backend, collection_name, collection_id, user_id,
                     )
                 )
-
-                os.unlink(temp_file.name)
 
                 yield format_sse({
                     "type": "complete",
