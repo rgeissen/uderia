@@ -79,6 +79,37 @@ class _FakeFilter:
         self.should = should
 
 
+class _FakeSparseVector:
+    def __init__(self, indices=None, values=None):
+        self.indices = indices or []
+        self.values = values or []
+
+
+class _FakeSparseVectorParams:
+    def __init__(self, modifier=None):
+        self.modifier = modifier
+
+
+class _FakeModifier:
+    IDF = "idf"
+
+
+class _FakePrefetch:
+    def __init__(self, query=None, using=None, limit=None):
+        self.query = query
+        self.using = using
+        self.limit = limit
+
+
+class _FakeFusion:
+    RRF = "rrf"
+
+
+class _FakeFusionQuery:
+    def __init__(self, fusion=None):
+        self.fusion = fusion
+
+
 _fake_qdrant_models.Distance = _FakeDistance
 _fake_qdrant_models.VectorParams = _FakeVectorParams
 _fake_qdrant_models.PointStruct = _FakePointStruct
@@ -89,6 +120,12 @@ _fake_qdrant_models.MatchExcept = _FakeMatchExcept
 _fake_qdrant_models.Range = _FakeRange
 _fake_qdrant_models.FieldCondition = _FakeFieldCondition
 _fake_qdrant_models.Filter = _FakeFilter
+_fake_qdrant_models.SparseVector = _FakeSparseVector
+_fake_qdrant_models.SparseVectorParams = _FakeSparseVectorParams
+_fake_qdrant_models.Modifier = _FakeModifier
+_fake_qdrant_models.Prefetch = _FakePrefetch
+_fake_qdrant_models.Fusion = _FakeFusion
+_fake_qdrant_models.FusionQuery = _FakeFusionQuery
 
 _fake_qdrant.AsyncQdrantClient = MagicMock()
 _fake_qdrant.models = _fake_qdrant_models
@@ -107,6 +144,7 @@ from trusted_data_agent.vectorstore.types import (
     DistanceMetric,
     GetResult,
     QueryResult,
+    SearchMode,
     VectorDocument,
 )
 from trusted_data_agent.vectorstore.filters import (
@@ -143,10 +181,21 @@ def _make_backend(**overrides) -> QdrantBackend:
     return QdrantBackend(config)
 
 
-def _mock_client() -> AsyncMock:
-    """Create an AsyncMock mimicking AsyncQdrantClient."""
+def _mock_client(has_sparse_vectors: bool = False) -> AsyncMock:
+    """Create an AsyncMock mimicking AsyncQdrantClient.
+
+    By default the mock collection has no sparse vector config (legacy mode).
+    Set *has_sparse_vectors=True* to simulate a hybrid-ready collection.
+    """
     client = AsyncMock()
     client.close = AsyncMock()
+
+    # Default get_collection returns collection info without sparse vectors.
+    mock_info = MagicMock()
+    mock_info.config.sparse_vectors_config = {"bm25": {}} if has_sparse_vectors else None
+    mock_info.points_count = 0
+    client.get_collection = AsyncMock(return_value=mock_info)
+
     return client
 
 
@@ -642,6 +691,152 @@ class TestNotInitialized(unittest.TestCase):
         backend = _make_backend()
         with self.assertRaises(RuntimeError):
             _run(backend.get("coll", ids=["id1"]))
+
+
+class TestHybridSearch(unittest.TestCase):
+    """Tests for hybrid/keyword search modes."""
+
+    def _initialized_backend(self):
+        backend = _make_backend()
+        backend._client = _mock_client()
+        backend._initialized = True
+        return backend
+
+    def test_capability_declared(self):
+        backend = _make_backend()
+        self.assertIn(VectorStoreCapability.HYBRID_SEARCH, backend.capabilities())
+
+    def test_semantic_mode_unchanged(self):
+        """SearchMode.SEMANTIC should use the existing dense-only path."""
+        backend = self._initialized_backend()
+        mock_provider = MagicMock()
+        mock_provider.embed_query.return_value = [0.1, 0.2, 0.3]
+
+        # Mock _collection_has_sparse_vectors — not called for SEMANTIC
+        point = MagicMock()
+        point.id = "p1"
+        point.payload = {"_content": "doc"}
+        point.score = 0.9
+
+        mock_result = MagicMock()
+        mock_result.points = [point]
+        backend._client.query_points = AsyncMock(return_value=mock_result)
+
+        qr = _run(backend.query(
+            "coll", "test", n_results=1,
+            embedding_provider=mock_provider,
+            search_mode=SearchMode.SEMANTIC,
+        ))
+        self.assertEqual(len(qr.documents), 1)
+        self.assertAlmostEqual(qr.distances[0], 0.1, places=2)
+
+    def test_hybrid_mode_uses_prefetch(self):
+        """SearchMode.HYBRID should call query_points with prefetch and fusion."""
+        backend = _make_backend()
+        backend._client = _mock_client(has_sparse_vectors=True)
+        backend._initialized = True
+        mock_provider = MagicMock()
+        mock_provider.embed_query.return_value = [0.1, 0.2, 0.3]
+
+        point = MagicMock()
+        point.id = "p1"
+        point.payload = {"_content": "hybrid result"}
+        point.score = 0.85
+
+        mock_result = MagicMock()
+        mock_result.points = [point]
+        backend._client.query_points = AsyncMock(return_value=mock_result)
+
+        qr = _run(backend.query(
+            "coll", "test query", n_results=1,
+            embedding_provider=mock_provider,
+            search_mode=SearchMode.HYBRID,
+        ))
+
+        self.assertEqual(len(qr.documents), 1)
+        self.assertEqual(qr.documents[0].content, "hybrid result")
+        # Verify query_points was called with prefetch argument
+        call_kwargs = backend._client.query_points.call_args.kwargs
+        self.assertIn("prefetch", call_kwargs)
+        self.assertEqual(len(call_kwargs["prefetch"]), 2)
+
+    def test_keyword_mode_sparse_only(self):
+        """SearchMode.KEYWORD should call query_points with sparse vector."""
+        backend = _make_backend()
+        backend._client = _mock_client(has_sparse_vectors=True)
+        backend._initialized = True
+
+        point = MagicMock()
+        point.id = "p1"
+        point.payload = {"_content": "keyword match"}
+        point.score = 0.7
+
+        mock_result = MagicMock()
+        mock_result.points = [point]
+        backend._client.query_points = AsyncMock(return_value=mock_result)
+
+        qr = _run(backend.query(
+            "coll", "specific term", n_results=1,
+            search_mode=SearchMode.KEYWORD,
+        ))
+
+        self.assertEqual(len(qr.documents), 1)
+        # Verify using="bm25" was passed
+        call_kwargs = backend._client.query_points.call_args.kwargs
+        self.assertEqual(call_kwargs.get("using"), "bm25")
+
+    def test_hybrid_fallback_on_legacy_collection(self):
+        """Collections without sparse vectors should fall back to SEMANTIC."""
+        backend = self._initialized_backend()  # default: no sparse vectors
+        mock_provider = MagicMock()
+        mock_provider.embed_query.return_value = [0.1, 0.2, 0.3]
+
+        point = MagicMock()
+        point.id = "p1"
+        point.payload = {"_content": "semantic fallback"}
+        point.score = 0.9
+
+        mock_result = MagicMock()
+        mock_result.points = [point]
+        backend._client.query_points = AsyncMock(return_value=mock_result)
+
+        qr = _run(backend.query(
+            "coll", "test", n_results=1,
+            embedding_provider=mock_provider,
+            search_mode=SearchMode.HYBRID,
+        ))
+
+        self.assertEqual(len(qr.documents), 1)
+        # Should have fallen back to dense-only (no prefetch kwarg)
+        call_kwargs = backend._client.query_points.call_args.kwargs
+        self.assertNotIn("prefetch", call_kwargs)
+
+    def test_compute_sparse_vector(self):
+        """_compute_sparse_vector should produce a SparseVector with indices and values."""
+        backend = _make_backend()
+        sv = backend._compute_sparse_vector("hello world hello")
+        self.assertIsInstance(sv, _FakeSparseVector)
+        self.assertEqual(len(sv.indices), 2)  # "hello" and "world"
+        # "hello" has count 2, "world" has count 1
+        total = sum(sv.values)
+        self.assertEqual(total, 3.0)
+
+    def test_create_collection_includes_sparse_config(self):
+        """New collections should include sparse vector config for hybrid readiness."""
+        backend = self._initialized_backend()
+
+        with patch(
+            "trusted_data_agent.vectorstore.qdrant_backend.SentenceTransformerProvider"
+        ) as mock_stp:
+            mock_provider = MagicMock()
+            mock_provider.dimensions = 384
+            mock_stp.get_cached.return_value = mock_provider
+
+            _run(backend.create_collection(CollectionConfig(name="test_hybrid")))
+
+        call_kwargs = backend._client.create_collection.call_args.kwargs
+        self.assertIn("sparse_vectors_config", call_kwargs)
+        self.assertIn("bm25", call_kwargs["sparse_vectors_config"])
 
 
 if __name__ == "__main__":

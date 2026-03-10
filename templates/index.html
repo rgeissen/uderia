@@ -7696,6 +7696,59 @@
                         </div>
                     </div>
 
+                    <!-- Search Mode (hybrid search config — conditionally shown for capable backends) -->
+                    <div id="knowledge-repo-search-mode-section" class="space-y-3 pt-3 border-t border-gray-700 hidden">
+                        <h3 class="text-base font-semibold text-white flex items-center gap-2">
+                            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                            </svg>
+                            Search Mode
+                        </h3>
+                        <p class="text-xs text-gray-400">Controls how documents are matched when querying this repository.</p>
+
+                        <div class="space-y-2">
+                            <label class="flex items-center gap-3 p-2.5 bg-gray-700/50 rounded-lg border border-gray-600 cursor-pointer hover:border-purple-400/50 transition-colors">
+                                <input type="radio" name="search_mode" value="semantic" checked
+                                       class="text-purple-500 focus:ring-purple-500">
+                                <div>
+                                    <div class="text-sm text-white font-medium">Semantic</div>
+                                    <div class="text-xs text-gray-400">Dense vector similarity (default)</div>
+                                </div>
+                            </label>
+                            <label class="flex items-center gap-3 p-2.5 bg-gray-700/50 rounded-lg border border-gray-600 cursor-pointer hover:border-purple-400/50 transition-colors">
+                                <input type="radio" name="search_mode" value="hybrid"
+                                       class="text-purple-500 focus:ring-purple-500">
+                                <div>
+                                    <div class="text-sm text-white font-medium">Hybrid</div>
+                                    <div class="text-xs text-gray-400">Combines semantic + keyword search (Reciprocal Rank Fusion)</div>
+                                </div>
+                            </label>
+                            <label class="flex items-center gap-3 p-2.5 bg-gray-700/50 rounded-lg border border-gray-600 cursor-pointer hover:border-purple-400/50 transition-colors">
+                                <input type="radio" name="search_mode" value="keyword"
+                                       class="text-purple-500 focus:ring-purple-500">
+                                <div>
+                                    <div class="text-sm text-white font-medium">Keyword</div>
+                                    <div class="text-xs text-gray-400">Sparse keyword matching only</div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <!-- Keyword Weight slider (visible only for hybrid mode) -->
+                        <div id="knowledge-repo-keyword-weight-row" class="hidden p-3 bg-gray-700/30 rounded-lg border border-gray-600">
+                            <div class="flex items-center justify-between mb-1">
+                                <label for="knowledge-repo-keyword-weight" class="text-sm text-gray-300">Keyword Weight</label>
+                                <span id="knowledge-repo-keyword-weight-value" class="text-sm font-mono text-purple-300">0.3</span>
+                            </div>
+                            <input type="range" id="knowledge-repo-keyword-weight" name="hybrid_keyword_weight"
+                                   min="0" max="1" step="0.05" value="0.3"
+                                   class="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-purple-500">
+                            <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                <span>Pure Semantic</span>
+                                <span>Pure Keyword</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Document Upload -->
                     <div class="space-y-3 pt-3 border-t border-gray-700">
                         <h3 class="text-base font-semibold text-white flex items-center gap-2">

@@ -65,6 +65,7 @@ from .types import (
     IngestionProgress,
     IngestionProgressCallback,
     QueryResult,
+    SearchMode,
     ServerSideChunkingConfig,
     VectorDocument,
 )
@@ -1601,8 +1602,13 @@ class TeradataVectorBackend(VectorStoreBackend):
         embedding_provider: Optional[EmbeddingProvider] = None,
         include_documents: bool = True,
         include_metadata: bool = True,
+        search_mode: SearchMode = SearchMode.SEMANTIC,
+        keyword_weight: float = 0.3,
     ) -> QueryResult:
         """Semantic similarity search via the Teradata VectorStore."""
+        # Teradata does not declare HYBRID_SEARCH — always resolves to SEMANTIC.
+        search_mode = self._resolve_search_mode(search_mode)
+
         vs = await self._get_store(collection_name)
 
         if where is not None:

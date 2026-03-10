@@ -51,7 +51,7 @@ export function initializeKnowledgeRepositoryHandlers() {
         console.warn('[Knowledge] Form element not found during init (will attach later): add-knowledge-repository-form');
     }
     
-    // Vector store selector change — swap embedding & chunking options based on backend type
+    // Vector store selector change — swap embedding, chunking & search mode options based on backend type
     const vectorStoreSelect = document.getElementById('knowledge-repo-vector-store');
     if (vectorStoreSelect) {
         vectorStoreSelect.addEventListener('change', (e) => {
@@ -59,6 +59,25 @@ export function initializeKnowledgeRepositoryHandlers() {
             const backendType = selectedOption?.dataset.backendType || 'chromadb';
             _updateEmbeddingOptionsForBackend(backendType);
             _updateChunkingOptionsForBackend(backendType);
+            _updateSearchModeForBackend(backendType);
+        });
+    }
+
+    // Search mode radio buttons — show/hide keyword weight slider
+    const searchModeRadios = document.querySelectorAll('input[name="search_mode"]');
+    const keywordWeightRow = document.getElementById('knowledge-repo-keyword-weight-row');
+    searchModeRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            if (keywordWeightRow) keywordWeightRow.classList.toggle('hidden', radio.value !== 'hybrid');
+        });
+    });
+
+    // Keyword weight slider — live value display
+    const keywordWeightSlider = document.getElementById('knowledge-repo-keyword-weight');
+    const keywordWeightValue = document.getElementById('knowledge-repo-keyword-weight-value');
+    if (keywordWeightSlider && keywordWeightValue) {
+        keywordWeightSlider.addEventListener('input', () => {
+            keywordWeightValue.textContent = parseFloat(keywordWeightSlider.value).toFixed(2);
         });
     }
 
@@ -279,6 +298,35 @@ function _updateEmbeddingOptionsForBackend(backendType) {
            <option value="all-distilroberta-v1">all-distilroberta-v1 (high quality)</option>`;
 }
 
+/** Show/hide the Search Mode section based on backend hybrid search capability. */
+async function _updateSearchModeForBackend(backendType) {
+    const section = document.getElementById('knowledge-repo-search-mode-section');
+    if (!section) return;
+
+    try {
+        const resp = await fetch(`/api/v1/vectorstore/capabilities?backend_type=${encodeURIComponent(backendType)}`, {
+            headers: { 'Authorization': `Bearer ${window.state?.jwtToken || ''}` }
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const caps = data.capabilities || [];
+        const hasHybrid = caps.includes('HYBRID_SEARCH');
+
+        section.classList.toggle('hidden', !hasHybrid);
+
+        // Reset to semantic when switching to a backend without hybrid
+        if (!hasHybrid) {
+            const semanticRadio = section.querySelector('input[value="semantic"]');
+            if (semanticRadio) semanticRadio.checked = true;
+            const kwRow = document.getElementById('knowledge-repo-keyword-weight-row');
+            if (kwRow) kwRow.classList.add('hidden');
+        }
+    } catch (err) {
+        console.warn('[Knowledge] Failed to fetch vectorstore capabilities:', err);
+        section.classList.add('hidden');
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -296,11 +344,12 @@ function openKnowledgeRepositoryModal() {
 
     // Populate vector store dropdown from centralized configurations
     _populateVectorStoreDropdown().then(() => {
-        // After populating, update embedding/chunking options for the selected backend
+        // After populating, update embedding/chunking/search-mode options for the selected backend
         const vsSelect = document.getElementById('knowledge-repo-vector-store');
         const backendType = vsSelect?.selectedOptions[0]?.dataset.backendType || 'chromadb';
         _updateEmbeddingOptionsForBackend(backendType);
         _updateChunkingOptionsForBackend(backendType);
+        _updateSearchModeForBackend(backendType);
     });
 
     // Populate MCP server dropdown
@@ -785,6 +834,11 @@ async function handleKnowledgeRepositorySubmit(e) {
                 if (progressBar) progressBar.style.width = '10%';
             }
             
+            // Resolve search mode from radio buttons
+            const searchModeRadio = document.querySelector('input[name="search_mode"]:checked');
+            const searchMode = searchModeRadio?.value || 'semantic';
+            const keywordWeight = parseFloat(document.getElementById('knowledge-repo-keyword-weight')?.value || '0.3');
+
             // Step 1: Create collection
             const createBody = {
                 name: name,
@@ -796,6 +850,8 @@ async function handleKnowledgeRepositorySubmit(e) {
                 embedding_model: embeddingModel,
                 vector_store_config_id: vectorStoreConfigId,
                 backend_type: backendType,
+                search_mode: searchMode,
+                hybrid_keyword_weight: keywordWeight,
             };
 
             const createResponse = await fetch('/api/v1/rag/collections', {

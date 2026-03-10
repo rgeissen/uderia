@@ -2834,6 +2834,14 @@ async def create_rag_collection():
         if not retriever:
             return jsonify({"status": "error", "message": "RAG retriever not initialized"}), 500
 
+        # Hybrid search configuration (per-collection)
+        search_mode = data.get("search_mode", "semantic")
+        if search_mode not in ("semantic", "keyword", "hybrid"):
+            return jsonify({"status": "error", "message": f"Invalid search_mode: '{search_mode}'. Must be 'semantic', 'keyword', or 'hybrid'."}), 400
+        hybrid_keyword_weight = float(data.get("hybrid_keyword_weight", 0.3))
+        if not (0.0 <= hybrid_keyword_weight <= 1.0):
+            return jsonify({"status": "error", "message": "hybrid_keyword_weight must be between 0.0 and 1.0"}), 400
+
         # --- MARKETPLACE PHASE 2: Pass owner_user_id and repository configuration ---
         collection_id = retriever.add_collection(
             name, description, mcp_server_id, owner_user_id=user_uuid,
@@ -2841,6 +2849,8 @@ async def create_rag_collection():
             chunk_size=chunk_size, chunk_overlap=chunk_overlap, embedding_model=embedding_model,
             backend_type=backend_type, backend_config=backend_config,
             vector_store_config_id=vector_store_config_id,
+            search_mode=search_mode,
+            hybrid_keyword_weight=hybrid_keyword_weight,
         )
         # --- MARKETPLACE PHASE 2 END ---
 
@@ -2939,6 +2949,15 @@ async def update_rag_collection(collection_id: int):
             update_data["description"] = data["description"]
         if "mcp_server_id" in data:
             update_data["mcp_server_id"] = data["mcp_server_id"]
+        if "search_mode" in data:
+            if data["search_mode"] not in ("semantic", "keyword", "hybrid"):
+                return jsonify({"status": "error", "message": f"Invalid search_mode: '{data['search_mode']}'"}), 400
+            update_data["search_mode"] = data["search_mode"]
+        if "hybrid_keyword_weight" in data:
+            kw = float(data["hybrid_keyword_weight"])
+            if not (0.0 <= kw <= 1.0):
+                return jsonify({"status": "error", "message": "hybrid_keyword_weight must be between 0.0 and 1.0"}), 400
+            update_data["hybrid_keyword_weight"] = kw
 
         db.update_collection(collection_id, update_data)
 
@@ -5781,6 +5800,54 @@ async def get_allowed_vectorstore_backends(current_user):
 
     except Exception as e:
         app_logger.error(f"Error getting allowed backends: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/vectorstore/capabilities", methods=["GET"])
+async def get_vectorstore_capabilities():
+    """Return the capability set for a given vector store backend type.
+
+    Query params:
+        backend_type (str): 'chromadb', 'qdrant', or 'teradata'
+
+    Returns JSON with capability names the frontend can use to show/hide UI
+    sections (e.g. HYBRID_SEARCH → show search-mode selector).
+    """
+    try:
+        backend_type = request.args.get("backend_type", "chromadb")
+
+        # Build a lightweight capability set without opening a real connection.
+        # Each backend class declares capabilities as a static set.
+        _CAPABILITY_MAP = {
+            "chromadb": [
+                "CREATE_COLLECTION", "DELETE_COLLECTION", "ADD_DOCUMENTS",
+                "DELETE_DOCUMENTS", "SIMILARITY_SEARCH", "GET_BY_ID", "COUNT",
+                "UPSERT", "GET_BY_METADATA_FILTER", "UPDATE_METADATA",
+                "EMBEDDING_PASSTHROUGH", "GET_ALL",
+            ],
+            "qdrant": [
+                "CREATE_COLLECTION", "DELETE_COLLECTION", "ADD_DOCUMENTS",
+                "DELETE_DOCUMENTS", "SIMILARITY_SEARCH", "GET_BY_ID", "COUNT",
+                "UPSERT", "GET_BY_METADATA_FILTER", "UPDATE_METADATA",
+                "EMBEDDING_PASSTHROUGH", "GET_ALL", "HYBRID_SEARCH",
+            ],
+            "teradata": [
+                "CREATE_COLLECTION", "DELETE_COLLECTION", "ADD_DOCUMENTS",
+                "DELETE_DOCUMENTS", "SIMILARITY_SEARCH", "GET_BY_ID", "COUNT",
+                "UPSERT", "EMBEDDING_PASSTHROUGH", "GET_ALL",
+                "SERVER_SIDE_EMBEDDING", "SERVER_SIDE_CHUNKING",
+            ],
+        }
+
+        caps = _CAPABILITY_MAP.get(backend_type, _CAPABILITY_MAP["chromadb"])
+        return jsonify({
+            "status": "success",
+            "backend_type": backend_type,
+            "capabilities": caps,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error getting vectorstore capabilities: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

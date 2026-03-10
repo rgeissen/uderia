@@ -1782,12 +1782,30 @@ class PlanExecutor:
                             else:
                                 collection_names_for_start.append(coll_config.get("name", coll_id or "Unknown"))
 
+                        # Collect per-collection search modes for Live Status display
+                        _search_modes = {}
+                        try:
+                            from trusted_data_agent.core.collection_db import get_collection_db
+                            _cdb = get_collection_db()
+                            for _cc in knowledge_collections:
+                                _cid = _cc.get("id")
+                                _cn = _cc.get("name", str(_cid))
+                                if _cid:
+                                    _dbr = _cdb.get_collection_by_id(_cid)
+                                    if _dbr:
+                                        _search_modes[_cn] = _dbr.get("search_mode", "semantic")
+                                        continue
+                                _search_modes[_cn] = "semantic"
+                        except Exception as _e:
+                            app_logger.debug(f"Failed to read search_mode for collections: {_e}")
+
                         yield self._format_sse_with_depth({
                             "type": "knowledge_retrieval_start",
                             "payload": {
                                 "collections": collection_names_for_start,
                                 "max_docs": max_docs,
-                                "session_id": self.session_id
+                                "session_id": self.session_id,
+                                "search_modes": _search_modes,
                             }
                         }, event="notification")
 
@@ -1908,7 +1926,8 @@ class PlanExecutor:
                                 "document_count": len(final_results),
                                 "duration_ms": retrieval_duration_ms,
                                 "summary": f"Retrieved {len(final_results)} documents from {len(collection_names)} collection(s)",
-                                "chunks": knowledge_chunks  # Include full chunks for UI display
+                                "chunks": knowledge_chunks,  # Include full chunks for UI display
+                                "search_modes": _search_modes,
                             }
 
                             # Emit completion event for Live Status panel (replaces old single event)
@@ -3663,10 +3682,28 @@ The following domain knowledge may be relevant to this conversation:
                 else:
                     collection_names_for_start.append(coll_config.get("name", coll_id or "Unknown"))
 
+            # Collect per-collection search modes for Live Status display
+            search_modes = {}
+            try:
+                from trusted_data_agent.core.collection_db import get_collection_db
+                _cdb = get_collection_db()
+                for coll in knowledge_collections:
+                    coll_id = coll.get("id")
+                    coll_name = coll.get("name", str(coll_id))
+                    if coll_id:
+                        db_row = _cdb.get_collection_by_id(coll_id)
+                        if db_row:
+                            search_modes[coll_name] = db_row.get("search_mode", "semantic")
+                            continue
+                    search_modes[coll_name] = "semantic"
+            except Exception as e:
+                app_logger.debug(f"Failed to read search_mode for collections: {e}")
+
             start_event_payload = {
                 "collections": collection_names_for_start,
                 "max_docs": max_docs,
-                "session_id": self.session_id
+                "session_id": self.session_id,
+                "search_modes": search_modes,
             }
             knowledge_events.append({"type": "knowledge_retrieval_start", "payload": start_event_payload})
             yield self._format_sse_with_depth({
@@ -3727,7 +3764,8 @@ The following domain knowledge may be relevant to this conversation:
                     "collection_names": list(collection_names),
                     "document_count": 0,
                     "duration_ms": retrieval_duration_ms,
-                    "session_id": self.session_id
+                    "session_id": self.session_id,
+                    "search_modes": search_modes,
                 }
                 knowledge_events.append({"type": "knowledge_retrieval_complete", "payload": retrieval_complete_payload})
                 yield self._format_sse_with_depth({
@@ -4053,7 +4091,8 @@ The following domain knowledge may be relevant to this conversation:
                 "collections": list(collection_names),
                 "document_count": len(final_results),
                 "duration_ms": retrieval_duration_ms,
-                "chunks": knowledge_chunks  # Include full chunks for UI display
+                "chunks": knowledge_chunks,  # Include full chunks for UI display
+                "search_modes": search_modes,
             }
 
             knowledge_events.append({"type": "knowledge_retrieval_complete", "payload": event_details})

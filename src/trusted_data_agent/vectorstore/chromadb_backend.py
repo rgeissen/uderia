@@ -26,6 +26,7 @@ from .types import (
     DistanceMetric,
     GetResult,
     QueryResult,
+    SearchMode,
     VectorDocument,
 )
 
@@ -357,7 +358,12 @@ class ChromaDBBackend(VectorStoreBackend):
         embedding_provider: Optional[EmbeddingProvider] = None,
         include_documents: bool = True,
         include_metadata: bool = True,
+        search_mode: SearchMode = SearchMode.SEMANTIC,
+        keyword_weight: float = 0.3,
     ) -> QueryResult:
+        # ChromaDB does not declare HYBRID_SEARCH — always resolves to SEMANTIC.
+        search_mode = self._resolve_search_mode(search_mode)
+
         coll = self._get_chroma_collection(collection_name)
         chroma_where = to_chromadb_where(where)
 

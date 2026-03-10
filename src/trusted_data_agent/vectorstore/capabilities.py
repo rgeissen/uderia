@@ -45,6 +45,11 @@ class VectorStoreCapability(Enum):
     """Backend can ingest raw files (PDF, etc.) and handle chunking + embedding
     internally.  Backends declaring this support ``add_document_files()``."""
 
+    HYBRID_SEARCH = auto()
+    """Backend supports hybrid dense+sparse search via ``search_mode=HYBRID``.
+    When absent, ``query()`` with ``search_mode=HYBRID`` falls back to
+    ``SEMANTIC`` with a logged warning."""
+
 
 # Every concrete backend must declare at least these:
 REQUIRED_CAPABILITIES: Set[VectorStoreCapability] = {

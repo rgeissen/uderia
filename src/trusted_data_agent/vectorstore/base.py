@@ -20,6 +20,7 @@ from .types import (
     GetResult,
     IngestionProgressCallback,
     QueryResult,
+    SearchMode,
     ServerSideChunkingConfig,
     VectorDocument,
 )
@@ -169,6 +170,23 @@ class VectorStoreBackend(ABC):
             "Use add() with pre-chunked documents instead."
         )
 
+    # ── Search-mode helpers ──────────────────────────────────────────────────
+
+    def _resolve_search_mode(self, search_mode: SearchMode) -> SearchMode:
+        """Downgrade *search_mode* when the backend lacks ``HYBRID_SEARCH``.
+
+        Backends call this at the top of ``query()`` so that unsupported modes
+        fall back to ``SEMANTIC`` with a logged warning instead of raising.
+        """
+        if search_mode in (SearchMode.HYBRID, SearchMode.KEYWORD) and \
+           not self.has_capability(VectorStoreCapability.HYBRID_SEARCH):
+            logger.warning(
+                "%s backend does not support %s search; falling back to SEMANTIC",
+                self.backend_type, search_mode.value,
+            )
+            return SearchMode.SEMANTIC
+        return search_mode
+
     # ── Document read operations ──────────────────────────────────────────────
 
     @abstractmethod
@@ -181,8 +199,10 @@ class VectorStoreBackend(ABC):
         embedding_provider: Optional[EmbeddingProvider] = None,
         include_documents: bool = True,
         include_metadata: bool = True,
+        search_mode: SearchMode = SearchMode.SEMANTIC,
+        keyword_weight: float = 0.3,
     ) -> QueryResult:
-        """Semantic similarity search.
+        """Search a collection using the specified *search_mode*.
 
         Returns a ``QueryResult`` with flat parallel lists of documents and
         distances.  Distances are in the backend's native scale
@@ -191,6 +211,20 @@ class VectorStoreBackend(ABC):
 
         ``where`` is translated to backend-native filter syntax internally.
         Pass ``None`` for knowledge repositories (no filter required).
+
+        ``search_mode`` controls the retrieval strategy:
+
+        * ``SEMANTIC`` (default) — dense vector similarity search.  Supported
+          by all backends.
+        * ``HYBRID`` — combines dense + sparse (keyword) search with fusion
+          (e.g. Reciprocal Rank Fusion).  Requires ``HYBRID_SEARCH``
+          capability; falls back to ``SEMANTIC`` if absent.
+        * ``KEYWORD`` — sparse / keyword-only search.  Requires
+          ``HYBRID_SEARCH`` capability.
+
+        ``keyword_weight`` (0.0–1.0) hints at the relative importance of the
+        keyword component in hybrid mode.  Not all backends honour this
+        (e.g. Qdrant RRF is rank-based and ignores explicit weights).
         """
         ...
 
