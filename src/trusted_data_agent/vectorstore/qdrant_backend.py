@@ -21,8 +21,11 @@ Connection config (stored as JSON in collections.backend_config)::
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 import uuid
+from collections import Counter
 from typing import Any, Dict, List, Optional, Set
 
 from .base import VectorStoreBackend
@@ -35,6 +38,7 @@ from .types import (
     DistanceMetric,
     GetResult,
     QueryResult,
+    SearchMode,
     VectorDocument,
 )
 
@@ -90,12 +94,13 @@ class QdrantBackend(VectorStoreBackend):
             VectorStoreCapability.SIMILARITY_SEARCH,
             VectorStoreCapability.GET_BY_ID,
             VectorStoreCapability.COUNT,
-            # Optional (5)
+            # Optional (6)
             VectorStoreCapability.UPSERT,
             VectorStoreCapability.GET_BY_METADATA_FILTER,
             VectorStoreCapability.UPDATE_METADATA,
             VectorStoreCapability.EMBEDDING_PASSTHROUGH,
             VectorStoreCapability.GET_ALL,
+            VectorStoreCapability.HYBRID_SEARCH,
         }
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -197,11 +202,53 @@ class QdrantBackend(VectorStoreBackend):
         payload = point.payload or {}
         return payload.get(_ORIGINAL_ID_KEY, str(point.id))
 
+    # ── Sparse vector helpers ─────────────────────────────────────────────────
+
+    # Simple term-frequency tokenizer that converts text into a sparse vector.
+    # Each unique token is hashed to a stable integer index; the value is the
+    # token count.  This is intentionally simple (no stemming, no stopwords) —
+    # upgrade to fastembed BM25 if retrieval quality needs improvement.
+    _TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+    @classmethod
+    def _compute_sparse_vector(cls, text: str) -> Any:
+        """Tokenise *text* and return a Qdrant ``SparseVector``."""
+        from qdrant_client.models import SparseVector
+
+        tokens = cls._TOKEN_RE.findall(text.lower())
+        if not tokens:
+            # Return a minimal sparse vector so Qdrant doesn't reject the point.
+            return SparseVector(indices=[0], values=[0.0])
+
+        counts: Counter = Counter(tokens)
+        # Hash each unique token to a stable 32-bit index.
+        indices: List[int] = []
+        values: List[float] = []
+        for token, count in sorted(counts.items()):
+            h = int(hashlib.md5(token.encode()).hexdigest()[:8], 16)
+            indices.append(h)
+            values.append(float(count))
+
+        return SparseVector(indices=indices, values=values)
+
+    async def _collection_has_sparse_vectors(self, collection_name: str) -> bool:
+        """Check whether a Qdrant collection was created with sparse vector config."""
+        try:
+            info = await self._client.get_collection(collection_name)
+            sparse_cfg = getattr(info.config, "sparse_vectors_config", None)
+            return bool(sparse_cfg)
+        except Exception:
+            return False
+
     # ── Collection management ─────────────────────────────────────────────────
 
     async def create_collection(self, config: CollectionConfig) -> CollectionInfo:
         self._ensure_initialized()
-        from qdrant_client.models import VectorParams
+        from qdrant_client.models import (
+            Modifier,
+            SparseVectorParams,
+            VectorParams,
+        )
 
         provider = SentenceTransformerProvider.get_cached(config.embedding_model)
         dimensions = provider.dimensions
@@ -212,8 +259,13 @@ class QdrantBackend(VectorStoreBackend):
                 size=dimensions,
                 distance=self._qdrant_distance(config.distance_metric),
             ),
+            # Always provision sparse vector index so hybrid search can be
+            # enabled later without recreating the collection.
+            sparse_vectors_config={
+                "bm25": SparseVectorParams(modifier=Modifier.IDF),
+            },
         )
-        logger.info(f"Created Qdrant collection '{config.name}' (dim={dimensions})")
+        logger.info(f"Created Qdrant collection '{config.name}' (dim={dimensions}, sparse=bm25)")
         return CollectionInfo(
             name=config.name,
             document_count=0,
@@ -292,6 +344,9 @@ class QdrantBackend(VectorStoreBackend):
                 [d.content for d in documents]
             )
 
+        # Check if collection supports sparse vectors (hybrid-ready).
+        has_sparse = await self._collection_has_sparse_vectors(collection_name)
+
         points = []
         for doc, vector in zip(documents, vectors):
             payload = self._sanitize_payload(doc.metadata)
@@ -300,8 +355,18 @@ class QdrantBackend(VectorStoreBackend):
             if qdrant_id != doc.id:
                 # Store original ID for round-trip retrieval
                 payload[_ORIGINAL_ID_KEY] = doc.id
+
+            # Build named vector dict: dense (default "") + optional sparse.
+            point_vector: Any = vector
+            if has_sparse:
+                sparse_vec = self._compute_sparse_vector(doc.content)
+                point_vector = {
+                    "": vector,          # default dense vector
+                    "bm25": sparse_vec,  # named sparse vector
+                }
+
             points.append(
-                PointStruct(id=qdrant_id, vector=vector, payload=payload)
+                PointStruct(id=qdrant_id, vector=point_vector, payload=payload)
             )
 
         # Qdrant upsert is the standard write operation (idempotent)
@@ -363,26 +428,92 @@ class QdrantBackend(VectorStoreBackend):
         embedding_provider: Optional[EmbeddingProvider] = None,
         include_documents: bool = True,
         include_metadata: bool = True,
+        search_mode: SearchMode = SearchMode.SEMANTIC,
+        keyword_weight: float = 0.3,
     ) -> QueryResult:
         self._ensure_initialized()
+        from qdrant_client.models import Fusion, FusionQuery, Prefetch
 
-        if embedding_provider is None:
-            raise ValueError(
-                "embedding_provider is required for Qdrant similarity search"
-            )
+        search_mode = self._resolve_search_mode(search_mode)
 
-        query_vector = embedding_provider.embed_query(query_text)
+        # For hybrid/keyword modes, verify the collection has sparse vectors.
+        # Legacy collections (created before hybrid support) lack sparse config
+        # and must fall back to semantic search.
+        if search_mode in (SearchMode.HYBRID, SearchMode.KEYWORD):
+            has_sparse = await self._collection_has_sparse_vectors(collection_name)
+            if not has_sparse:
+                logger.warning(
+                    "Collection '%s' lacks sparse vector index (legacy); "
+                    "falling back to SEMANTIC search",
+                    collection_name,
+                )
+                search_mode = SearchMode.SEMANTIC
+
         qdrant_filter = to_qdrant_filter(where)
 
-        results = await self._client.query_points(
-            collection_name=collection_name,
-            query=query_vector,
-            query_filter=qdrant_filter,
-            limit=n_results,
-            with_payload=True,
-            with_vectors=False,
-        )
+        if search_mode == SearchMode.SEMANTIC:
+            # ── Dense-only path (unchanged) ──────────────────────────────
+            if embedding_provider is None:
+                raise ValueError(
+                    "embedding_provider is required for Qdrant similarity search"
+                )
+            query_vector = embedding_provider.embed_query(query_text)
+            results = await self._client.query_points(
+                collection_name=collection_name,
+                query=query_vector,
+                query_filter=qdrant_filter,
+                limit=n_results,
+                with_payload=True,
+                with_vectors=False,
+            )
 
+        elif search_mode == SearchMode.HYBRID:
+            # ── Dense + sparse with Reciprocal Rank Fusion ───────────────
+            if embedding_provider is None:
+                raise ValueError(
+                    "embedding_provider is required for hybrid search (dense component)"
+                )
+            dense_vector = embedding_provider.embed_query(query_text)
+            sparse_vector = self._compute_sparse_vector(query_text)
+
+            results = await self._client.query_points(
+                collection_name=collection_name,
+                prefetch=[
+                    Prefetch(
+                        query=dense_vector,
+                        using="",
+                        limit=n_results * 2,
+                    ),
+                    Prefetch(
+                        query=sparse_vector,
+                        using="bm25",
+                        limit=n_results * 2,
+                    ),
+                ],
+                query=FusionQuery(fusion=Fusion.RRF),
+                query_filter=qdrant_filter,
+                limit=n_results,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+        elif search_mode == SearchMode.KEYWORD:
+            # ── Sparse-only path ─────────────────────────────────────────
+            sparse_vector = self._compute_sparse_vector(query_text)
+            results = await self._client.query_points(
+                collection_name=collection_name,
+                query=sparse_vector,
+                using="bm25",
+                query_filter=qdrant_filter,
+                limit=n_results,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+        else:
+            raise ValueError(f"Unsupported search_mode: {search_mode}")
+
+        # ── Normalise results ────────────────────────────────────────────
         docs: List[VectorDocument] = []
         distances: List[float] = []
 

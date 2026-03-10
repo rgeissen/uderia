@@ -1238,9 +1238,15 @@ async def search_knowledge_repository(current_user: dict, collection_id: int):
         emb_model = coll_meta.get("embedding_model", "all-MiniLM-L6-v2") if coll_meta else "all-MiniLM-L6-v2"
         emb_provider = get_embedding_provider(emb_model)
 
+        from trusted_data_agent.vectorstore.types import SearchMode
+        _search_mode = SearchMode(coll_meta.get("search_mode", "semantic")) if coll_meta else SearchMode.SEMANTIC
+        _kw_weight = float(coll_meta.get("hybrid_keyword_weight", 0.3)) if coll_meta else 0.3
+
         query_result = await backend.query(
             coll_name, query_text=query, n_results=k, where=where_filter,
             embedding_provider=emb_provider,
+            search_mode=_search_mode,
+            keyword_weight=_kw_weight,
         )
 
         # Format results
@@ -1357,11 +1363,17 @@ async def get_knowledge_chunks(current_user: dict, collection_id: int):
                 emb_model = coll_meta_full.get("embedding_model", "all-MiniLM-L6-v2") if coll_meta_full else "all-MiniLM-L6-v2"
                 emb_provider = get_embedding_provider(emb_model)
 
+                from trusted_data_agent.vectorstore.types import SearchMode
+                _sm = SearchMode(coll_meta_full.get("search_mode", "semantic")) if coll_meta_full else SearchMode.SEMANTIC
+                _kw = float(coll_meta_full.get("hybrid_keyword_weight", 0.3)) if coll_meta_full else 0.3
+
                 query_result = await backend.query(
                     coll_name_full,
                     query_text=query_text,
                     n_results=min(limit, 100),
                     embedding_provider=emb_provider,
+                    search_mode=_sm,
+                    keyword_weight=_kw,
                 )
                 total = len(query_result.documents)
                 for doc, distance in query_result:

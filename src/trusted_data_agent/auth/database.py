@@ -212,6 +212,8 @@ def _create_collections_table():
                 embedding_model TEXT DEFAULT 'all-MiniLM-L6-v2',
                 document_count INTEGER DEFAULT 0,
                 chunk_count INTEGER DEFAULT 0,
+                search_mode TEXT DEFAULT 'semantic',
+                hybrid_keyword_weight REAL DEFAULT 0.3,
                 FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
@@ -254,6 +256,15 @@ def _create_collections_table():
             logger.info("Adding document_count and chunk_count columns to collections table")
             cursor.execute("ALTER TABLE collections ADD COLUMN document_count INTEGER DEFAULT 0")
             cursor.execute("ALTER TABLE collections ADD COLUMN chunk_count INTEGER DEFAULT 0")
+            conn.commit()
+
+        # Migration: Add search_mode / hybrid_keyword_weight columns for hybrid search
+        try:
+            cursor.execute("SELECT search_mode FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Adding search_mode and hybrid_keyword_weight columns to collections table")
+            cursor.execute("ALTER TABLE collections ADD COLUMN search_mode TEXT DEFAULT 'semantic'")
+            cursor.execute("ALTER TABLE collections ADD COLUMN hybrid_keyword_weight REAL DEFAULT 0.3")
             conn.commit()
 
         # Fix legacy NULL backend_type values

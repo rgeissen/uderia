@@ -579,6 +579,22 @@ function getBrandedAgentName(profileType) {
 // ============================================================================
 
 /**
+ * Build a compact suffix showing the active search mode(s).
+ * Returns "" when all collections use the default "semantic" mode,
+ * " [hybrid]" when all use hybrid, or " [mixed]" when modes differ.
+ * @param {object|undefined} searchModes - Map of collection name → search mode
+ * @returns {string} Suffix string (empty for semantic-only)
+ */
+function _searchModeSuffix(searchModes) {
+    if (!searchModes || typeof searchModes !== 'object') return '';
+    const modes = [...new Set(Object.values(searchModes))];
+    if (modes.length === 0) return '';
+    if (modes.length === 1 && modes[0] === 'semantic') return '';
+    const label = modes.length === 1 ? modes[0] : 'mixed';
+    return ` [${label}]`;
+}
+
+/**
  * Generate harmonized display title for tool_enabled profile events
  * @param {string} eventType - Backend event type
  * @param {object} payload - Event payload data
@@ -601,7 +617,8 @@ function getToolEnabledTitle(eventType, payload) {
             return 'Optimizing Plan';
         case 'knowledge_retrieval_start': {
             const collections = payload.collections || [];
-            return `Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})`;
+            const modeSuffix = _searchModeSuffix(payload.search_modes);
+            return `Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})${modeSuffix}`;
         }
         case 'knowledge_reranking_start': {
             const collection = payload.collection || 'Unknown';
@@ -615,7 +632,8 @@ function getToolEnabledTitle(eventType, payload) {
         case 'knowledge_retrieval_complete': {
             const docCount = payload.document_count || 0;
             const duration = payload.duration_ms || 0;
-            return `Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)`;
+            const modeSuffix = _searchModeSuffix(payload.search_modes);
+            return `Knowledge Retrieved (${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} in ${duration}ms)${modeSuffix}`;
         }
         case 'rag_llm_step': {
             // Token counts are shown in the Tool Execution Result step, so don't duplicate them here
@@ -709,7 +727,8 @@ function getRagFocusedTitle(eventType, payload) {
     switch (eventType) {
         case 'knowledge_retrieval_start': {
             const collections = payload.collections || [];
-            return `Stage: Retrieval - Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})`;
+            const modeSuffix = _searchModeSuffix(payload.search_modes);
+            return `Stage: Retrieval - Searching Knowledge (${collections.length} ${collections.length === 1 ? 'collection' : 'collections'})${modeSuffix}`;
         }
         case 'knowledge_reranking_start': {
             const collection = payload.collection || 'Unknown';
@@ -723,7 +742,8 @@ function getRagFocusedTitle(eventType, payload) {
         case 'knowledge_retrieval_complete': {
             const docCount = payload.document_count || 0;
             const duration = payload.duration_ms || 0;
-            return `Stage: Retrieval - ${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} retrieved in ${duration}ms`;
+            const modeSuffix = _searchModeSuffix(payload.search_modes);
+            return `Stage: Retrieval - ${docCount} ${docCount === 1 ? 'chunk' : 'chunks'} retrieved in ${duration}ms${modeSuffix}`;
         }
         case 'rag_llm_step': {
             // Token counts are shown in the LLM Synthesis Results step, so don't duplicate them here

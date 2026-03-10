@@ -892,7 +892,9 @@ class RAGRetriever:
                       repository_type: str = "planner", chunking_strategy: str = "none", chunk_size: int = 1000, chunk_overlap: int = 200,
                       embedding_model: str = "all-MiniLM-L6-v2",
                       backend_type: str = "chromadb", backend_config: str = "{}",
-                      vector_store_config_id: Optional[str] = None) -> Optional[int]:
+                      vector_store_config_id: Optional[str] = None,
+                      search_mode: str = "semantic",
+                      hybrid_keyword_weight: float = 0.3) -> Optional[int]:
         """
         Adds a new RAG collection and enables it.
         
@@ -945,6 +947,8 @@ class RAGRetriever:
             "backend_type": backend_type,
             "backend_config": backend_config,
             "vector_store_config_id": vector_store_config_id,
+            "search_mode": search_mode,
+            "hybrid_keyword_weight": hybrid_keyword_weight,
         }
         
         # Save to database
@@ -1833,9 +1837,15 @@ class RAGRetriever:
                     emb_model = (coll_meta or db_coll).get("embedding_model", self.embedding_model_name)
                     emb_provider = get_embedding_provider(emb_model)
 
+                    from trusted_data_agent.vectorstore.types import SearchMode
+                    _sm = SearchMode((coll_meta or db_coll).get("search_mode", "semantic"))
+                    _kw = float((coll_meta or db_coll).get("hybrid_keyword_weight", 0.3))
+
                     query_result = await backend.query(
                         coll_name, query_text=query, n_results=k * 10,
                         embedding_provider=emb_provider,
+                        search_mode=_sm,
+                        keyword_weight=_kw,
                     )
 
                     for doc, distance in query_result:

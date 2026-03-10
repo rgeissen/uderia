@@ -19,6 +19,17 @@ class DistanceMetric(Enum):
     MANHATTAN = "manhattan"
 
 
+class SearchMode(Enum):
+    """Controls how ``query()`` searches the vector store.
+
+    Backends that declare ``HYBRID_SEARCH`` capability support all three modes.
+    Backends without that capability silently fall back to ``SEMANTIC``.
+    """
+    SEMANTIC = "semantic"   # Dense vector similarity (default, all backends)
+    KEYWORD = "keyword"     # Sparse / keyword-only search
+    HYBRID = "hybrid"       # Combined dense + sparse with fusion (e.g. RRF)
+
+
 @dataclass
 class VectorDocument:
     """A single document stored in (or retrieved from) a vector store.
