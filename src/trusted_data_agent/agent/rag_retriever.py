@@ -863,6 +863,19 @@ class RAGRetriever:
                 except Exception as e:
                     logger.error(f"Failed to copy knowledge_documents entries: {e}")
             
+            # Propagate counts to the forked collection
+            try:
+                from trusted_data_agent.core.collection_db import get_collection_db
+                source_coll = get_collection_db().get_collection_by_id(source_collection_id)
+                if source_coll:
+                    get_collection_db().update_counts(
+                        new_collection_id,
+                        document_count=source_coll.get("document_count", 0),
+                        chunk_count=source_coll.get("chunk_count", 0),
+                    )
+            except Exception as count_err:
+                logger.warning(f"Failed to propagate counts to forked collection: {count_err}")
+
             logger.info(f"Successfully forked {repo_type} collection {source_collection_id} to {new_collection_id}. Copied {copied_files} files.")
             return new_collection_id
             
@@ -1135,6 +1148,23 @@ class RAGRetriever:
                         case_file.unlink()
                     if case_files:
                         logger.info(f"Deleted {len(case_files)} case files from disk for collection '{collection_id}'")
+
+            # 3. Clean up knowledge_documents and document_chunks table rows
+            try:
+                import sqlite3
+                from trusted_data_agent.auth.database import DATABASE_URL
+                conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM knowledge_documents WHERE collection_id = ?", (collection_id,))
+                kd_deleted = cursor.rowcount
+                cursor.execute("DELETE FROM document_chunks WHERE collection_id = ?", (collection_id,))
+                dc_deleted = cursor.rowcount
+                conn.commit()
+                conn.close()
+                if kd_deleted or dc_deleted:
+                    logger.info(f"Cleaned up {kd_deleted} knowledge_documents + {dc_deleted} document_chunks rows for collection '{collection_id}'")
+            except Exception as cleanup_err:
+                logger.warning(f"Failed to clean up document tables for collection '{collection_id}': {cleanup_err}")
 
             logger.info(f"Reset collection '{collection_id}' ({repo_type}): {items_deleted} items removed")
             return {"success": True, "items_deleted": items_deleted, "message": f"Collection reset successfully. {items_deleted} items removed."}

@@ -162,8 +162,8 @@ class CollectionDatabase:
                 subscriber_count, marketplace_category, marketplace_tags,
                 marketplace_long_description, repository_type, chunking_strategy,
                 chunk_size, chunk_overlap, embedding_model, backend_type, backend_config,
-                vector_store_config_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                vector_store_config_id, document_count, chunk_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             collection_data['name'],
             collection_data['collection_name'],
@@ -185,7 +185,9 @@ class CollectionDatabase:
             collection_data.get('embedding_model', 'all-MiniLM-L6-v2'),
             collection_data.get('backend_type', 'chromadb'),
             collection_data.get('backend_config', '{}'),
-            collection_data.get('vector_store_config_id')
+            collection_data.get('vector_store_config_id'),
+            collection_data.get('document_count', 0),
+            collection_data.get('chunk_count', 0),
         ))
         
         collection_id = cursor.lastrowid
@@ -229,6 +231,32 @@ class CollectionDatabase:
             logger.warning(f"Collection ID {collection_id} not found for update")
             return False
     
+    def update_counts(self, collection_id: int, document_count: int = None, chunk_count: int = None) -> bool:
+        """Update persisted document and/or chunk counts for a collection."""
+        updates = {}
+        if document_count is not None:
+            updates['document_count'] = document_count
+        if chunk_count is not None:
+            updates['chunk_count'] = chunk_count
+        if not updates:
+            return False
+        return self.update_collection(collection_id, updates)
+
+    def increment_counts(self, collection_id: int, document_delta: int = 0, chunk_delta: int = 0) -> bool:
+        """Atomically increment/decrement document and chunk counts."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE collections
+            SET document_count = MAX(0, document_count + ?),
+                chunk_count = MAX(0, chunk_count + ?)
+            WHERE id = ?
+        """, (document_delta, chunk_delta, collection_id))
+        rows_affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        return rows_affected > 0
+
     def delete_collection(self, collection_id: int) -> bool:
         """Delete a collection."""
         if collection_id == 0:
@@ -237,12 +265,15 @@ class CollectionDatabase:
         
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
+        # Clean up related tables first
+        cursor.execute("DELETE FROM knowledge_documents WHERE collection_id = ?", (collection_id,))
+        cursor.execute("DELETE FROM document_chunks WHERE collection_id = ?", (collection_id,))
         cursor.execute("DELETE FROM collections WHERE id = ?", (collection_id,))
         rows_affected = cursor.rowcount
         conn.commit()
         conn.close()
-        
+
         if rows_affected > 0:
             logger.info(f"Deleted collection ID {collection_id}")
             return True

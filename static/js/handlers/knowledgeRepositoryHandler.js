@@ -1416,12 +1416,10 @@ function createKnowledgeRepositoryCard(repo) {
     console.log('[Knowledge] Creating card for repo:', displayName, 'with ID:', repoId);
     
     const statusClass = repo.enabled ? 'bg-green-500' : 'bg-gray-500';
-    const chunkCount = repo.count || repo.example_count || 0;
+    const docCount = repo.document_count || 0;
+    const chunkCount = repo.count || repo.chunk_count || 0;
     const isManaged = repo.is_subscribed && !repo.is_owned;
     const managedBy = (repo.agent_packs || []).map(p => p.name).join(', ') || 'external source';
-    
-    // Fetch actual document count (will be updated asynchronously)
-    setTimeout(() => fetchKnowledgeDocumentCountForCard(repoId), 100);
     
     return `
         <div class="glass-panel p-4 rounded-lg hover:bg-white/5 transition-all" data-repo-id="${repoId}">
@@ -1472,7 +1470,7 @@ function createKnowledgeRepositoryCard(repo) {
             ${repo.description ? `<p class="text-xs text-gray-400 mb-3">${repo.description}</p>` : ''}
 
             <div class="text-xs text-gray-500 mb-3 flex items-center gap-3">
-                <span><span id="knowledge-doc-count-${repoId}" class="text-white font-medium">...</span> documents</span>
+                <span><span class="text-white font-medium">${docCount}</span> documents</span>
                 <span>•</span>
                 <span><span class="text-white font-medium">${chunkCount}</span> chunks</span>
             </div>
