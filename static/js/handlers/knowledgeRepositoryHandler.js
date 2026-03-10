@@ -176,6 +176,16 @@ function _knowledgeBackendBadge(backendType) {
     return `<span style="display:inline-flex;align-items:center;padding:1px 5px;font-size:10px;font-weight:600;border-radius:3px;background:${c.bg};color:${c.color};border:1px solid ${c.border};">${c.label}:</span>`;
 }
 
+function _searchModeBadge(searchMode) {
+    if (!searchMode || searchMode === 'semantic') return '';
+    const modes = {
+        hybrid:  { label: 'Hybrid',  color: '#facc15', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.3)' },
+        keyword: { label: 'Keyword', color: '#38bdf8', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.3)' }
+    };
+    const c = modes[searchMode] || modes.hybrid;
+    return ` <span style="display:inline-flex;align-items:center;padding:1px 5px;font-size:10px;font-weight:600;border-radius:3px;background:${c.bg};color:${c.color};border:1px solid ${c.border};">${c.label}</span>`;
+}
+
 /**
  * Populate the vector store dropdown from centralized configurations.
  * Falls back to a default ChromaDB option if the API call fails.
@@ -1516,7 +1526,7 @@ function createKnowledgeRepositoryCard(repo) {
             </div>
             
             <p class="text-xs text-gray-500 mb-2">
-                ${_knowledgeBackendBadge(repo.backend_type)} ${repo.collection_name}${repo.chunking_strategy ? ` | ${repo.chunking_strategy} chunking` : ''}
+                ${_knowledgeBackendBadge(repo.backend_type)}${_searchModeBadge(repo.search_mode)} ${repo.collection_name}${repo.chunking_strategy ? ` | ${repo.chunking_strategy} chunking` : ''}
             </p>
 
             <p class="text-xs text-gray-400 mb-2">
