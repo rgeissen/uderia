@@ -262,18 +262,6 @@ def _create_collections_table():
             logger.info(f"Fixed NULL backend_type for {cursor.rowcount} legacy collections")
             conn.commit()
 
-        # Backfill document_count from knowledge_documents for existing repos
-        cursor.execute("""
-            UPDATE collections SET document_count = (
-                SELECT COUNT(*) FROM knowledge_documents kd WHERE kd.collection_id = collections.id
-            )
-            WHERE repository_type = 'knowledge' AND document_count = 0
-            AND EXISTS (SELECT 1 FROM knowledge_documents kd WHERE kd.collection_id = collections.id)
-        """)
-        if cursor.rowcount > 0:
-            logger.info(f"Backfilled document_count for {cursor.rowcount} existing knowledge repositories")
-            conn.commit()
-
         # Create document_chunks table for Knowledge repositories
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS document_chunks (
@@ -318,7 +306,20 @@ def _create_collections_table():
         
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_docs_collection ON knowledge_documents(collection_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_docs_category ON knowledge_documents(category)")
-        
+
+        # Backfill document_count from knowledge_documents for existing repos
+        # (runs after knowledge_documents table is guaranteed to exist)
+        cursor.execute("""
+            UPDATE collections SET document_count = (
+                SELECT COUNT(*) FROM knowledge_documents kd WHERE kd.collection_id = collections.id
+            )
+            WHERE repository_type = 'knowledge' AND document_count = 0
+            AND EXISTS (SELECT 1 FROM knowledge_documents kd WHERE kd.collection_id = collections.id)
+        """)
+        if cursor.rowcount > 0:
+            logger.info(f"Backfilled document_count for {cursor.rowcount} existing knowledge repositories")
+            conn.commit()
+
         # Create collection_subscriptions table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS collection_subscriptions (
@@ -339,11 +340,14 @@ def _create_collections_table():
         
         conn.commit()
         conn.close()
-        
-        pass  # Collections table initialized
-        
+
     except Exception as e:
         logger.error(f"Error creating collections table: {e}", exc_info=True)
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
 
 
 def _create_template_defaults_table():
