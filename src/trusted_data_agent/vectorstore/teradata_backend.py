@@ -700,15 +700,27 @@ class TeradataVectorBackend(VectorStoreBackend):
         ``IngestionProgress`` on every status change and periodic heartbeat
         so callers can relay real EVS phase information to the UI.
 
-        Resilient to ``create_context()`` calls from other code paths (e.g.
-        ``_execute_sql`` reconnect) that invalidate teradataml global state.
-        After 3 consecutive poll errors, re-establishes both SQL and REST API
-        connections, then re-creates the ``VectorStore`` instance so status
-        polling can resume.
+        Uses a three-phase recovery state machine for resilience:
+
+        1. **Patience** (timeouts 1–2): Don't replace thread — it's waiting
+           on a slow REST response.  Linear backoff, emit heartbeats.
+        2. **Thread replacement** (timeout 3): Replace stuck thread, call
+           ``_reconnect_all(rest_only=True)`` to establish auth context,
+           then ``_create_vs()`` with built-in retry.  Saves old ``vs``
+           and restores it if recovery fails.
+        3. **Backoff** (timeout 4+): Exponential backoff with periodic
+           probes.  Stops hammering an overloaded Teradata server.
+
+        Also handles generic poll errors (e.g. stale teradataml context
+        from external ``create_context()`` calls) via a 3-error rebuild
+        that re-establishes REST auth before creating a fresh VS instance.
         """
         deadline = time.monotonic() + timeout
+        start_time = deadline - timeout
         poll_count = 0
         consecutive_errors = 0
+        consecutive_timeouts = 0
+        in_backoff = False
         last_status = ""
         collection_name = getattr(vs, "name", None) or getattr(vs, "_name", None)
         self._vs_operation_active = True
@@ -716,7 +728,10 @@ class TeradataVectorBackend(VectorStoreBackend):
         while time.monotonic() < deadline:
             try:
                 status_str = await self._get_vs_status(vs)
-                consecutive_errors = 0  # reset on success
+                # Reset all recovery state on any successful poll
+                consecutive_errors = 0
+                consecutive_timeouts = 0
+                in_backoff = False
 
                 # Log status changes and periodic heartbeats
                 emit_progress = False
@@ -762,48 +777,144 @@ class TeradataVectorBackend(VectorStoreBackend):
                 raise
             except asyncio.TimeoutError as texc:
                 consecutive_errors += 1
+                consecutive_timeouts += 1
+                elapsed = int(time.monotonic() - start_time)
                 logger.warning(
-                    f"VS '{operation}' poll timeout #{consecutive_errors}: {texc}"
+                    f"VS '{operation}' poll timeout #{consecutive_timeouts} "
+                    f"(total errors: {consecutive_errors}): {texc}"
                 )
-                # The dedicated thread is likely stuck on a hanging REST call.
-                # Replace the executor so subsequent calls don't queue behind it.
-                if collection_name:
+
+                # --- Three-phase recovery state machine ---
+                #
+                # Phase 1 (patience): Thread is probably just waiting on a slow
+                #   REST response from overloaded Teradata.  Don't replace it —
+                #   just back off and let the server breathe.
+                # Phase 2 (thread replacement): After repeated timeouts the
+                #   thread is likely genuinely stuck.  Replace it and establish
+                #   auth context on the new thread before creating a fresh VS.
+                # Phase 3 (backoff): All recovery failed — exponential backoff
+                #   with periodic probes until Teradata recovers.
+
+                if consecutive_timeouts < self._THREAD_REPLACE_THRESHOLD:
+                    # Phase 1: Patience — don't replace thread
+                    backoff_sleep = min(interval * consecutive_timeouts,
+                                        self._MAX_BACKOFF_SLEEP)
                     logger.info(
-                        f"VS '{operation}': timeout — replacing stuck thread "
-                        f"(auth token still valid, skipping re-authentication)"
+                        f"VS '{operation}': timeout #{consecutive_timeouts} < "
+                        f"threshold {self._THREAD_REPLACE_THRESHOLD} — waiting "
+                        f"{backoff_sleep}s (thread NOT replaced, vs preserved)"
+                    )
+                    # Emit heartbeat so the UI timer keeps ticking
+                    if progress_callback:
+                        progress_callback(IngestionProgress(
+                            status=last_status or "CREATING",
+                            phase=_teradata_phase_label(last_status or "CREATING")
+                                  + f" ({elapsed}s elapsed, server busy)",
+                            percentage=_resolve_progress_pct(
+                                last_status or "CREATING", elapsed, timeout),
+                            elapsed_seconds=elapsed,
+                        ))
+                    poll_count += 1
+                    await asyncio.sleep(backoff_sleep)
+                    continue  # skip the normal sleep at bottom
+
+                elif consecutive_timeouts == self._THREAD_REPLACE_THRESHOLD:
+                    # Phase 2: Thread replacement with full context recovery
+                    saved_vs = vs
+                    logger.info(
+                        f"VS '{operation}': {consecutive_timeouts} consecutive "
+                        f"timeouts — replacing stuck thread with context recovery"
                     )
                     try:
                         self._replace_stuck_executor()
-                        # Skip _reconnect_all() — the auth token from initialize()
-                        # is still valid (JWT tokens last 1+ hours).  Calling
-                        # set_auth_token() here is an unnecessary REST call that
-                        # can 504 when the server is busy processing documents,
-                        # causing the entire thread replacement to fail.
-                        from teradatagenai import VectorStore as _VS  # type: ignore[import]
-                        vs = await self._run_in_td_thread(_VS, collection_name)
-                        logger.info(f"VS '{operation}': fresh thread ready, polling resumed")
+                        # Establish auth context on new thread BEFORE VectorStore
+                        await asyncio.wait_for(
+                            self._reconnect_all(rest_only=True),
+                            timeout=self._VS_STATUS_CALL_TIMEOUT,
+                        )
+                        # Use _create_vs() which has built-in 3x retry + 504
+                        # detection, instead of raw VectorStore() constructor
+                        vs = await self._create_vs(collection_name)
+                        logger.info(
+                            f"VS '{operation}': thread replaced + context "
+                            f"restored, polling resumed"
+                        )
                         consecutive_errors = 0
+                        consecutive_timeouts = 0
+                        in_backoff = False
                     except Exception as reconn_exc:
-                        logger.warning(f"VS '{operation}': thread replacement failed: {reconn_exc}")
+                        # Recovery failed — Teradata is overloaded.
+                        # Restore the old vs and enter backoff mode.
+                        vs = saved_vs
+                        in_backoff = True
+                        logger.warning(
+                            f"VS '{operation}': full recovery failed "
+                            f"({reconn_exc}). Entering backoff mode with "
+                            f"original vs instance."
+                        )
+
+                else:
+                    # Phase 3: Backoff mode — exponential sleep, periodic probes
+                    n = consecutive_timeouts - self._THREAD_REPLACE_THRESHOLD
+                    backoff_sleep = min(interval * (2 ** n),
+                                        self._MAX_BACKOFF_SLEEP)
+                    if n % 3 == 0:
+                        logger.info(
+                            f"VS '{operation}': backoff probe after "
+                            f"{consecutive_timeouts} timeouts ({elapsed}s elapsed)"
+                        )
+                    else:
+                        logger.info(
+                            f"VS '{operation}': backoff sleep {backoff_sleep}s "
+                            f"(timeout #{consecutive_timeouts}, {elapsed}s elapsed)"
+                        )
+                    # Emit heartbeat for UI
+                    if progress_callback:
+                        progress_callback(IngestionProgress(
+                            status=last_status or "CREATING",
+                            phase=_teradata_phase_label(last_status or "CREATING")
+                                  + f" ({elapsed}s elapsed, waiting for server)",
+                            percentage=_resolve_progress_pct(
+                                last_status or "CREATING", elapsed, timeout),
+                            elapsed_seconds=elapsed,
+                        ))
+                    poll_count += 1
+                    await asyncio.sleep(backoff_sleep)
+                    continue  # skip the normal sleep at bottom
             except Exception as exc:
                 consecutive_errors += 1
                 logger.warning(f"VS status poll error during '{operation}': {exc}")
 
-                # After 3 consecutive failures, the global teradataml state is
-                # likely stale (another code path called create_context()).
-                # Re-establish connections and rebuild the VectorStore instance.
-                if consecutive_errors == 3 and collection_name:
+                # After 3 consecutive failures, the teradataml state may be
+                # stale (another code path called create_context(), or thread
+                # was replaced without context).  Re-establish REST auth and
+                # rebuild the VectorStore instance.
+                if consecutive_errors >= 3 and collection_name and not in_backoff:
+                    saved_vs = vs
                     logger.info(
-                        f"VS '{operation}': 3 consecutive poll errors — "
-                        f"rebuilding VS instance (auth token still valid)"
+                        f"VS '{operation}': {consecutive_errors} consecutive "
+                        f"poll errors — rebuilding VS with context recovery"
                     )
                     try:
-                        from teradatagenai import VectorStore as _VS  # type: ignore[import]
-                        vs = await self._run_in_td_thread(_VS, collection_name)
-                        logger.info(f"VS '{operation}': VS instance rebuilt, polling resumed")
+                        await asyncio.wait_for(
+                            self._reconnect_all(rest_only=True),
+                            timeout=self._VS_STATUS_CALL_TIMEOUT,
+                        )
+                        vs = await self._create_vs(collection_name)
+                        logger.info(
+                            f"VS '{operation}': VS instance rebuilt with "
+                            f"fresh context, polling resumed"
+                        )
                         consecutive_errors = 0
+                        consecutive_timeouts = 0
+                        in_backoff = False
                     except Exception as reconn_exc:
-                        logger.warning(f"VS '{operation}': reconnection failed: {reconn_exc}")
+                        vs = saved_vs  # don't lose the old vs
+                        in_backoff = True
+                        logger.warning(
+                            f"VS '{operation}': rebuild failed ({reconn_exc}), "
+                            f"keeping original vs, entering backoff mode"
+                        )
 
             poll_count += 1
             await asyncio.sleep(interval)
@@ -814,6 +925,8 @@ class TeradataVectorBackend(VectorStoreBackend):
         )
 
     _VS_STATUS_CALL_TIMEOUT = 60  # seconds – per REST call to Teradata
+    _THREAD_REPLACE_THRESHOLD = 3  # consecutive timeouts before replacing thread
+    _MAX_BACKOFF_SLEEP = 60        # cap exponential backoff at 60s
 
     def _replace_stuck_executor(self) -> None:
         """Abandon a stuck dedicated thread and create a fresh executor.
@@ -879,7 +992,9 @@ class TeradataVectorBackend(VectorStoreBackend):
         except asyncio.TimeoutError:
             logger.warning(f"VS get_details() timed out after {t}s")
             timed_out = True
-        except Exception:
+        except Exception as exc:
+            if self._is_fatal_vs_error(exc):
+                raise RuntimeError(f"VS operation failed (unrecoverable): {exc}") from exc
             pass  # fall through to status()
 
         # Fallback: status() — works once the VS is past the initial phase
@@ -907,11 +1022,37 @@ class TeradataVectorBackend(VectorStoreBackend):
             timed_out = True
         except Exception as exc:
             logger.warning(f"[TD-SDK] status() exception: {type(exc).__name__}: {exc}")
+            if self._is_fatal_vs_error(exc):
+                raise RuntimeError(f"VS operation failed (unrecoverable): {exc}") from exc
 
         if timed_out:
             raise asyncio.TimeoutError("VS status calls timed out — dedicated thread may be stuck")
 
         return "UNKNOWN"
+
+    # Patterns that indicate an unrecoverable Teradata error — polling should
+    # stop immediately instead of looping until the 30-minute outer timeout.
+    _FATAL_ERROR_PATTERNS = (
+        "No more room in database",
+        "No more room in",
+        "out of spool space",
+        "SPOOL_SPACE",
+        "permission denied",
+        "Access denied",
+        "does not have",         # privilege errors
+        "insufficient privileges",
+    )
+
+    @classmethod
+    def _is_fatal_vs_error(cls, exc: BaseException) -> bool:
+        """Return True if the exception represents an unrecoverable VS error.
+
+        Fatal errors (e.g. database full, permission denied) cannot be fixed
+        by retrying or replacing the thread — the poll loop should stop
+        immediately and report the failure to the user.
+        """
+        msg = str(exc)
+        return any(pattern.lower() in msg.lower() for pattern in cls._FATAL_ERROR_PATTERNS)
 
     async def _ensure_staging_table(self, collection_name: str) -> str:
         """Create the staging table if it does not exist. Returns the table name."""
