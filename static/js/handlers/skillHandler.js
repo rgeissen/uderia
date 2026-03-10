@@ -1429,6 +1429,12 @@ function openSkillEditor(existingSkill = null) {
         if (editorState.level === 'expert') {
             body.className = 'flex-1 flex min-h-0';
             body.style.cssText = 'overflow: hidden; padding: 0;';
+        } else if (editorState.level === 'citizen') {
+            body.className = 'flex-1 flex flex-col min-h-0 py-4';
+            body.style.cssText = 'overflow: hidden; padding-left: 2rem; padding-right: 2rem;';
+        } else if (editorState.level === 'intermediate') {
+            body.className = 'flex-1 flex flex-col min-h-0 py-4';
+            body.style.cssText = 'overflow: hidden; padding-left: 2rem; padding-right: 2rem;';
         } else {
             body.className = 'flex-1 overflow-y-auto px-5 py-4';
         }
@@ -1675,8 +1681,8 @@ function openSkillEditor(existingSkill = null) {
 
 function _renderCitizenLevel(container, state) {
     container.innerHTML = `
-        <div class="space-y-6 max-w-2xl mx-auto">
-            <div>
+        <div class="flex flex-col min-h-0 flex-1 w-full">
+            <div class="flex-shrink-0 mb-4">
                 <label class="block text-xs font-semibold uppercase tracking-wider mb-2" style="color:${EMERALD};">Skill Name</label>
                 <input type="text" id="skill-ed-name" value="${state.skillId}" maxlength="50"
                     placeholder="sql-expert"
@@ -1686,16 +1692,16 @@ function _renderCitizenLevel(container, state) {
                 <p class="text-[11px] mt-1.5" style="color:#6b7280;">Users invoke with <span id="skill-ed-trigger-preview" style="color:${EMERALD};font-family:'JetBrains Mono',monospace;font-weight:600;">#${state.skillId || 'name'}</span></p>
             </div>
 
-            <div>
-                <div class="flex items-center justify-between mb-2">
+            <div class="flex flex-col flex-1 min-h-0">
+                <div class="flex items-center justify-between mb-2 flex-shrink-0">
                     <label class="block text-xs font-semibold uppercase tracking-wider" style="color:${EMERALD};">Instructions</label>
                     <span id="skill-ed-citizen-tokens" class="text-[10px] font-mono" style="color:#6b7280;">~${_estimateTokens(state.instructions)} tokens</span>
                 </div>
-                <textarea id="skill-ed-instructions" rows="18"
+                <textarea id="skill-ed-instructions"
                     placeholder="You are an expert SQL developer. Follow these best practices:&#10;&#10;- Always use explicit JOINs&#10;- Use meaningful aliases&#10;- Include WHERE clauses to limit results"
-                    class="w-full text-white rounded-lg px-4 py-3 text-sm resize-y transition-all duration-200"
-                    style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.12);font-family:'JetBrains Mono','Fira Code',monospace;line-height:1.7;min-height:300px;caret-color:${EMERALD};outline:none;tab-size:4;-moz-tab-size:4;">${state.instructions}</textarea>
-                <p class="text-[11px] mt-1.5" style="color:#6b7280;">What you write is what gets injected into the LLM prompt. Supports plain text or markdown.</p>
+                    class="w-full text-white rounded-lg px-4 py-3 text-sm flex-1 transition-all duration-200"
+                    style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.12);font-family:'JetBrains Mono','Fira Code',monospace;line-height:1.7;min-height:150px;resize:none;caret-color:${EMERALD};outline:none;tab-size:4;-moz-tab-size:4;">${state.instructions}</textarea>
+                <p class="text-[11px] mt-1.5 flex-shrink-0" style="color:#6b7280;">What you write is what gets injected into the LLM prompt. Supports plain text or markdown.</p>
             </div>
         </div>`;
 
@@ -1767,82 +1773,85 @@ function _renderIntermediateLevel(container, state) {
     const isSysPrompt = state.injectionTarget === 'system_prompt';
 
     container.innerHTML = `
-        <div class="space-y-6 max-w-3xl mx-auto">
-            <!-- Name + Description -->
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-semibold uppercase tracking-wider mb-2" style="color:${EMERALD};">Skill Name</label>
-                    <input type="text" id="skill-ed-name" value="${state.skillId}" maxlength="50"
-                        class="w-full text-white rounded-lg px-3 py-2.5 text-sm font-mono transition-all duration-200"
-                        style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.12);caret-color:${EMERALD};outline:none;"
-                        ${state.isBuiltin ? 'readonly' : ''}>
+        <div class="flex flex-col min-h-0 flex-1 w-full">
+            <!-- Compact top section -->
+            <div class="flex-shrink-0 space-y-4 mb-4">
+                <!-- Name + Description -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider mb-1.5" style="color:${EMERALD};">Skill Name</label>
+                        <input type="text" id="skill-ed-name" value="${state.skillId}" maxlength="50"
+                            class="w-full text-white rounded-lg px-3 py-2 text-sm font-mono transition-all duration-200"
+                            style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.12);caret-color:${EMERALD};outline:none;"
+                            ${state.isBuiltin ? 'readonly' : ''}>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider mb-1.5" style="color:${EMERALD};">Description</label>
+                        <input type="text" id="skill-ed-description" value="${state.description}" maxlength="200"
+                            placeholder="SQL best practices and expert guidance"
+                            class="w-full text-white rounded-lg px-3 py-2 text-sm transition-all duration-200"
+                            style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.12);caret-color:${EMERALD};outline:none;">
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold uppercase tracking-wider mb-2" style="color:${EMERALD};">Description</label>
-                    <input type="text" id="skill-ed-description" value="${state.description}" maxlength="200"
-                        placeholder="SQL best practices and expert guidance"
-                        class="w-full text-white rounded-lg px-3 py-2.5 text-sm transition-all duration-200"
-                        style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.12);caret-color:${EMERALD};outline:none;">
-                </div>
-            </div>
 
-            <!-- Injection Target (segmented control) -->
-            <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider mb-2" style="color:${EMERALD};">Injection Target</label>
-                <div class="inline-flex rounded-lg p-0.5" style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.08);">
-                    <label class="flex items-center gap-2 px-4 py-2 rounded-md cursor-pointer transition-all duration-200" id="target-system-label"
-                        style="${isSysPrompt ? `background:${EMERALD_BG};border:1px solid ${EMERALD_BORDER};` : 'background:transparent;border:1px solid transparent;'}">
-                        <input type="radio" name="skill-injection-target" value="system_prompt" ${isSysPrompt ? 'checked' : ''} class="hidden">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:${isSysPrompt ? EMERALD : '#6b7280'};"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                        <div>
-                            <span class="text-xs font-medium" style="color:${isSysPrompt ? EMERALD : '#9ca3af'};">System Prompt</span>
-                            <p class="text-[10px]" style="color:${isSysPrompt ? EMERALD_LIGHT : '#6b7280'};">Shapes how the LLM thinks</p>
+                <!-- Injection Target + Tags (side by side) -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider mb-1.5" style="color:${EMERALD};">Injection Target</label>
+                        <div class="inline-flex rounded-lg p-0.5" style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.08);">
+                            <label class="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer transition-all duration-200" id="target-system-label"
+                                style="${isSysPrompt ? `background:${EMERALD_BG};border:1px solid ${EMERALD_BORDER};` : 'background:transparent;border:1px solid transparent;'}">
+                                <input type="radio" name="skill-injection-target" value="system_prompt" ${isSysPrompt ? 'checked' : ''} class="hidden">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:${isSysPrompt ? EMERALD : '#6b7280'};"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                <div>
+                                    <span class="text-xs font-medium" style="color:${isSysPrompt ? EMERALD : '#9ca3af'};">System Prompt</span>
+                                    <p class="text-[10px]" style="color:${isSysPrompt ? EMERALD_LIGHT : '#6b7280'};">Shapes how the LLM thinks</p>
+                                </div>
+                            </label>
+                            <label class="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer transition-all duration-200" id="target-context-label"
+                                style="${!isSysPrompt ? `background:${EMERALD_BG};border:1px solid ${EMERALD_BORDER};` : 'background:transparent;border:1px solid transparent;'}">
+                                <input type="radio" name="skill-injection-target" value="user_context" ${!isSysPrompt ? 'checked' : ''} class="hidden">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:${!isSysPrompt ? EMERALD : '#6b7280'};"><path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
+                                <div>
+                                    <span class="text-xs font-medium" style="color:${!isSysPrompt ? EMERALD : '#9ca3af'};">User Context</span>
+                                    <p class="text-[10px]" style="color:${!isSysPrompt ? EMERALD_LIGHT : '#6b7280'};">Adds background info to query</p>
+                                </div>
+                            </label>
                         </div>
-                    </label>
-                    <label class="flex items-center gap-2 px-4 py-2 rounded-md cursor-pointer transition-all duration-200" id="target-context-label"
-                        style="${!isSysPrompt ? `background:${EMERALD_BG};border:1px solid ${EMERALD_BORDER};` : 'background:transparent;border:1px solid transparent;'}">
-                        <input type="radio" name="skill-injection-target" value="user_context" ${!isSysPrompt ? 'checked' : ''} class="hidden">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:${!isSysPrompt ? EMERALD : '#6b7280'};"><path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
-                        <div>
-                            <span class="text-xs font-medium" style="color:${!isSysPrompt ? EMERALD : '#9ca3af'};">User Context</span>
-                            <p class="text-[10px]" style="color:${!isSysPrompt ? EMERALD_LIGHT : '#6b7280'};">Adds background info to query</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider mb-1.5" style="color:${EMERALD};">Tags</label>
+                        <div class="flex flex-wrap items-center gap-1.5 mb-1.5 min-h-[28px]" id="skill-ed-tags">
+                            ${tagsHtml}
                         </div>
-                    </label>
+                        <div class="flex gap-2 items-center">
+                            <input type="text" id="skill-ed-tag-input" placeholder="Add tag..." maxlength="30"
+                                class="text-white rounded-md px-2.5 py-1.5 text-xs w-36 transition-all duration-200"
+                                style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.1);caret-color:${EMERALD};outline:none;">
+                            <button id="skill-ed-tag-add" class="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md font-medium transition-all duration-150"
+                                style="background:${EMERALD_BG};color:${EMERALD};border:1px solid ${EMERALD_BORDER};">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                Add
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Tags -->
-            <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider mb-2" style="color:${EMERALD};">Tags</label>
-                <div class="flex flex-wrap items-center gap-1.5 mb-2 min-h-[28px]" id="skill-ed-tags">
-                    ${tagsHtml}
-                </div>
-                <div class="flex gap-2 items-center">
-                    <input type="text" id="skill-ed-tag-input" placeholder="Add tag..." maxlength="30"
-                        class="text-white rounded-md px-2.5 py-1.5 text-xs w-36 transition-all duration-200"
-                        style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.1);caret-color:${EMERALD};outline:none;">
-                    <button id="skill-ed-tag-add" class="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md font-medium transition-all duration-150"
-                        style="background:${EMERALD_BG};color:${EMERALD};border:1px solid ${EMERALD_BORDER};">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                        Add
-                    </button>
-                </div>
-            </div>
-
-            <!-- Instructions -->
-            <div>
-                <div class="flex items-center justify-between mb-2">
+            <!-- Instructions (flex-1 to fill remaining space) -->
+            <div class="flex flex-col flex-1 min-h-0">
+                <div class="flex items-center justify-between mb-2 flex-shrink-0">
                     <label class="block text-xs font-semibold uppercase tracking-wider" style="color:${EMERALD};">Instructions</label>
                     <span id="skill-ed-int-tokens" class="text-[10px] font-mono" style="color:#6b7280;">~${_estimateTokens(state.instructions)} tokens</span>
                 </div>
-                <textarea id="skill-ed-instructions" rows="10"
+                <textarea id="skill-ed-instructions"
                     placeholder="You are an expert SQL developer..."
-                    class="w-full text-white rounded-lg px-4 py-3 text-sm resize-y transition-all duration-200"
-                    style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.12);font-family:'JetBrains Mono','Fira Code',monospace;line-height:1.7;min-height:150px;caret-color:${EMERALD};outline:none;tab-size:4;-moz-tab-size:4;">${state.instructions}</textarea>
+                    class="w-full text-white rounded-lg px-4 py-3 text-sm flex-1 transition-all duration-200"
+                    style="background:rgba(0,0,0,0.2);border:1px solid rgba(148,163,184,0.12);font-family:'JetBrains Mono','Fira Code',monospace;line-height:1.7;min-height:100px;resize:none;caret-color:${EMERALD};outline:none;tab-size:4;-moz-tab-size:4;">${state.instructions}</textarea>
             </div>
 
             <!-- Parameters -->
-            <div>
+            <div class="flex-shrink-0 mt-4" style="max-height:30%;overflow-y:auto;">
                 <div class="flex items-center justify-between mb-2">
                     <label class="text-xs font-semibold uppercase tracking-wider" style="color:${EMERALD};">Parameters <span class="text-[10px] font-normal normal-case" style="color:#6b7280;">(optional)</span></label>
                     <button id="skill-ed-add-param" class="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md font-medium transition-all duration-150"
