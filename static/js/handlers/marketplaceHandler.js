@@ -1978,7 +1978,7 @@ async function loadMarketplaceCollections() {
         
         if (currentTab === 'my-collections') {
             // Load user's own collections
-            response = await fetch('/api/v1/rag/collections', { headers });
+            response = await fetch('/api/v1/rag/collections?light=true', { headers });
         } else {
             // Load marketplace collections
             const params = new URLSearchParams({

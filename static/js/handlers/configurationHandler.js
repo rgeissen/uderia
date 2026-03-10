@@ -6259,7 +6259,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     const plannerContainer = modal.querySelector('#profile-modal-planner-collections');
     const knowledgeContainer = modal.querySelector('#profile-modal-knowledge-collections');
 
-    const { collections: ragCollections } = await API.getRagCollections();
+    const { collections: ragCollections } = await API.getRagCollections(true);
 
     // Separate collections by repository type
     const plannerCollections = ragCollections.filter(coll => coll.repository_type === 'planner');

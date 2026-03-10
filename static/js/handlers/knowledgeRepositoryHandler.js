@@ -984,16 +984,16 @@ export async function loadKnowledgeRepositories() {
     
     try {
         const token = localStorage.getItem('tda_auth_token');
-        const response = await fetch('/api/v1/rag/collections', {
+        const response = await fetch('/api/v1/rag/collections?light=true', {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
-        
+
         if (!response.ok) {
             throw new Error('Failed to load Knowledge repositories');
         }
-        
+
         const data = await response.json();
         const knowledgeRepos = data.collections?.filter(c => c.repository_type === 'knowledge') || [];
 

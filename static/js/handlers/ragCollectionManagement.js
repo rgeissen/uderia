@@ -1209,9 +1209,9 @@ if (editRagCollectionForm) {
 async function calculateRagImpactKPIs() {
     
     try {
-        // Fetch all collections to calculate metrics
+        // Fetch all collections to calculate metrics (light=true: skip live backend counts)
         const token = localStorage.getItem('tda_auth_token');
-        const response = await fetch('/api/v1/rag/collections', {
+        const response = await fetch('/api/v1/rag/collections?light=true', {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -1663,14 +1663,14 @@ async function populateCollectionDropdown() {
     try {
         // Fetch collections from API
         const token = localStorage.getItem('tda_auth_token');
-        const response = await fetch('/api/v1/rag/collections', {
+        const response = await fetch('/api/v1/rag/collections?light=true', {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
         const data = await response.json();
         const collections = (data && data.collections) ? data.collections : [];
-        
+
         // Clear and add placeholder
         sqlTemplateCollectionSelect.innerHTML = '<option value="">Select a collection...</option>';
         

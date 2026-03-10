@@ -2634,8 +2634,14 @@ async def cancel_task(task_id: str):
 
 @rest_api_bp.route("/v1/rag/collections", methods=["GET"])
 async def get_rag_collections():
-    """Get RAG collections accessible to the authenticated user (owned + subscribed)."""
+    """Get RAG collections accessible to the authenticated user (owned + subscribed).
+
+    Query params:
+        light (bool): When true, skip live backend count queries (faster, no Teradata calls).
+                      Useful for UIs that only need collection names/IDs (e.g. profile modal).
+    """
     try:
+        light = request.args.get('light', 'false').lower() == 'true'
         # --- MARKETPLACE PHASE 2: Filter by user access ---
         user_uuid = _get_user_uuid_from_request()
         retriever = get_rag_retriever()
@@ -2708,22 +2714,26 @@ async def get_rag_collections():
             # --- MARKETPLACE PHASE 2 END ---
             
             # Get document count if collection is active or is a non-ChromaDB knowledge repo
-            is_non_chromadb = coll.get("backend_type") and coll["backend_type"] != "chromadb"
-            if retriever and (is_active or is_non_chromadb):
-                try:
-                    # Add timeout protection to prevent hanging on stuck backends
-                    coll_copy["count"] = await asyncio.wait_for(
-                        retriever.get_collection_count(coll["id"]),
-                        timeout=3.0  # 3 second timeout per collection
-                    )
-                except asyncio.TimeoutError:
-                    app_logger.warning(f"Timeout getting count for collection {coll['id']} - backend may be stuck")
-                    coll_copy["count"] = -1  # -1 indicates timeout/unavailable
-                except Exception as count_err:
-                    app_logger.warning(f"Failed to get count for collection {coll['id']}: {count_err}")
-                    coll_copy["count"] = 0
-            else:
+            # Skip live backend counts in light mode (profile modal, agent pack picker, etc.)
+            if light:
                 coll_copy["count"] = 0
+            else:
+                is_non_chromadb = coll.get("backend_type") and coll["backend_type"] != "chromadb"
+                if retriever and (is_active or is_non_chromadb):
+                    try:
+                        # Add timeout protection to prevent hanging on stuck backends
+                        coll_copy["count"] = await asyncio.wait_for(
+                            retriever.get_collection_count(coll["id"]),
+                            timeout=3.0  # 3 second timeout per collection
+                        )
+                    except asyncio.TimeoutError:
+                        app_logger.warning(f"Timeout getting count for collection {coll['id']} - backend may be stuck")
+                        coll_copy["count"] = -1  # -1 indicates timeout/unavailable
+                    except Exception as count_err:
+                        app_logger.warning(f"Failed to get count for collection {coll['id']}: {count_err}")
+                        coll_copy["count"] = 0
+                else:
+                    coll_copy["count"] = 0
             
             enhanced_collections.append(coll_copy)
         
@@ -6049,15 +6059,16 @@ async def _test_vectorstore_backend(backend_type: str, backend_config: dict) -> 
     if not backend_config.get("base_url"):
         return False, "Base URL (REST API endpoint) is required for Teradata.", None
 
-    # Use the abstraction layer — instantiate directly (NOT via factory) to avoid cache pollution
+    # Use the factory so the validated instance is cached and reused by the
+    # upload that follows.  If validation fails, get_backend() removes the
+    # instance from cache automatically (line 160).
     try:
-        from trusted_data_agent.vectorstore.teradata_backend import TeradataVectorBackend
+        from trusted_data_agent.vectorstore.factory import get_backend
     except ImportError:
         return False, "Teradata SDK not installed. Run: pip install teradatagenai teradataml", None
 
-    backend = TeradataVectorBackend(connection_config=backend_config)
     try:
-        await backend.initialize()
+        await get_backend(backend_type, backend_config)
         server_info = {
             "host": backend_config["host"],
             "database": backend_config.get("database"),
@@ -6078,11 +6089,6 @@ async def _test_vectorstore_backend(backend_type: str, backend_config: dict) -> 
                 hints.append("PEM: not provided")
             error_msg = f"{error_msg}\n\nDiagnostics: {', '.join(hints)}"
         return False, f"Connection failed: {error_msg}", None
-    finally:
-        try:
-            await backend.shutdown()
-        except Exception:
-            pass
 
 
 @rest_api_bp.route("/v1/vectorstore/test-connection", methods=["POST"])

@@ -56,8 +56,26 @@ def register_backend(backend_type: str, cls: Type[VectorStoreBackend]) -> None:
 
 
 def _config_fingerprint(backend_type: str, config: Dict[str, Any]) -> str:
-    """Stable cache key for a (backend_type, config) pair."""
-    payload = json.dumps({"t": backend_type, "c": config}, sort_keys=True)
+    """Stable cache key for a (backend_type, config) pair.
+
+    For Teradata, only connection-identity fields are used (host, database,
+    username) because ``teradataml`` maintains a **single global context** —
+    calling ``create_context()`` again overwrites the existing connection.
+    Including credentials or tuning params would cause different callers
+    (upload path vs count path) to produce different fingerprints, creating
+    duplicate backend instances that fight over the global context.
+    """
+    if backend_type == "teradata":
+        # Connection identity only — not credentials, embedding model, or tuning params
+        identity = {
+            "t": backend_type,
+            "host": config.get("host", ""),
+            "database": config.get("database", ""),
+            "username": config.get("username", ""),
+        }
+        payload = json.dumps(identity, sort_keys=True)
+    else:
+        payload = json.dumps({"t": backend_type, "c": config}, sort_keys=True)
     return hashlib.md5(payload.encode()).hexdigest()[:12]
 
 
@@ -110,9 +128,7 @@ async def get_backend(
         else:
             instance = cls(connection_config=config)  # type: ignore[call-arg]
 
-        await instance.initialize()
-
-        # Validate required capabilities
+        # Validate required capabilities (static — doesn't need initialization)
         missing = REQUIRED_CAPABILITIES - instance.capabilities()
         if missing:
             names = ", ".join(c.name for c in missing)
@@ -120,7 +136,30 @@ async def get_backend(
                 f"Backend '{backend_type}' is missing required capabilities: {names}"
             )
 
+        # Cache BEFORE initialization to prevent duplicate instances.
+        # For backends like Teradata, create_context() can take 3+ seconds.
+        # If the caller's asyncio.wait_for timeout fires, CancelledError
+        # propagates and the old code never reached _INSTANCES[key] = ...
+        # causing every subsequent request to create a new instance and
+        # call create_context() again (overwriting the global singleton).
         _INSTANCES[key] = instance
+        try:
+            await instance.initialize()
+        except asyncio.CancelledError:
+            # Caller timed out, but create_context() is likely completing
+            # on the backend's dedicated thread.  Keep the cached instance —
+            # next caller will find the connection ready, or _reconnect_all()
+            # will handle it via _execute_sql() retry logic.
+            logger.warning(
+                f"Backend init cancelled (timeout?) for {backend_type} (key={key}) "
+                f"— keeping cached instance"
+            )
+            raise
+        except Exception:
+            # Real failure (missing SDK, bad credentials) — remove from cache
+            _INSTANCES.pop(key, None)
+            raise
+
         logger.info(f"Created vector store backend: {backend_type} (key={key})")
         return instance
 
