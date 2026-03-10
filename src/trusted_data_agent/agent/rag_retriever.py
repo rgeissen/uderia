@@ -2431,7 +2431,17 @@ class RAGRetriever:
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(case_study, f, indent=2)
             logger.debug(f"Saved case study JSON to disk: {output_path}")
-            
+
+            # 8. Persist chunk count — upsert adds a net-new entry only when
+            #    there was no existing case for this query (old_best_case_id is None)
+            if old_best_case_id is None:
+                try:
+                    from trusted_data_agent.core.collection_db import get_collection_db
+                    get_collection_db().increment_counts(
+                        collection_id, chunk_delta=1)
+                except Exception as count_err:
+                    logger.warning(f"Failed to increment chunk count for collection {collection_id}: {count_err}")
+
             # Return the case_id so it can be stored in the session
             return new_case_id
 

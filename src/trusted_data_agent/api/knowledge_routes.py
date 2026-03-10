@@ -381,7 +381,6 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                         doc_count = _cleanup_cur.fetchone()["cnt"]
                         _cleanup_conn.close()
                         if doc_count == 0:
-                            from trusted_data_agent.core.collection_db import get_collection_db
                             get_collection_db().delete_collection(collection_id)
                             app_logger.info(
                                 f"Removed empty orphaned collection {collection_id} "

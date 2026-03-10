@@ -4489,6 +4489,7 @@ async def import_collection():
                 zip_path=zip_path,
                 user_uuid=user_uuid,
                 vector_store_config_id=vector_store_config_id,
+                populate_knowledge_docs=True,
             )
 
             return jsonify({
