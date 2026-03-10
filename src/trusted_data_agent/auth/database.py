@@ -210,6 +210,8 @@ def _create_collections_table():
                 chunk_size INTEGER DEFAULT 1000,
                 chunk_overlap INTEGER DEFAULT 200,
                 embedding_model TEXT DEFAULT 'all-MiniLM-L6-v2',
+                document_count INTEGER DEFAULT 0,
+                chunk_count INTEGER DEFAULT 0,
                 FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
@@ -243,6 +245,33 @@ def _create_collections_table():
         except sqlite3.OperationalError:
             logger.info("Adding vector_store_config_id column to collections table")
             cursor.execute("ALTER TABLE collections ADD COLUMN vector_store_config_id TEXT DEFAULT NULL")
+            conn.commit()
+
+        # Migration: Add document_count/chunk_count columns for persisted metadata
+        try:
+            cursor.execute("SELECT document_count FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Adding document_count and chunk_count columns to collections table")
+            cursor.execute("ALTER TABLE collections ADD COLUMN document_count INTEGER DEFAULT 0")
+            cursor.execute("ALTER TABLE collections ADD COLUMN chunk_count INTEGER DEFAULT 0")
+            conn.commit()
+
+        # Fix legacy NULL backend_type values
+        cursor.execute("UPDATE collections SET backend_type = 'chromadb' WHERE backend_type IS NULL")
+        if cursor.rowcount > 0:
+            logger.info(f"Fixed NULL backend_type for {cursor.rowcount} legacy collections")
+            conn.commit()
+
+        # Backfill document_count from knowledge_documents for existing repos
+        cursor.execute("""
+            UPDATE collections SET document_count = (
+                SELECT COUNT(*) FROM knowledge_documents kd WHERE kd.collection_id = collections.id
+            )
+            WHERE repository_type = 'knowledge' AND document_count = 0
+            AND EXISTS (SELECT 1 FROM knowledge_documents kd WHERE kd.collection_id = collections.id)
+        """)
+        if cursor.rowcount > 0:
+            logger.info(f"Backfilled document_count for {cursor.rowcount} existing knowledge repositories")
             conn.commit()
 
         # Create document_chunks table for Knowledge repositories

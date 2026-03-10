@@ -24,6 +24,7 @@ import asyncio
 import json
 
 from trusted_data_agent.core.config import APP_STATE
+from trusted_data_agent.core.collection_db import get_collection_db
 from trusted_data_agent.auth.middleware import require_auth
 from trusted_data_agent.agent.rag_retriever import get_rag_retriever
 from trusted_data_agent.llm.document_upload import DocumentUploadHandler
@@ -418,6 +419,15 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 conn.commit()
                 conn.close()
 
+                # Persist counts — fetch total chunk count from backend
+                try:
+                    total_chunks = await backend.count(collection_name)
+                except Exception:
+                    total_chunks = None
+                get_collection_db().increment_counts(collection_id, document_delta=1)
+                if total_chunks is not None:
+                    get_collection_db().update_counts(collection_id, chunk_count=total_chunks)
+
                 os.unlink(temp_file.name)
 
                 yield format_sse({
@@ -425,7 +435,7 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                     "status": "success",
                     "message": f"Document '{filename}' ingested via server-side chunking",
                     "document_id": document_id,
-                    "chunks_stored": 0,
+                    "chunks_stored": total_chunks or 0,
                     "chunking_mode": "server_side",
                 }, "complete")
                 return
@@ -535,12 +545,17 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 conn.commit()
                 conn.close()
 
+                # Persist counts
+                chunks_stored = result.get('chunks_stored', 0)
+                get_collection_db().increment_counts(
+                    collection_id, document_delta=1, chunk_delta=chunks_stored)
+
                 yield format_sse({
                     "type": "complete",
                     "status": "success",
                     "message": f"Successfully uploaded {filename}",
                     "document_id": result['metadata']['document_id'],
-                    "chunks_stored": result.get('chunks_stored', 0)
+                    "chunks_stored": chunks_stored
                 }, "complete")
             else:
                 yield format_sse({
@@ -711,10 +726,19 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                 conn.commit()
                 conn.close()
 
+                # Persist counts — fetch total chunk count from backend
+                try:
+                    total_chunks = await backend.count(collection_name)
+                except Exception:
+                    total_chunks = None
+                get_collection_db().increment_counts(collection_id, document_delta=1)
+                if total_chunks is not None:
+                    get_collection_db().update_counts(collection_id, chunk_count=total_chunks)
+
                 return jsonify({
                     "status": "success",
                     "message": f"Document '{file.filename}' ingested via server-side chunking",
-                    "chunks_stored": 0,
+                    "chunks_stored": total_chunks or 0,
                     "metadata": {
                         "document_id": document_id,
                         "filename": file.filename,
@@ -829,6 +853,11 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                 ))
                 conn.commit()
                 conn.close()
+
+                # Persist counts
+                chunks_stored = result.get('chunks_stored', 0)
+                get_collection_db().increment_counts(
+                    collection_id, document_delta=1, chunk_delta=chunks_stored)
 
                 return jsonify(result), 200
             else:
@@ -998,6 +1027,7 @@ async def delete_knowledge_document(current_user: dict, collection_id: int, docu
             return jsonify({"status": "error", "message": "Access denied"}), 403
         
         # Delete all chunks for this document via backend
+        chunk_ids = []
         backend = await retriever._get_knowledge_backend(collection_id)
         if backend:
             from trusted_data_agent.vectorstore import FieldFilter, FilterOp
@@ -1026,6 +1056,10 @@ async def delete_knowledge_document(current_user: dict, collection_id: int, docu
         conn.close()
         
         if deleted > 0:
+            # Decrement persisted counts
+            get_collection_db().increment_counts(
+                collection_id, document_delta=-1, chunk_delta=-len(chunk_ids))
+
             return jsonify({
                 "status": "success",
                 "message": f"Document {document_id} deleted"

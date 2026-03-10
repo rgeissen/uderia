@@ -2713,27 +2713,9 @@ async def get_rag_collections():
                         coll_copy["shared_by_username"] = (grantor.display_name or grantor.username) if grantor else "Unknown"
             # --- MARKETPLACE PHASE 2 END ---
             
-            # Get document count if collection is active or is a non-ChromaDB knowledge repo
-            # Skip live backend counts in light mode (profile modal, agent pack picker, etc.)
-            if light:
-                coll_copy["count"] = 0
-            else:
-                is_non_chromadb = coll.get("backend_type") and coll["backend_type"] != "chromadb"
-                if retriever and (is_active or is_non_chromadb):
-                    try:
-                        # Add timeout protection to prevent hanging on stuck backends
-                        coll_copy["count"] = await asyncio.wait_for(
-                            retriever.get_collection_count(coll["id"]),
-                            timeout=3.0  # 3 second timeout per collection
-                        )
-                    except asyncio.TimeoutError:
-                        app_logger.warning(f"Timeout getting count for collection {coll['id']} - backend may be stuck")
-                        coll_copy["count"] = -1  # -1 indicates timeout/unavailable
-                    except Exception as count_err:
-                        app_logger.warning(f"Failed to get count for collection {coll['id']}: {count_err}")
-                        coll_copy["count"] = 0
-                else:
-                    coll_copy["count"] = 0
+            # Use persisted counts from database (fast, no backend calls)
+            coll_copy["count"] = coll.get("chunk_count", 0) or 0
+            coll_copy["document_count"] = coll.get("document_count", 0) or 0
             
             enhanced_collections.append(coll_copy)
         
@@ -3501,6 +3483,10 @@ async def reset_rag_collection(collection_id: int):
         result = await retriever.reset_collection(collection_id, user_id=user_uuid)
 
         if result["success"]:
+            # Reset persisted counts
+            from trusted_data_agent.core.collection_db import get_collection_db
+            get_collection_db().update_counts(collection_id, document_count=0, chunk_count=0)
+
             app_logger.info(f"Reset RAG collection {collection_id}: {result['items_deleted']} items removed")
             return jsonify({
                 "status": "success",
@@ -3729,6 +3715,55 @@ async def refresh_rag_collection(collection_id: int):
             
     except Exception as e:
         app_logger.error(f"Error refreshing RAG collection: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/rag/collections/<int:collection_id>/refresh-counts", methods=["POST"])
+@require_auth
+async def refresh_collection_counts(current_user, collection_id: int):
+    """Refresh persisted document/chunk counts from the actual backend."""
+    try:
+        from trusted_data_agent.core.collection_db import get_collection_db
+        db = get_collection_db()
+        coll = db.get_collection_by_id(collection_id)
+        if not coll:
+            return jsonify({"status": "error", "message": "Collection not found"}), 404
+
+        # Get chunk count from backend
+        chunk_count = 0
+        retriever = get_rag_retriever()
+        if retriever:
+            try:
+                chunk_count = await asyncio.wait_for(
+                    retriever.get_collection_count(collection_id),
+                    timeout=10.0,
+                )
+            except (asyncio.TimeoutError, Exception) as e:
+                app_logger.warning(f"Failed to get backend count for collection {collection_id}: {e}")
+
+        # Get document count from knowledge_documents table
+        import sqlite3
+        from trusted_data_agent.auth.database import DATABASE_URL
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) as cnt FROM knowledge_documents WHERE collection_id = ?",
+            (collection_id,),
+        )
+        doc_count = cursor.fetchone()["cnt"]
+        conn.close()
+
+        db.update_counts(collection_id, document_count=doc_count, chunk_count=chunk_count)
+
+        return jsonify({
+            "status": "success",
+            "document_count": doc_count,
+            "chunk_count": chunk_count,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error refreshing counts for collection {collection_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -4021,7 +4056,13 @@ async def populate_collection_from_template(collection_id: int):
         app_logger.info(f"Population complete - Successful: {results['successful']}, Failed: {results['failed']}")
         if results['errors']:
             app_logger.error(f"Population errors: {results['errors']}")
-        
+
+        # Update persisted chunk count after population
+        if results['successful'] > 0:
+            from trusted_data_agent.core.collection_db import get_collection_db
+            get_collection_db().increment_counts(
+                collection_id, chunk_delta=results['successful'])
+
         return jsonify({
             "status": "success",
             "message": f"Successfully populated {results['successful']} cases",
@@ -9594,12 +9635,10 @@ async def browse_marketplace_collections():
                 if not (name_match or desc_match):
                     continue
             
-            # Add document count and ownership flag
+            # Use persisted counts from database
             coll_copy = coll.copy()
-            try:
-                coll_copy["count"] = await retriever.get_collection_count(coll["id"])
-            except Exception:
-                coll_copy["count"] = 0
+            coll_copy["count"] = coll.get("chunk_count", 0) or 0
+            coll_copy["document_count"] = coll.get("document_count", 0) or 0
             
             # Check if current user owns this collection
             if user_uuid:

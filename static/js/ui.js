@@ -121,6 +121,22 @@ function _getBackendLabel(backendType) {
     return labels[backendType] || backendType.charAt(0).toUpperCase() + backendType.slice(1);
 }
 
+/**
+ * Create a styled backend badge DOM element matching knowledgeRepositoryHandler.js style.
+ */
+function _createBackendBadge(backendType) {
+    const backends = {
+        chromadb: { label: 'ChromaDB', color: '#4ade80', bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.3)' },
+        teradata: { label: 'Teradata', color: '#F15F22', bg: 'rgba(241,95,34,0.12)', border: 'rgba(241,95,34,0.3)' },
+        qdrant: { label: 'Qdrant', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.3)' }
+    };
+    const c = backends[backendType] || backends.chromadb;
+    const badge = document.createElement('span');
+    badge.style.cssText = `display:inline-flex;align-items:center;padding:1px 5px;font-size:10px;font-weight:600;border-radius:3px;background:${c.bg};color:${c.color};border:1px solid ${c.border};margin-right:4px;`;
+    badge.textContent = `${c.label}:`;
+    return badge;
+}
+
 // ============================================================================
 // EVENT FILTER CATEGORY SYSTEM
 // Maps (source, type) to one of 7 filter categories for the header filter chips.
@@ -6458,12 +6474,12 @@ function createKnowledgeRepositoryCard(col) {
         return d;
     })() : null;
     
-    // Metadata (backend name and chunking info)
+    // Metadata (backend badge and chunking info)
     const meta = document.createElement('p');
     meta.className = 'text-xs text-gray-500';
     const chunkInfo = col.chunking_strategy ? ` | ${col.chunking_strategy} chunking` : '';
-    const backendLabel = _getBackendLabel(col.backend_type || 'chromadb');
-    meta.textContent = `${backendLabel}: ${col.collection_name}${chunkInfo}`;
+    meta.appendChild(_createBackendBadge(col.backend_type || 'chromadb'));
+    meta.appendChild(document.createTextNode(`${col.collection_name}${chunkInfo}`));
 
     // Embedding model info
     const embeddingInfo = document.createElement('p');
@@ -6471,11 +6487,11 @@ function createKnowledgeRepositoryCard(col) {
     const embeddingModel = col.embedding_model || 'all-MiniLM-L6-v2';
     embeddingInfo.innerHTML = `<span class="text-gray-500">Embedding Model:</span> ${embeddingModel}`;
 
-    // Document and chunk counts for Knowledge repositories
+    // Document and chunk counts (persisted in database)
     const countsInfo = document.createElement('p');
     countsInfo.className = 'text-xs text-gray-400';
-    const docCount = col.document_count || '?';
-    const chunkCount = col.count || col.example_count || 0;
+    const docCount = col.document_count || 0;
+    const chunkCount = col.count || col.chunk_count || 0;
     countsInfo.textContent = `${docCount} documents • ${chunkCount} chunks`;
 
     card.appendChild(header);
@@ -6738,14 +6754,20 @@ function createCollectionCard(col) {
             // Metadata (collection_name from backend)
             const meta = document.createElement('p');
             meta.className = 'text-xs text-gray-500';
-            const backendLabel = _getBackendLabel(col.backend_type || 'chromadb');
-            meta.textContent = `${backendLabel}: ${col.collection_name}`;
+            meta.appendChild(_createBackendBadge(col.backend_type || 'chromadb'));
+            meta.appendChild(document.createTextNode(col.collection_name));
 
             // Embedding model info
             const embeddingInfo = document.createElement('p');
             embeddingInfo.className = 'text-xs text-gray-400';
             const embeddingModel = col.embedding_model || 'all-MiniLM-L6-v2';
             embeddingInfo.innerHTML = `<span class="text-gray-500">Embedding Model:</span> ${embeddingModel}`;
+
+            // Case count (persisted in database)
+            const countsInfo = document.createElement('p');
+            countsInfo.className = 'text-xs text-gray-400';
+            const caseCount = col.count || col.chunk_count || 0;
+            countsInfo.textContent = `${caseCount} cases`;
 
             // Actions
             const actions = document.createElement('div');
@@ -6894,6 +6916,7 @@ function createCollectionCard(col) {
     card.appendChild(mcpInfo);
     card.appendChild(meta);
     card.appendChild(embeddingInfo);
+    card.appendChild(countsInfo);
     card.appendChild(actions);
     
     return card;

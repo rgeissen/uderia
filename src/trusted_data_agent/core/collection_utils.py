@@ -308,8 +308,9 @@ async def import_collection_from_zip(
         collection_id = db.create_collection(new_collection)
 
         # Populate knowledge_documents table if requested
+        imported_doc_count = 0
         if populate_knowledge_docs and all_metadatas_for_docs:
-            _populate_knowledge_documents(collection_id, all_metadatas_for_docs)
+            imported_doc_count = _populate_knowledge_documents(collection_id, all_metadatas_for_docs)
 
         # For planner repositories, update APP_STATE
         if repo_type == 'planner':
@@ -336,6 +337,14 @@ async def import_collection_from_zip(
                     document_count = actual_count
             except Exception as e:
                 app_logger.warning(f"Failed to verify import: {e}", exc_info=True)
+
+        # Persist counts to database
+        if document_count > 0 or imported_doc_count > 0:
+            db.update_counts(
+                collection_id,
+                document_count=imported_doc_count if imported_doc_count > 0 else None,
+                chunk_count=document_count if document_count > 0 else None,
+            )
 
         result = {
             "collection_id": collection_id,
@@ -434,8 +443,8 @@ async def _add_batch_to_backend(
     return len(ids)
 
 
-def _populate_knowledge_documents(collection_id: int, all_metadatas: list):
-    """Populate the knowledge_documents table from chunk metadata."""
+def _populate_knowledge_documents(collection_id: int, all_metadatas: list) -> int:
+    """Populate the knowledge_documents table from chunk metadata. Returns doc count."""
     from trusted_data_agent.auth.database import DATABASE_URL
 
     try:
@@ -472,9 +481,11 @@ def _populate_knowledge_documents(collection_id: int, all_metadatas: list):
         conn.commit()
         conn.close()
         app_logger.info(f"Populated {len(seen_doc_ids)} knowledge documents for collection {collection_id}")
+        return len(seen_doc_ids)
 
     except Exception as e:
         app_logger.warning(f"Failed to populate knowledge_documents: {e}", exc_info=True)
+        return 0
 
 
 async def export_collection_to_zip(
