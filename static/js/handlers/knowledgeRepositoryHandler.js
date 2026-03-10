@@ -314,8 +314,9 @@ async function _updateSearchModeForBackend(backendType) {
     if (!section) return;
 
     try {
+        const token = localStorage.getItem('tda_auth_token');
         const resp = await fetch(`/api/v1/vectorstore/capabilities?backend_type=${encodeURIComponent(backendType)}`, {
-            headers: { 'Authorization': `Bearer ${window.state?.jwtToken || ''}` }
+            headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
