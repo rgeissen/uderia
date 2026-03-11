@@ -2842,6 +2842,12 @@ async def create_rag_collection():
         if not (0.0 <= hybrid_keyword_weight <= 1.0):
             return jsonify({"status": "error", "message": "hybrid_keyword_weight must be between 0.0 and 1.0"}), 400
 
+        # Server-side chunking params (Teradata EVS)
+        optimized_chunking = 1 if data.get("optimized_chunking", True) else 0
+        ss_chunk_size = int(data.get("ss_chunk_size", 2000))
+        header_height = int(data.get("header_height", 0))
+        footer_height = int(data.get("footer_height", 0))
+
         # --- MARKETPLACE PHASE 2: Pass owner_user_id and repository configuration ---
         collection_id = retriever.add_collection(
             name, description, mcp_server_id, owner_user_id=user_uuid,
@@ -2851,6 +2857,10 @@ async def create_rag_collection():
             vector_store_config_id=vector_store_config_id,
             search_mode=search_mode,
             hybrid_keyword_weight=hybrid_keyword_weight,
+            optimized_chunking=optimized_chunking,
+            ss_chunk_size=ss_chunk_size,
+            header_height=header_height,
+            footer_height=footer_height,
         )
         # --- MARKETPLACE PHASE 2 END ---
 

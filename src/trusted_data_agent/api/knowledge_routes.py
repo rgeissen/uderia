@@ -235,8 +235,9 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT collection_name, repository_type, owner_user_id, chunking_strategy, 
-                       chunk_size, chunk_overlap
+                SELECT collection_name, repository_type, owner_user_id, chunking_strategy,
+                       chunk_size, chunk_overlap,
+                       optimized_chunking, ss_chunk_size, header_height, footer_height
                 FROM collections WHERE id = ?
             """, (collection_id,))
             
@@ -250,6 +251,11 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
             collection_name = result['collection_name']
             repository_type = result['repository_type']
             owner_user_id = result['owner_user_id']
+            # Collection-level server-side chunking defaults
+            coll_optimized = bool(result['optimized_chunking']) if result['optimized_chunking'] is not None else True
+            coll_ss_chunk_size = result['ss_chunk_size'] if result['ss_chunk_size'] is not None else 2000
+            coll_header_height = result['header_height'] if result['header_height'] is not None else 0
+            coll_footer_height = result['footer_height'] if result['footer_height'] is not None else 0
             
             if repository_type != 'knowledge':
                 yield format_sse({"type": "error", "message": f"Collection {collection_id} is not a Knowledge repository"}, "error")
@@ -327,10 +333,10 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                         collection_name=collection_name,
                         file_paths=[temp_file.name],
                         chunking_config=ServerSideChunkingConfig(
-                            optimized_chunking=form.get("optimized_chunking", "true").lower() == "true",
-                            chunk_size=int(form.get("chunk_size", 500)),
-                            header_height=float(form.get("header_height", 0.0)),
-                            footer_height=float(form.get("footer_height", 0.0)),
+                            optimized_chunking=form.get("optimized_chunking", str(coll_optimized).lower()).lower() == "true",
+                            chunk_size=int(form.get("chunk_size", coll_ss_chunk_size)),
+                            header_height=int(form.get("header_height", coll_header_height)),
+                            footer_height=int(form.get("footer_height", coll_footer_height)),
                         ),
                         progress_callback=_on_ingest_progress,
                     )
@@ -701,20 +707,26 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT collection_name, repository_type, owner_user_id, chunking_strategy, 
-                   chunk_size, chunk_overlap
+            SELECT collection_name, repository_type, owner_user_id, chunking_strategy,
+                   chunk_size, chunk_overlap,
+                   optimized_chunking, ss_chunk_size, header_height, footer_height
             FROM collections WHERE id = ?
         """, (collection_id,))
-        
+
         result = cursor.fetchone()
         conn.close()
-        
+
         if not result:
             return jsonify({"status": "error", "message": f"Collection {collection_id} not found"}), 404
-        
+
         collection_name = result['collection_name']
         repository_type = result['repository_type']
         owner_user_id = result['owner_user_id']
+        # Collection-level server-side chunking defaults
+        coll_optimized = bool(result['optimized_chunking']) if result['optimized_chunking'] is not None else True
+        coll_ss_chunk_size = result['ss_chunk_size'] if result['ss_chunk_size'] is not None else 2000
+        coll_header_height = result['header_height'] if result['header_height'] is not None else 0
+        coll_footer_height = result['footer_height'] if result['footer_height'] is not None else 0
         
         if repository_type != 'knowledge':
             return jsonify({
@@ -784,10 +796,10 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                     collection_name=collection_name,
                     file_paths=[temp_file.name],
                     chunking_config=ServerSideChunkingConfig(
-                        optimized_chunking=form.get("optimized_chunking", "true").lower() == "true",
-                        chunk_size=int(form.get("chunk_size", 500)),
-                        header_height=float(form.get("header_height", 0.0)),
-                        footer_height=float(form.get("footer_height", 0.0)),
+                        optimized_chunking=form.get("optimized_chunking", str(coll_optimized).lower()).lower() == "true",
+                        chunk_size=int(form.get("chunk_size", coll_ss_chunk_size)),
+                        header_height=int(form.get("header_height", coll_header_height)),
+                        footer_height=int(form.get("footer_height", coll_footer_height)),
                     ),
                 )
 

@@ -1465,9 +1465,9 @@ class TeradataVectorBackend(VectorStoreBackend):
         # Header/footer trimming — only pass when non-zero to avoid
         # sending unsupported kwargs to older SDK versions.
         if config.header_height > 0:
-            create_kwargs["header_height"] = config.header_height
+            create_kwargs["header_height"] = int(config.header_height)
         if config.footer_height > 0:
-            create_kwargs["footer_height"] = config.footer_height
+            create_kwargs["footer_height"] = int(config.footer_height)
 
         logger.info(
             f"[TD-SDK] vs.create(embeddings_model={create_kwargs['embeddings_model']}, "

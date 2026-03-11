@@ -163,8 +163,9 @@ class CollectionDatabase:
                 marketplace_long_description, repository_type, chunking_strategy,
                 chunk_size, chunk_overlap, embedding_model, backend_type, backend_config,
                 vector_store_config_id, document_count, chunk_count,
-                search_mode, hybrid_keyword_weight
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                search_mode, hybrid_keyword_weight,
+                optimized_chunking, ss_chunk_size, header_height, footer_height
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             collection_data['name'],
             collection_data['collection_name'],
@@ -191,6 +192,10 @@ class CollectionDatabase:
             collection_data.get('chunk_count', 0),
             collection_data.get('search_mode', 'semantic'),
             collection_data.get('hybrid_keyword_weight', 0.3),
+            collection_data.get('optimized_chunking', 1),
+            collection_data.get('ss_chunk_size', 2000),
+            collection_data.get('header_height', 0),
+            collection_data.get('footer_height', 0),
         ))
         
         collection_id = cursor.lastrowid

@@ -865,6 +865,15 @@ async function handleKnowledgeRepositorySubmit(e) {
                 hybrid_keyword_weight: keywordWeight,
             };
 
+            // Add server-side chunking params when applicable (Teradata EVS)
+            if (chunkingStrategy === 'server_side') {
+                const isOptimized = document.querySelector('input[name="server_side_mode"]:checked')?.value === 'optimized';
+                createBody.optimized_chunking = isOptimized;
+                createBody.ss_chunk_size = parseInt(document.getElementById('knowledge-repo-ss-chunk-size')?.value || '2000');
+                createBody.header_height = parseInt(document.getElementById('knowledge-repo-header-height')?.value || '0');
+                createBody.footer_height = parseInt(document.getElementById('knowledge-repo-footer-height')?.value || '0');
+            }
+
             const createResponse = await fetch('/api/v1/rag/collections', {
                 method: 'POST',
                 headers: {
@@ -917,10 +926,10 @@ async function handleKnowledgeRepositorySubmit(e) {
                 formData.append('embedding_model', embeddingModel);
 
                 if (chunkingStrategy === 'server_side') {
-                    // Server-side chunking params
+                    // Server-side chunking params (Teradata EVS)
                     const isOptimized = document.querySelector('input[name="server_side_mode"]:checked')?.value === 'optimized';
                     formData.append('optimized_chunking', isOptimized ? 'true' : 'false');
-                    formData.append('chunk_size', isOptimized ? '500' : (document.getElementById('knowledge-repo-ss-chunk-size')?.value || '500'));
+                    formData.append('chunk_size', document.getElementById('knowledge-repo-ss-chunk-size')?.value || '2000');
                     formData.append('header_height', document.getElementById('knowledge-repo-header-height')?.value || '0');
                     formData.append('footer_height', document.getElementById('knowledge-repo-footer-height')?.value || '0');
                 } else {
@@ -1919,16 +1928,28 @@ export function openUploadDocumentsModal(collectionId, collectionName, repoData)
         overlapInput.classList.add('opacity-50', 'cursor-not-allowed');
     }
 
-    // Show server-side params panel if strategy is server_side (read-only in upload mode)
+    // Show server-side params panel if strategy is server_side
     const ssParams = document.getElementById('knowledge-repo-server-side-params');
     if (ssParams) {
         ssParams.classList.toggle('hidden', chunkingStrategy !== 'server_side');
-        // Disable server-side inputs in upload mode (immutable for existing repo)
         if (chunkingStrategy === 'server_side') {
-            ssParams.querySelectorAll('input').forEach(input => {
-                input.disabled = true;
-                input.classList.add('opacity-50', 'cursor-not-allowed');
-            });
+            // Pre-fill from collection config but keep EDITABLE (per-upload override)
+            const optimizedRadio = document.querySelector('input[name="server_side_mode"][value="optimized"]');
+            const fixedRadio = document.querySelector('input[name="server_side_mode"][value="fixed_size"]');
+            if (repoData?.optimized_chunking !== undefined) {
+                const isOpt = repoData.optimized_chunking === 1 || repoData.optimized_chunking === true;
+                if (optimizedRadio) optimizedRadio.checked = isOpt;
+                if (fixedRadio) fixedRadio.checked = !isOpt;
+                // Show/hide chunk size row based on mode
+                const ssChunkSizeRow = document.getElementById('knowledge-repo-ss-chunk-size-row');
+                if (ssChunkSizeRow) ssChunkSizeRow.classList.toggle('hidden', isOpt);
+            }
+            const ssChunkInput = document.getElementById('knowledge-repo-ss-chunk-size');
+            if (ssChunkInput && repoData?.ss_chunk_size) ssChunkInput.value = repoData.ss_chunk_size;
+            const headerInput = document.getElementById('knowledge-repo-header-height');
+            if (headerInput && repoData?.header_height !== undefined) headerInput.value = repoData.header_height;
+            const footerInput = document.getElementById('knowledge-repo-footer-height');
+            if (footerInput && repoData?.footer_height !== undefined) footerInput.value = repoData.footer_height;
         }
     }
     if (embeddingSelect) {
