@@ -894,7 +894,11 @@ class RAGRetriever:
                       backend_type: str = "chromadb", backend_config: str = "{}",
                       vector_store_config_id: Optional[str] = None,
                       search_mode: str = "semantic",
-                      hybrid_keyword_weight: float = 0.3) -> Optional[int]:
+                      hybrid_keyword_weight: float = 0.3,
+                      optimized_chunking: int = 1,
+                      ss_chunk_size: int = 2000,
+                      header_height: int = 0,
+                      footer_height: int = 0) -> Optional[int]:
         """
         Adds a new RAG collection and enables it.
         
@@ -949,6 +953,10 @@ class RAGRetriever:
             "vector_store_config_id": vector_store_config_id,
             "search_mode": search_mode,
             "hybrid_keyword_weight": hybrid_keyword_weight,
+            "optimized_chunking": optimized_chunking,
+            "ss_chunk_size": ss_chunk_size,
+            "header_height": header_height,
+            "footer_height": footer_height,
         }
         
         # Save to database

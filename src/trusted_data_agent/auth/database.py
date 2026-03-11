@@ -267,6 +267,17 @@ def _create_collections_table():
             cursor.execute("ALTER TABLE collections ADD COLUMN hybrid_keyword_weight REAL DEFAULT 0.3")
             conn.commit()
 
+        # Migration: Add server-side chunking params for Teradata EVS collections
+        try:
+            cursor.execute("SELECT optimized_chunking FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Adding server-side chunking columns to collections table")
+            cursor.execute("ALTER TABLE collections ADD COLUMN optimized_chunking INTEGER DEFAULT 1")
+            cursor.execute("ALTER TABLE collections ADD COLUMN ss_chunk_size INTEGER DEFAULT 2000")
+            cursor.execute("ALTER TABLE collections ADD COLUMN header_height INTEGER DEFAULT 0")
+            cursor.execute("ALTER TABLE collections ADD COLUMN footer_height INTEGER DEFAULT 0")
+            conn.commit()
+
         # Fix legacy NULL backend_type values
         cursor.execute("UPDATE collections SET backend_type = 'chromadb' WHERE backend_type IS NULL")
         if cursor.rowcount > 0:

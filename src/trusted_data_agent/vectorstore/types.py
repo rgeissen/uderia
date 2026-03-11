@@ -104,19 +104,20 @@ class CollectionInfo:
 
 @dataclass
 class ServerSideChunkingConfig:
-    """Configuration for server-side document chunking.
+    """Configuration for server-side document chunking (Teradata EVS).
 
     When ``optimized_chunking`` is True the backend uses structure-aware
     dynamic chunking and ``chunk_size`` is ignored.  When False, splits
-    by fixed character count.
+    by fixed character count using ``chunk_size``.
 
-    ``header_height`` / ``footer_height`` trim the specified fraction of
-    each PDF page before chunking (0.0 = no trim, 0.15 = trim 15%).
+    ``header_height`` / ``footer_height`` specify the number of **points**
+    to trim from the top / bottom of each PDF page before chunking.
+    Recommended footer value: 55 for standard page footers.
     """
     optimized_chunking: bool = True
-    chunk_size: int = 500
-    header_height: float = 0.0
-    footer_height: float = 0.0
+    chunk_size: int = 2000
+    header_height: int = 0
+    footer_height: int = 0
 
 
 @dataclass
