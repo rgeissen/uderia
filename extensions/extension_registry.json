@@ -55,6 +55,15 @@
       "category": "Export",
       "is_builtin": true,
       "notes": "Exports LLM answer as downloadable PDF with Markdown-aware formatting"
+    },
+    {
+      "extension_id": "boolean_check",
+      "plugin_directory": "boolean-check",
+      "status": "active",
+      "display_order": 7,
+      "category": "Automation",
+      "is_builtin": true,
+      "notes": "True/False/Not Applicable boolean evaluation for n8n/Airflow/Flowise automation"
     }
   ],
   "extension_status_definitions": {
