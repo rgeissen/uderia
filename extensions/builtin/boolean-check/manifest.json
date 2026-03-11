@@ -1,0 +1,46 @@
+{
+  "name": "boolean-check",
+  "version": "1.0.0",
+  "extension_id": "boolean_check",
+  "display_name": "Boolean Check",
+  "description": "Evaluates the LLM answer as True, False, or Not Applicable. Designed for automation tools (n8n, Airflow, Flowise) that need deterministic boolean branching.",
+  "author": "TDA Core Team",
+  "license": "MIT",
+  "category": "Automation",
+  "extension_tier": "llm",
+  "requires_llm": true,
+  "keywords": ["boolean", "true", "false", "check", "n8n", "airflow", "flowise", "automation", "branching"],
+  "files": {
+    "extension": "boolean_check.py"
+  },
+  "output_target": "silent",
+  "parameters": {
+    "supported": true,
+    "description": "Output format control",
+    "examples": ["strict", "json"],
+    "allowed_values": ["strict", "json"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "result": {
+        "type": "string",
+        "enum": ["True", "False", "Not Applicable"],
+        "description": "The boolean evaluation of the LLM answer"
+      },
+      "confidence": {
+        "type": "number",
+        "minimum": 0.0,
+        "maximum": 1.0,
+        "description": "Confidence score 0-1"
+      },
+      "reasoning": {
+        "type": "string",
+        "description": "Brief one-line explanation of the evaluation"
+      }
+    }
+  },
+  "metadata": {
+    "tags": ["built-in", "automation", "core"]
+  }
+}
