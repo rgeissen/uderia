@@ -539,7 +539,7 @@ export async function openViewPromptModal(promptName) {
         if (res.ok) {
             DOM.viewPromptModalText.textContent = data.content;
         } else {
-            if (data.error === 'dynamic_prompt_error') {
+            if (data.error === 'dynamic_prompt_error' || data.error === 'prompt_not_on_server') {
                 DOM.viewPromptModalText.textContent = `Info: ${data.message}`;
             } else {
                 throw new Error(data.error || 'Failed to fetch prompt content.');

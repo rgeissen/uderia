@@ -1056,6 +1056,19 @@ async def get_prompt_content(current_user, prompt_name):
 
     except Exception as e:
         root_exception = unwrap_exception(e)
+        error_str = str(root_exception)
+
+        # Handle stale classification cache: prompt listed in cached classification
+        # but not available on the MCP server (removed, renamed, or arguments changed)
+        if "Unknown prompt" in error_str:
+            app_logger.warning(f"Prompt '{prompt_name}' not found on MCP server (stale classification cache): {error_str}")
+            return jsonify({
+                "error": "prompt_not_on_server",
+                "message": f"Prompt '{prompt_name}' is not available on the MCP server. "
+                           f"It may have been removed or renamed since the last profile classification. "
+                           f"Try reclassifying the profile to refresh."
+            }), 404
+
         app_logger.error(f"Error fetching prompt content for '{prompt_name}': {root_exception}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred while fetching the prompt."}), 500
 

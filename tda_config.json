@@ -1069,9 +1069,7 @@
         "dba_sessionInfo",
         "dba_systemSpace"
       ],
-      "prompts": [
-        "base_teradataQuery"
-      ],
+      "prompts": [],
       "ragCollections": [
         1
       ],
@@ -2025,7 +2023,14 @@
             {
               "name": "dba_databaseHealthAssessment",
               "description": "You are a Teradata DBA who is an expert in assessing the health of a database.",
-              "arguments": [],
+              "arguments": [
+                {
+                  "name": "database_scope",
+                  "description": "Scope of databases to include: 'user' for user-created databases only (excludes system databases), 'all' for all databases including system databases.",
+                  "required": true,
+                  "type": "str"
+                }
+              ],
               "disabled": false,
               "prompt_type": "reporting"
             },
@@ -2061,20 +2066,6 @@
             }
           ],
           "Query Generation": [
-            {
-              "name": "base_teradataQuery",
-              "description": "A Teradata SQL expert that effectively solves problems understanding teradata specific SQL syntax.",
-              "arguments": [
-                {
-                  "name": "query",
-                  "description": "The problem or question that needs to be solved using Teradata SQL syntax.",
-                  "required": true,
-                  "type": "str"
-                }
-              ],
-              "disabled": false,
-              "prompt_type": "reporting"
-            },
             {
               "name": "base_query",
               "description": "Help users interact with  Teradata databases effectively.",
