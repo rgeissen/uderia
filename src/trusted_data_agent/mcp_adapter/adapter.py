@@ -630,7 +630,7 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
                     loaded_prompts = list_prompts_result.prompts
                     app_logger.info(f"Loaded {len(loaded_prompts)} prompts from MCP server")
             except Exception as e:
-                app_logger.error(f"CRITICAL ERROR while loading prompts: {e}", exc_info=True)
+                app_logger.warning(f"Could not load prompts from MCP server (this may be expected for older servers): {e}")
 
             # --- MODIFICATION START: Gracefully handle resource loading ---
             loaded_resources = []

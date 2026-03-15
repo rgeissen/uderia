@@ -130,8 +130,12 @@ def load_profile_classification_into_state(profile_id: str, user_uuid: str) -> b
         return False
     
     # Check if this profile inherits classification from master classification profile
+    # Only tool_enabled and genie profiles can inherit classification —
+    # llm_only (with or without tools) and rag_focused run their own lightweight classification
     target_profile_id = profile_id
-    if profile.get('inherit_classification', False):
+    profile_type = profile.get('profile_type', 'tool_enabled')
+    can_inherit = profile_type in ('tool_enabled', 'genie')
+    if can_inherit and profile.get('inherit_classification', False):
         # === STRICT ENFORCEMENT: Profile MUST inherit from per-server master ===
         current_mcp_server_id = profile.get('mcpServerId')
 

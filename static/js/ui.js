@@ -39,72 +39,41 @@ const PROFILE_TYPE_COLORS = {
 // Left border = execution state (active=orange, completed=green)
 // Background = event category (success, system, optimization, error, coordination)
 // ============================================================================
-const EVENT_CATEGORY_MAP = {
-    // Success Events (Green background) - normal execution & completion
-    'phase_start': 'success',
-    'phase_end': 'success',
-    'tool_result': 'success',
-    'tool_intent': 'success',
-    'llm_execution': 'success',
-    'llm_execution_complete': 'success',
-    'knowledge_retrieval_start': 'success',
-    'knowledge_retrieval_complete': 'success',
-    'knowledge_reranking_start': 'success',
-    'knowledge_reranking_complete': 'success',
-    'rag_llm_step': 'success',
-    'conversation_tool_invoked': 'success',
-    'conversation_tool_completed': 'success',
-    'conversation_llm_step': 'success',
-    'conversation_llm_complete': 'success',
-    'genie_slave_invoked': 'success',
-    'genie_slave_progress': 'success',
-    'genie_slave_completed': 'success',
-    'final_answer': 'success',
+// ============================================================================
+// EVENT VISUAL CATEGORY OVERRIDES
+// Only errors and lifecycle bookends need explicit overrides.
+// All other events derive their visual category from getFilterCategory(),
+// so event card colors match the filter pill dot colors exactly.
+// ============================================================================
+const EVENT_CATEGORY_OVERRIDES = {
+    // Error Events (Red) - always override regardless of filter category
+    'execution_error': 'error',
+    'tool_error': 'error',
+    'error': 'error',
+    'execution_cancelled': 'error',
 
-    // Lifecycle Bookend Events (Green sidebar, NO background)
-    // These frame the execution and should have distinct visual style
+    // Lifecycle Bookend Events (Slate) - neutral visual framing
     'execution_start': 'lifecycle',
     'execution_complete': 'lifecycle',
     'conversation_agent_start': 'lifecycle',
     'conversation_agent_complete': 'lifecycle',
     'genie_coordination_start': 'lifecycle',
     'genie_coordination_complete': 'lifecycle',
-
-    // System Events (Yellow background) - session/status updates
-    'session_name_generation_start': 'system',
-    'session_name_generation_complete': 'system',
-    'status_indicator_update': 'system',
-    'token_update': 'system',
-
-    // System Correction Events (Yellow background) - reactive fixes
-    'workaround': 'system',
-
-    // Plan Optimization Events (Blue background) - proactive improvements
-    'plan_optimization': 'optimization',
-
-    // Context Optimization Events (Blue background) - data reduction for token efficiency
-    'context_optimization': 'optimization',
-
-    // Error Events (Red background)
-    'execution_error': 'error',
-    'tool_error': 'error',
-    'error': 'error',
-    'execution_cancelled': 'error',
-
-    // Genie LLM Events - same green as other profile LLM calls
-    'genie_llm_step': 'success',
-    'genie_synthesis_start': 'success',
-    'genie_synthesis_complete': 'success',
-    'genie_routing': 'success',
 };
 
 /**
- * Get the category for an event type (for background color).
+ * Get the visual category for an event (controls border-left color and background).
+ * Unified with filter categories so event cards match filter pill colors.
  * @param {string} eventType - The event type
- * @returns {string} The category name (success, system, optimization, error, coordination)
+ * @param {string} [filterCategory] - Pre-computed filter category from eventData._filterCategory
+ * @returns {string} The visual category (context, knowledge, planning, tool-execution, agent, coordination, system, error, lifecycle)
  */
-function getEventCategory(eventType) {
-    return EVENT_CATEGORY_MAP[eventType] || 'success';
+function getEventCategory(eventType, filterCategory) {
+    // Errors and lifecycle bookends always use their override
+    const override = EVENT_CATEGORY_OVERRIDES[eventType];
+    if (override) return override;
+    // Use pre-computed filter category if available, otherwise fall back to system
+    return filterCategory || 'system';
 }
 
 /**
@@ -2050,8 +2019,8 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
         stepEl.classList.add('active');
     }
 
-    // Add category class for background color
-    const category = getEventCategory(type);
+    // Add category class for background color (aligned with filter pill colors)
+    const category = getEventCategory(type, eventData._filterCategory);
     stepEl.classList.add(category);
 
     // Color-code based on event type
@@ -2679,8 +2648,8 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
         stepEl.classList.add('active');
     }
 
-    // Add category class for background color
-    const category = getEventCategory(type);
+    // Add category class for background color (aligned with filter pill colors)
+    const category = getEventCategory(type, eventData._filterCategory);
     stepEl.classList.add(category);
 
     // Note: conversation_agent_complete is a 'lifecycle' bookend event
@@ -3334,8 +3303,6 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
                     return null;
                 }
 
-                stepEl.classList.add('success');
-
                 const profileTag = details.profile_tag || 'N/A';
                 const success = details.success !== false;
                 const statusText = success ? 'Success' : 'Failed';
@@ -3967,8 +3934,8 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
         }
     }
 
-    // Add category class for background color
-    const category = getEventCategory(type);
+    // Add category class for background color (aligned with filter pill colors)
+    const category = getEventCategory(type, eventData._filterCategory);
     stepEl.classList.add(category);
 }
 
