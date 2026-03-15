@@ -936,6 +936,7 @@ class AgentPackManager:
                     "profile_type": profile.get("profile_type"),
                     "role": role,
                     "classification_mode": profile.get("classification_mode", "light"),
+                    "contextWindowTypeId": profile.get("contextWindowTypeId"),
                 }
 
                 # Deduplicate collection_refs while preserving order
@@ -1407,6 +1408,7 @@ class AgentPackManager:
             "profile_type": profile_type,
             "llmConfigurationId": llm_config_id,
             "classification_mode": prof.get("classification_mode", "light"),
+            "contextWindowTypeId": prof.get("contextWindowTypeId", "cwt-default-balanced"),
             "classification_results": {
                 "tools": {},
                 "prompts": {},
