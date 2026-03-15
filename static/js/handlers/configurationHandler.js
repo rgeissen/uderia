@@ -5482,7 +5482,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             // Conditionally show MCP-related sections based on checkbox
             if (useMcpTools) {
                 if (mcpServerContainer) mcpServerContainer.style.display = '';
-                if (classificationSection) classificationSection.style.display = '';
+                if (classificationSection) classificationSection.style.display = 'none';  // Ideate always uses light classification
                 if (mcpResourcesTab) mcpResourcesTab.style.display = '';
                 if (mcpResourcesContent) {
                     mcpResourcesContent.style.display = '';

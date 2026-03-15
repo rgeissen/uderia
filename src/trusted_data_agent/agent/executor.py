@@ -4763,9 +4763,10 @@ The following domain knowledge may be relevant to this conversation:
 
                     app_logger.debug(f"Override MCP setup: type={override_profile_type}, server={override_mcp_server_id}")
 
-                    if override_profile_type == "llm_only":
-                        # LLM-only profile: Skip MCP setup entirely
-                        app_logger.info(f"🗨️ LLM-only profile - skipping MCP")
+                    override_use_mcp_tools = override_profile.get("useMcpTools", False)
+                    if override_profile_type == "llm_only" and not override_use_mcp_tools:
+                        # Pure LLM-only profile (no tool calling): Skip MCP setup entirely
+                        app_logger.info(f"🗨️ Pure LLM-only profile (no useMcpTools) - skipping MCP")
                     elif override_mcp_server_id:
                         # CRITICAL: Pass user_uuid to load user's config from database, not bootstrap template
                         mcp_servers = config_manager.get_mcp_servers(self.user_uuid)

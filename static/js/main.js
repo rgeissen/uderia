@@ -538,7 +538,17 @@ async function initializeRAGAutoCompletion() {
                 });
 
                 if (!response.ok) {
-                    console.error('Failed to fetch profile resources');
+                    console.error('Failed to fetch profile resources:', response.status);
+                    // Clear stale data so panel doesn't show wrong profile's tools
+                    state.resourceData.tools = {};
+                    state.resourceData.prompts = {};
+                    state.activeGenieProfile = null;
+                    state.activeRagProfile = null;
+                    state.activeLlmOnlyProfile = null;
+                    if (window.capabilitiesModule) {
+                        window.capabilitiesModule.renderResourcePanel('tools');
+                        window.capabilitiesModule.renderResourcePanel('prompts');
+                    }
                     return;
                 }
 
