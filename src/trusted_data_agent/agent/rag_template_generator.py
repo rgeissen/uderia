@@ -163,6 +163,7 @@ class RAGTemplateGenerator:
             "is_success": output_config.get("is_success", {}).get("value", True),
             "task_id": f"template-task-{case_id[:8]}",
             "collection_id": collection_id,
+            "mcp_server_id": (self.rag_retriever.get_collection_metadata(collection_id) or {}).get("mcp_server_id", ""),
             "had_plan_improvements": False,
             "had_tactical_improvements": False,
             "timestamp": datetime.now(timezone.utc).isoformat(),
