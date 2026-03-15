@@ -645,8 +645,9 @@ async function handleCreateAgentPack() {
     }
 
     try {
-        // Step 1: Create the .agentpack ZIP
-        const createRes = await fetch('/api/v1/agent-packs/create', {
+        // Create and install in one step — references existing profiles
+        // with is_owned=false so uninstall does NOT delete originals
+        const createRes = await fetch('/api/v1/agent-packs/create-and-install', {
             method: 'POST',
             headers: _headers(true),
             body: JSON.stringify({
@@ -656,42 +657,13 @@ async function handleCreateAgentPack() {
             }),
         });
 
-        if (!createRes.ok) {
-            const errData = await createRes.json().catch(() => ({}));
-            throw new Error(errData.message || `Create failed (${createRes.status})`);
+        const data = await createRes.json();
+        if (!createRes.ok || data.status === 'error') {
+            throw new Error(data.message || `Create failed (${createRes.status})`);
         }
 
-        // Step 2: Import the ZIP to install it
-        const blob = await createRes.blob();
-        const file = new File([blob], `${result.name.replace(/\s+/g, '_')}.agentpack`, { type: 'application/zip' });
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('conflict_strategy', 'expand');
-
-        const token = localStorage.getItem('tda_auth_token');
-        const importRes = await fetch('/api/v1/agent-packs/import', {
-            method: 'POST',
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-            body: formData,
-        });
-
-        const data = await importRes.json();
-        if (!importRes.ok || data.status === 'error') {
-            throw new Error(data.message || `Install failed (${importRes.status})`);
-        }
-
-        let successMsg = `Agent pack "${result.name}" created (${data.profiles_created || data.experts_created || 0} profiles, ${data.collections_created} collections)`;
-        if (data.tag_remap && Object.keys(data.tag_remap).length > 0) {
-            const remapList = Object.entries(data.tag_remap)
-                .map(([old, nw]) => `@${old} → @${nw}`)
-                .join(', ');
-            successMsg += ` | Tags renamed: ${remapList}`;
-        }
+        const successMsg = `Agent pack "${result.name}" created (${data.profiles_created || 0} profiles, ${data.collections_created || 0} collections)`;
         _notify('success', successMsg);
-
-        if (data.warnings && data.warnings.length > 0) {
-            data.warnings.forEach(w => _notify('warning', w));
-        }
 
         await loadAgentPacks();
         await configState.loadProfiles();
