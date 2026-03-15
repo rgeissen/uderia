@@ -6931,44 +6931,37 @@ async def get_profile_resources(profile_id: str):
             )
 
             if not master_profile_id:
-                error_msg = (
+                app_logger.warning(
                     f"Profile {profile_id} has inherit_classification enabled but "
                     f"no master classification profile is set for MCP server '{current_mcp_server_id}'. "
-                    f"Please set a master classification profile for this MCP server first."
+                    f"Falling back to profile's own classification."
                 )
-                app_logger.error(error_msg)
-                return jsonify({"status": "error", "message": error_msg}), 400
-
-            if master_profile_id == profile_id:
-                error_msg = (
-                    f"Profile {profile_id} cannot inherit classification from itself. "
-                    f"Please disable inherit_classification for master profiles."
+            elif master_profile_id == profile_id:
+                app_logger.warning(
+                    f"Profile {profile_id} has inherit_classification enabled but is itself the master. "
+                    f"Using its own classification."
                 )
-                app_logger.error(error_msg)
-                return jsonify({"status": "error", "message": error_msg}), 400
-
-            master_profile = config_manager.get_profile(master_profile_id, user_uuid)
-            if not master_profile:
-                error_msg = f"Master classification profile {master_profile_id} not found"
-                app_logger.error(error_msg)
-                return jsonify({"status": "error", "message": error_msg}), 404
-
-            # === VALIDATION: Verify MCP server compatibility (should always match with strict mode) ===
-            master_mcp_server_id = master_profile.get('mcpServerId')
-            if current_mcp_server_id != master_mcp_server_id:
-                error_msg = (
-                    f"DATA INTEGRITY ERROR: Profile {profile_id} uses MCP server '{current_mcp_server_id}' "
-                    f"but master profile {master_profile_id} uses '{master_mcp_server_id}'. "
-                    f"This should not happen with strict mode. Classification cache may be corrupted."
-                )
-                app_logger.error(error_msg)
-                return jsonify({"status": "error", "message": error_msg}), 500
-
-            app_logger.debug(
-                f"✓ Profile {profile_id} inherits classification from per-server master {master_profile_id} "
-                f"(MCP server: {current_mcp_server_id})"
-            )
-            target_profile_id = master_profile_id
+            else:
+                master_profile = config_manager.get_profile(master_profile_id, user_uuid)
+                if not master_profile:
+                    app_logger.warning(
+                        f"Master classification profile {master_profile_id} not found. "
+                        f"Falling back to profile {profile_id}'s own classification."
+                    )
+                else:
+                    master_mcp_server_id = master_profile.get('mcpServerId')
+                    if current_mcp_server_id != master_mcp_server_id:
+                        app_logger.warning(
+                            f"Profile {profile_id} uses MCP server '{current_mcp_server_id}' "
+                            f"but master profile {master_profile_id} uses '{master_mcp_server_id}'. "
+                            f"Falling back to profile's own classification."
+                        )
+                    else:
+                        app_logger.debug(
+                            f"✓ Profile {profile_id} inherits classification from per-server master {master_profile_id} "
+                            f"(MCP server: {current_mcp_server_id})"
+                        )
+                        target_profile_id = master_profile_id
 
         # Get classification results from the target profile (self or master)
         classification_results = config_manager.get_profile_classification(target_profile_id, user_uuid)

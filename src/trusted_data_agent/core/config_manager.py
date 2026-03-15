@@ -778,17 +778,17 @@ class ConfigManager:
             )
 
             if not master_profile_id:
-                app_logger.error(
+                app_logger.warning(
                     f"Profile {profile_id} has inherit_classification enabled but "
                     f"no master classification profile is set for MCP server '{current_mcp_server_id}'. "
-                    f"Returning empty tools list."
+                    f"Falling back to profile's own tools."
                 )
-                return []
+                return target_profile.get("tools", target_profile.get("enabled_tools", []))
 
             if master_profile_id == profile_id:
-                app_logger.error(
-                    f"Profile {profile_id} cannot inherit classification from itself. "
-                    f"Returning profile's own tools."
+                app_logger.warning(
+                    f"Profile {profile_id} has inherit_classification enabled but is itself the master. "
+                    f"Using its own tools."
                 )
                 return target_profile.get("tools", target_profile.get("enabled_tools", []))
 
@@ -800,21 +800,21 @@ class ConfigManager:
                     break
 
             if not master_profile:
-                app_logger.error(
+                app_logger.warning(
                     f"Master classification profile {master_profile_id} not found for profile {profile_id}. "
-                    f"Returning empty tools list."
+                    f"Falling back to profile's own tools."
                 )
-                return []
+                return target_profile.get("tools", target_profile.get("enabled_tools", []))
 
             # === VALIDATION: Verify MCP server compatibility (should always match with strict mode) ===
             master_mcp_server_id = master_profile.get('mcpServerId')
             if current_mcp_server_id != master_mcp_server_id:
-                app_logger.error(
-                    f"DATA INTEGRITY ERROR: Profile {profile_id} uses MCP server '{current_mcp_server_id}' "
+                app_logger.warning(
+                    f"Profile {profile_id} uses MCP server '{current_mcp_server_id}' "
                     f"but master profile {master_profile_id} uses '{master_mcp_server_id}'. "
-                    f"This should not happen with strict mode. Returning empty tools list."
+                    f"Falling back to profile's own tools."
                 )
-                return []
+                return target_profile.get("tools", target_profile.get("enabled_tools", []))
 
             app_logger.info(
                 f"✓ Profile {profile_id} inherits tools from per-server master {master_profile_id} "
@@ -862,17 +862,17 @@ class ConfigManager:
             )
 
             if not master_profile_id:
-                app_logger.error(
+                app_logger.warning(
                     f"Profile {profile_id} has inherit_classification enabled but "
                     f"no master classification profile is set for MCP server '{current_mcp_server_id}'. "
-                    f"Returning empty prompts list."
+                    f"Falling back to profile's own prompts."
                 )
-                return []
+                return target_profile.get("prompts", target_profile.get("enabled_prompts", []))
 
             if master_profile_id == profile_id:
-                app_logger.error(
-                    f"Profile {profile_id} cannot inherit classification from itself. "
-                    f"Returning profile's own prompts."
+                app_logger.warning(
+                    f"Profile {profile_id} has inherit_classification enabled but is itself the master. "
+                    f"Using its own prompts."
                 )
                 return target_profile.get("prompts", target_profile.get("enabled_prompts", []))
 
@@ -884,21 +884,21 @@ class ConfigManager:
                     break
 
             if not master_profile:
-                app_logger.error(
+                app_logger.warning(
                     f"Master classification profile {master_profile_id} not found for profile {profile_id}. "
-                    f"Returning empty prompts list."
+                    f"Falling back to profile's own prompts."
                 )
-                return []
+                return target_profile.get("prompts", target_profile.get("enabled_prompts", []))
 
             # === VALIDATION: Verify MCP server compatibility (should always match with strict mode) ===
             master_mcp_server_id = master_profile.get('mcpServerId')
             if current_mcp_server_id != master_mcp_server_id:
-                app_logger.error(
-                    f"DATA INTEGRITY ERROR: Profile {profile_id} uses MCP server '{current_mcp_server_id}' "
+                app_logger.warning(
+                    f"Profile {profile_id} uses MCP server '{current_mcp_server_id}' "
                     f"but master profile {master_profile_id} uses '{master_mcp_server_id}'. "
-                    f"This should not happen with strict mode. Returning empty prompts list."
+                    f"Falling back to profile's own prompts."
                 )
-                return []
+                return target_profile.get("prompts", target_profile.get("enabled_prompts", []))
 
             app_logger.info(
                 f"✓ Profile {profile_id} inherits prompts from per-server master {master_profile_id} "
