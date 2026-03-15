@@ -1746,6 +1746,38 @@ async def append_extension_results_to_turn(
             except Exception:
                 pass
 
+            # Update consumption tracking with extension tokens
+            try:
+                from trusted_data_agent.auth.database import get_db_session
+                from trusted_data_agent.auth.consumption_manager import ConsumptionManager
+                from trusted_data_agent.core.cost_manager import get_cost_manager
+
+                with get_db_session() as db_session:
+                    manager = ConsumptionManager(db_session)
+                    cost_manager = get_cost_manager()
+                    provider = last_turn.get("provider", "Unknown")
+                    model = last_turn.get("model", "unknown")
+                    ext_cost = cost_manager.calculate_cost(
+                        provider, model, extension_input_tokens, extension_output_tokens
+                    )
+                    ext_cost_cents = int(ext_cost * 1000000)
+
+                    turn_number = len(workflow_history)
+                    manager.update_turn_tokens(
+                        user_id=user_uuid,
+                        session_id=session_id,
+                        turn_number=turn_number,
+                        additional_input_tokens=extension_input_tokens,
+                        additional_output_tokens=extension_output_tokens,
+                        additional_cost_usd_cents=ext_cost_cents,
+                    )
+                    app_logger.info(
+                        f"[Cost Tracking] Extension tokens added to consumption: "
+                        f"{extension_input_tokens}in + {extension_output_tokens}out = ${ext_cost:.6f}"
+                    )
+            except Exception as e:
+                app_logger.warning(f"Failed to update consumption with extension tokens: {e}")
+
         app_logger.debug(f"Appended extension results to last turn in session {session_id}")
 
 
