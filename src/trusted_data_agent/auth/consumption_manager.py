@@ -303,6 +303,56 @@ class ConsumptionManager:
         logger.debug(f"Recorded turn for user {user_id}, session {session_id}, turn {turn_number}: "
                     f"{total_tokens} tokens, status={status}, rag={rag_used}")
     
+    def update_turn_tokens(
+        self,
+        user_id: str,
+        session_id: str,
+        turn_number: int,
+        additional_input_tokens: int,
+        additional_output_tokens: int,
+        additional_cost_usd_cents: int = 0
+    ) -> None:
+        """
+        Update an existing turn record with additional tokens (e.g., from extensions).
+        Also updates the UserConsumption aggregate counters so daily/monthly totals stay accurate.
+
+        Args:
+            user_id: User ID
+            session_id: Session ID
+            turn_number: Turn number to update
+            additional_input_tokens: Extra input tokens to add
+            additional_output_tokens: Extra output tokens to add
+            additional_cost_usd_cents: Extra cost in micro-dollars to add
+        """
+        additional_total = additional_input_tokens + additional_output_tokens
+
+        # Update the turn audit record
+        turn = self.db.query(ConsumptionTurn).filter_by(
+            user_id=user_id, session_id=session_id, turn_number=turn_number
+        ).first()
+        if turn:
+            turn.input_tokens += additional_input_tokens
+            turn.output_tokens += additional_output_tokens
+            turn.total_tokens += additional_total
+            turn.cost_usd_cents += additional_cost_usd_cents
+
+        # Update UserConsumption aggregates (monthly + daily)
+        consumption = self.get_or_create_consumption(user_id)
+        consumption.total_input_tokens += additional_input_tokens
+        consumption.total_output_tokens += additional_output_tokens
+        consumption.total_tokens += additional_total
+        consumption.input_tokens_today += additional_input_tokens
+        consumption.output_tokens_today += additional_output_tokens
+        consumption.tokens_today += additional_total
+        consumption.estimated_cost_usd += additional_cost_usd_cents
+        consumption.last_updated_at = datetime.now(timezone.utc)
+
+        self.db.commit()
+        logger.debug(
+            f"Updated turn tokens for user {user_id}, session {session_id}, turn {turn_number}: "
+            f"+{additional_total} tokens, +${additional_cost_usd_cents / 1_000_000:.6f}"
+        )
+
     def update_session_name(self, user_id: str, session_id: str, session_name: str) -> None:
         """
         Update session_name for all turns in a session.
