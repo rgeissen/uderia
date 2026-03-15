@@ -242,6 +242,51 @@ async def create_agent_pack(current_user):
         return jsonify({"status": "error", "message": f"Create failed: {e}"}), 500
 
 
+# ── Create & Install ─────────────────────────────────────────────────────────
+
+@agent_pack_bp.route("/v1/agent-packs/create-and-install", methods=["POST"])
+@require_auth
+async def create_and_install_agent_pack(current_user):
+    """Create an agent pack from selected profiles and install it locally.
+
+    Unlike create+import, this references existing profiles with is_owned=False
+    so uninstalling the pack does NOT delete the original resources.
+
+    Body (JSON): {"profile_ids": [...], "name": "...", "description": "..."}
+    Returns: JSON with installation details.
+    """
+    user_uuid = current_user.id
+
+    try:
+        data = await request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "Request body required"}), 400
+
+        profile_ids = data.get("profile_ids", [])
+        if not profile_ids:
+            return jsonify({"status": "error", "message": "profile_ids is required"}), 400
+
+        manager = _manager()
+        result = await manager.create_and_install(
+            profile_ids=profile_ids,
+            user_uuid=user_uuid,
+            pack_name=data.get("name", "Agent Pack"),
+            pack_description=data.get("description", ""),
+        )
+
+        return jsonify(result), 200
+
+    except ValueError as e:
+        app_logger.warning(f"Agent pack create-and-install validation error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+    except RuntimeError as e:
+        app_logger.error(f"Agent pack create-and-install runtime error: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e:
+        app_logger.error(f"Agent pack create-and-install failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"Create failed: {e}"}), 500
+
+
 # ── List ──────────────────────────────────────────────────────────────────────
 
 @agent_pack_bp.route("/v1/agent-packs", methods=["GET"])

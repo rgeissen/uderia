@@ -1054,6 +1054,146 @@ class AgentPackManager:
             app_logger.error(f"Failed to export agent pack: {e}", exc_info=True)
             raise RuntimeError(f"Failed to export agent pack: {e}")
 
+    # ── Create & Install (local) ─────────────────────────────────────────────
+
+    async def create_and_install(
+        self,
+        profile_ids: list[str],
+        user_uuid: str,
+        pack_name: str = "",
+        pack_description: str = "",
+    ) -> dict:
+        """Create an agent pack from existing profiles and register it locally.
+
+        Unlike the export→import flow, this references existing profiles and
+        collections with is_owned=0 so that uninstalling the pack does NOT
+        delete the original resources.
+
+        Returns: dict with installation details.
+        """
+        from trusted_data_agent.core.config_manager import get_config_manager
+
+        config_manager = get_config_manager()
+
+        # Export the .agentpack ZIP (for potential sharing/download later)
+        zip_path = await self.export_pack(
+            profile_ids=profile_ids,
+            user_uuid=user_uuid,
+            pack_name=pack_name,
+            pack_description=pack_description,
+        )
+
+        # Read back the manifest to get profile metadata
+        import zipfile as zf_mod
+        with zf_mod.ZipFile(zip_path, 'r') as zf:
+            manifest = json.loads(zf.read("manifest.json"))
+
+        # Resolve actual profile objects
+        selected_profiles = []
+        selected_ids = set(profile_ids)
+        for pid in profile_ids:
+            profile = config_manager.get_profile(pid, user_uuid)
+            if profile:
+                selected_profiles.append(profile)
+
+        # Auto-include genie children
+        for profile in list(selected_profiles):
+            if profile.get("profile_type") == "genie":
+                child_ids = profile.get("genieConfig", {}).get("slaveProfiles", [])
+                for child_id in child_ids:
+                    if child_id not in selected_ids:
+                        child = config_manager.get_profile(child_id, user_uuid)
+                        if child:
+                            selected_profiles.append(child)
+                            selected_ids.add(child_id)
+
+        # Build lists for _record_installation
+        rec_profile_ids = []
+        rec_profile_tags = []
+        rec_profile_roles = []
+
+        genie_child_ids = set()
+        for profile in selected_profiles:
+            if profile.get("profile_type") == "genie":
+                genie_child_ids.update(profile.get("genieConfig", {}).get("slaveProfiles", []))
+
+        coordinator_tag = None
+        coordinator_profile_id = None
+
+        for profile in selected_profiles:
+            rec_profile_ids.append(profile["id"])
+            rec_profile_tags.append(profile.get("tag", ""))
+
+            if profile.get("profile_type") == "genie":
+                role = "coordinator"
+                coordinator_tag = profile.get("tag")
+                coordinator_profile_id = profile["id"]
+            elif profile["id"] in genie_child_ids:
+                role = "expert"
+            else:
+                role = "standalone"
+            rec_profile_roles.append(role)
+
+        # Gather existing collection IDs from profiles
+        rec_collection_ids = []
+        rec_collection_refs = []
+        seen_collection_ids = set()
+
+        for i, profile in enumerate(selected_profiles):
+            # Knowledge collections
+            for kc in profile.get("knowledgeConfig", {}).get("collections", []):
+                cid = kc.get("id")
+                if cid and cid not in seen_collection_ids:
+                    seen_collection_ids.add(cid)
+                    rec_collection_ids.append(int(cid))
+                    rec_collection_refs.append(kc.get("name", f"collection_{cid}"))
+
+            # Planner collections (tool_enabled only)
+            if profile.get("profile_type") == "tool_enabled" or (
+                profile.get("profile_type") == "llm_only" and profile.get("useMcpTools")
+            ):
+                for cid in profile.get("ragCollections", []):
+                    if cid and cid != '*' and cid not in seen_collection_ids:
+                        seen_collection_ids.add(cid)
+                        rec_collection_ids.append(int(cid))
+                        rec_collection_refs.append(f"planner_{cid}")
+
+        # Determine pack type
+        has_genie = any(p.get("profile_type") == "genie" for p in selected_profiles)
+        pack_type = "genie" if has_genie else "standalone"
+
+        # Record installation with is_owned=False (references existing resources)
+        installation_id = self._record_installation(
+            manifest=manifest,
+            coordinator_tag=coordinator_tag,
+            coordinator_profile_id=coordinator_profile_id,
+            pack_type=pack_type,
+            profile_ids=rec_profile_ids,
+            profile_tags=rec_profile_tags,
+            profile_roles=rec_profile_roles,
+            collection_ids=rec_collection_ids,
+            collection_refs=rec_collection_refs,
+            user_uuid=user_uuid,
+            is_owned=False,
+        )
+
+        # Store the ZIP path in manifest for potential download
+        app_logger.info(
+            f"Created and installed agent pack '{pack_name}' "
+            f"(installation_id={installation_id}, "
+            f"{len(rec_profile_ids)} profiles, "
+            f"{len(rec_collection_ids)} collections, is_owned=False)"
+        )
+
+        return {
+            "status": "success",
+            "installation_id": installation_id,
+            "name": manifest["name"],
+            "profiles_created": len(rec_profile_ids),
+            "collections_created": len(rec_collection_ids),
+            "zip_path": str(zip_path),
+        }
+
     # ── Uninstall ──────────────────────────────────────────────────────────────
 
     async def uninstall_pack(self, installation_id: int, user_uuid: str) -> dict:
@@ -1491,6 +1631,7 @@ class AgentPackManager:
         collection_ids: list[int],
         collection_refs: list[str],
         user_uuid: str,
+        is_owned: bool = True,
     ) -> int:
         """Record the agent pack installation in the database."""
         conn = sqlite3.connect(self.db_path)
@@ -1519,20 +1660,21 @@ class AgentPackManager:
             installation_id = cursor.lastrowid
 
             # Record profiles
+            owned_int = 1 if is_owned else 0
             for pid, tag, role in zip(profile_ids, profile_tags, profile_roles):
                 cursor.execute("""
                     INSERT INTO agent_pack_resources
-                    (pack_installation_id, resource_type, resource_id, resource_tag, resource_role)
-                    VALUES (?, 'profile', ?, ?, ?)
-                """, (installation_id, pid, tag, role))
+                    (pack_installation_id, resource_type, resource_id, resource_tag, resource_role, is_owned)
+                    VALUES (?, 'profile', ?, ?, ?, ?)
+                """, (installation_id, pid, tag, role, owned_int))
 
             # Record collections
             for coll_id, ref in zip(collection_ids, collection_refs):
                 cursor.execute("""
                     INSERT INTO agent_pack_resources
-                    (pack_installation_id, resource_type, resource_id, resource_tag, resource_role)
-                    VALUES (?, 'collection', ?, ?, 'collection')
-                """, (installation_id, str(coll_id), ref))
+                    (pack_installation_id, resource_type, resource_id, resource_tag, resource_role, is_owned)
+                    VALUES (?, 'collection', ?, ?, 'collection', ?)
+                """, (installation_id, str(coll_id), ref, owned_int))
 
             conn.commit()
             return installation_id
