@@ -5112,41 +5112,69 @@ button.bg-gray-700.px-2:hover {
     border-left-color: #f43f5e;
 }
 
-/* Completed States - Default fallback (green) */
-.genie-status-step.completed,
-.conversation-agent-status-step.completed,
-.knowledge-retrieval-status-step.completed {
-    border-left-color: #10b981;
-    background: linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, transparent 100%);
-}
+/* Completed States - Default fallback (category colors now handle this) */
+/* Border-left and background are set by the category-specific rules below */
 
 /* ============================================================================
    SIDEBAR COLOR CODING - Left border color by event category
+   Colors aligned with filter pill dot colors for visual consistency.
    Orange = active (executing), Category color = completed
    ============================================================================ */
 
-/* GREEN - Success Events (default for most execution events) */
-.status-step.completed.success,
-.genie-status-step.completed.success,
-.conversation-agent-status-step.completed.success,
-.knowledge-retrieval-status-step.completed.success {
+/* CYAN - Context Events (context window assembly, optimization) */
+.status-step.completed.context,
+.genie-status-step.completed.context,
+.conversation-agent-status-step.completed.context,
+.knowledge-retrieval-status-step.completed.context {
+    border-left-color: #06b6d4;
+}
+
+/* BLUE - Knowledge Events (retrieval, reranking, RAG LLM steps) */
+.status-step.completed.knowledge,
+.genie-status-step.completed.knowledge,
+.conversation-agent-status-step.completed.knowledge,
+.knowledge-retrieval-status-step.completed.knowledge {
+    border-left-color: #3b82f6;
+}
+
+/* PURPLE - Planning Events (phase start/end, plan generation/optimization) */
+.status-step.completed.planning,
+.genie-status-step.completed.planning,
+.conversation-agent-status-step.completed.planning,
+.knowledge-retrieval-status-step.completed.planning {
+    border-left-color: #a855f7;
+}
+
+/* AMBER - Tool Execution Events (tool calls, results, workarounds) */
+.status-step.completed.tool-execution,
+.genie-status-step.completed.tool-execution,
+.conversation-agent-status-step.completed.tool-execution,
+.knowledge-retrieval-status-step.completed.tool-execution {
+    border-left-color: #f59e0b;
+}
+
+/* GREEN - Agent Events (conversation agent tool/LLM steps) */
+.status-step.completed.agent,
+.genie-status-step.completed.agent,
+.conversation-agent-status-step.completed.agent,
+.knowledge-retrieval-status-step.completed.agent {
     border-left-color: #10b981;
 }
 
-/* YELLOW - System/Lifecycle Events */
+/* ORANGE - Coordination Events (genie routing, expert invocations) */
+.status-step.completed.coordination,
+.genie-status-step.completed.coordination,
+.conversation-agent-status-step.completed.coordination,
+.knowledge-retrieval-status-step.completed.coordination {
+    border-left-color: #F15F22;
+}
+
+/* YELLOW - System Events (session naming, lifecycle, status indicators) */
 .status-step.completed.system,
 .genie-status-step.completed.system,
 .conversation-agent-status-step.completed.system,
 .knowledge-retrieval-status-step.completed.system {
     border-left-color: #facc15;
-}
-
-/* BLUE - Plan Optimization Events */
-.status-step.completed.optimization,
-.genie-status-step.completed.optimization,
-.conversation-agent-status-step.completed.optimization,
-.knowledge-retrieval-status-step.completed.optimization {
-    border-left-color: #3b82f6;
 }
 
 /* RED - Error Events */
@@ -5157,49 +5185,73 @@ button.bg-gray-700.px-2:hover {
     border-left-color: #ef4444;
 }
 
-/* PURPLE - Genie Coordination Events */
-.status-step.completed.coordination,
-.genie-status-step.completed.coordination,
-.conversation-agent-status-step.completed.coordination,
-.knowledge-retrieval-status-step.completed.coordination {
-    border-left-color: #9333ea;
-}
-
-/* GREY - Lifecycle Bookend Events (Started/Complete - neutral visual framing) */
+/* SLATE - Lifecycle Bookend Events (same as system) */
 .status-step.completed.lifecycle,
 .genie-status-step.completed.lifecycle,
 .conversation-agent-status-step.completed.lifecycle,
 .knowledge-retrieval-status-step.completed.lifecycle {
-    border-left-color: #6b7280;  /* Grey to distinguish from success */
+    border-left-color: #94a3b8;
 }
 
 /* ============================================================================
    SIDEBAR ::before PSEUDO-ELEMENT COLOR CODING
-   Must match border-left-color for each category (no rainbow effect)
+   Must match border-left-color for each category
    ============================================================================ */
 
-/* GREEN - Success Events ::before */
-.status-step.completed.success::before,
-.genie-status-step.completed.success::before,
-.conversation-agent-status-step.completed.success::before,
-.knowledge-retrieval-status-step.completed.success::before {
+/* CYAN - Context Events ::before */
+.status-step.completed.context::before,
+.genie-status-step.completed.context::before,
+.conversation-agent-status-step.completed.context::before,
+.knowledge-retrieval-status-step.completed.context::before {
+    background: #06b6d4;
+}
+
+/* BLUE - Knowledge Events ::before */
+.status-step.completed.knowledge::before,
+.genie-status-step.completed.knowledge::before,
+.conversation-agent-status-step.completed.knowledge::before,
+.knowledge-retrieval-status-step.completed.knowledge::before {
+    background: #3b82f6;
+}
+
+/* PURPLE - Planning Events ::before */
+.status-step.completed.planning::before,
+.genie-status-step.completed.planning::before,
+.conversation-agent-status-step.completed.planning::before,
+.knowledge-retrieval-status-step.completed.planning::before {
+    background: #a855f7;
+}
+
+/* AMBER - Tool Execution Events ::before */
+.status-step.completed.tool-execution::before,
+.genie-status-step.completed.tool-execution::before,
+.conversation-agent-status-step.completed.tool-execution::before,
+.knowledge-retrieval-status-step.completed.tool-execution::before {
+    background: #f59e0b;
+}
+
+/* GREEN - Agent Events ::before */
+.status-step.completed.agent::before,
+.genie-status-step.completed.agent::before,
+.conversation-agent-status-step.completed.agent::before,
+.knowledge-retrieval-status-step.completed.agent::before {
     background: #10b981;
 }
 
-/* YELLOW - System/Lifecycle Events ::before */
+/* ORANGE - Coordination Events ::before */
+.status-step.completed.coordination::before,
+.genie-status-step.completed.coordination::before,
+.conversation-agent-status-step.completed.coordination::before,
+.knowledge-retrieval-status-step.completed.coordination::before {
+    background: #F15F22;
+}
+
+/* YELLOW - System Events ::before */
 .status-step.completed.system::before,
 .genie-status-step.completed.system::before,
 .conversation-agent-status-step.completed.system::before,
 .knowledge-retrieval-status-step.completed.system::before {
     background: #facc15;
-}
-
-/* BLUE - Plan Optimization Events ::before */
-.status-step.completed.optimization::before,
-.genie-status-step.completed.optimization::before,
-.conversation-agent-status-step.completed.optimization::before,
-.knowledge-retrieval-status-step.completed.optimization::before {
-    background: #3b82f6;
 }
 
 /* RED - Error Events ::before */
@@ -5210,51 +5262,76 @@ button.bg-gray-700.px-2:hover {
     background: #ef4444;
 }
 
-/* PURPLE - Genie Coordination Events ::before */
-.status-step.completed.coordination::before,
-.genie-status-step.completed.coordination::before,
-.conversation-agent-status-step.completed.coordination::before,
-.knowledge-retrieval-status-step.completed.coordination::before {
-    background: #9333ea;
-}
-
-/* GREY - Lifecycle Bookend Events ::before */
+/* SLATE - Lifecycle Bookend Events ::before */
 .status-step.completed.lifecycle::before,
 .genie-status-step.completed.lifecycle::before,
 .conversation-agent-status-step.completed.lifecycle::before,
 .knowledge-retrieval-status-step.completed.lifecycle::before {
-    background: #6b7280;  /* Grey to match sidebar */
+    background: #94a3b8;
 }
 
 /* ============================================================================
-   STATUS STEP COLOR CODING SYSTEM (6 Categories)
+   STATUS STEP COLOR CODING SYSTEM (9 Categories aligned with filter pills)
    Background colors by event category - works with all step types
    Left border color = execution state (active=orange, completed=category color)
-   Background color = event category (success, system, optimization, error, coordination)
+   Background color = filter category (context, knowledge, planning, tool-execution,
+                                        agent, coordination, system, error, lifecycle)
    ============================================================================ */
 
-/* GREEN - Success Events (default for most execution events) */
-.status-step.success,
-.genie-status-step.success,
-.conversation-agent-status-step.success,
-.knowledge-retrieval-status-step.success {
+/* CYAN - Context Events */
+.status-step.context,
+.genie-status-step.context,
+.conversation-agent-status-step.context,
+.knowledge-retrieval-status-step.context {
+    background: linear-gradient(90deg, rgba(6, 182, 212, 0.08) 0%, transparent 100%);
+}
+
+/* BLUE - Knowledge Events */
+.status-step.knowledge,
+.genie-status-step.knowledge,
+.conversation-agent-status-step.knowledge,
+.knowledge-retrieval-status-step.knowledge {
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, transparent 100%);
+}
+
+/* PURPLE - Planning Events */
+.status-step.planning,
+.genie-status-step.planning,
+.conversation-agent-status-step.planning,
+.knowledge-retrieval-status-step.planning {
+    background: linear-gradient(90deg, rgba(168, 85, 247, 0.08) 0%, transparent 100%);
+}
+
+/* AMBER - Tool Execution Events */
+.status-step.tool-execution,
+.genie-status-step.tool-execution,
+.conversation-agent-status-step.tool-execution,
+.knowledge-retrieval-status-step.tool-execution {
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.08) 0%, transparent 100%);
+}
+
+/* GREEN - Agent Events */
+.status-step.agent,
+.genie-status-step.agent,
+.conversation-agent-status-step.agent,
+.knowledge-retrieval-status-step.agent {
     background: linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, transparent 100%);
 }
 
-/* YELLOW - System/Lifecycle Events */
+/* ORANGE - Coordination Events */
+.status-step.coordination,
+.genie-status-step.coordination,
+.conversation-agent-status-step.coordination,
+.knowledge-retrieval-status-step.coordination {
+    background: linear-gradient(90deg, rgba(241, 95, 34, 0.08) 0%, transparent 100%);
+}
+
+/* YELLOW - System Events */
 .status-step.system,
 .genie-status-step.system,
 .conversation-agent-status-step.system,
 .knowledge-retrieval-status-step.system {
     background: linear-gradient(90deg, rgba(250, 204, 21, 0.08) 0%, transparent 100%);
-}
-
-/* BLUE - Plan Optimization Events */
-.status-step.optimization,
-.genie-status-step.optimization,
-.conversation-agent-status-step.optimization,
-.knowledge-retrieval-status-step.optimization {
-    background: linear-gradient(90deg, rgba(59, 130, 246, 0.08) 0%, transparent 100%);
 }
 
 /* RED - Error Events */
@@ -5265,21 +5342,12 @@ button.bg-gray-700.px-2:hover {
     background: linear-gradient(90deg, rgba(239, 68, 68, 0.08) 0%, transparent 100%);
 }
 
-/* PURPLE - Genie Coordination Events */
-.status-step.coordination,
-.genie-status-step.coordination,
-.conversation-agent-status-step.coordination,
-.knowledge-retrieval-status-step.coordination {
-    background: linear-gradient(90deg, rgba(147, 51, 234, 0.08) 0%, transparent 100%);
-}
-
-/* LIFECYCLE BOOKEND EVENTS - Bright green sidebar, same green background as success
-   Used for execution_start, execution_complete, *_agent_start, *_agent_complete */
+/* SLATE - Lifecycle Bookend Events (same as system) */
 .status-step.lifecycle,
 .genie-status-step.lifecycle,
 .conversation-agent-status-step.lifecycle,
 .knowledge-retrieval-status-step.lifecycle {
-    background: linear-gradient(90deg, rgba(16, 185, 129, 0.08) 0%, transparent 100%);
+    background: linear-gradient(90deg, rgba(148, 163, 184, 0.08) 0%, transparent 100%);
 }
 
 /* Lifecycle active state - orange tint while executing */
