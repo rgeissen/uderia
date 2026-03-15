@@ -153,7 +153,7 @@ export function initializeKnowledgeRepositoryHandlers() {
     if (importPlannerBtn) {
         importPlannerBtn.addEventListener('click', async () => {
             try {
-                await importKnowledgeRepository();
+                await importKnowledgeRepository({ isPlannerImport: true });
             } catch (error) {
                 console.error('[Planner] Import cancelled or failed:', error);
             }
@@ -2297,8 +2297,20 @@ function getDefaultExportPath() {
 
 /**
  * Import a knowledge repository from a .zip file
+ * @param {Object} [options] - Import options
+ * @param {boolean} [options.isPlannerImport] - If true, show MCP server selection dialog
  */
-export async function importKnowledgeRepository() {
+export async function importKnowledgeRepository(options = {}) {
+    let mcpServerId = null;
+
+    // For planner imports, ask user to select an MCP server first
+    if (options.isPlannerImport) {
+        mcpServerId = await showMcpServerSelectionDialog();
+        if (mcpServerId === null) {
+            return; // User cancelled
+        }
+    }
+
     // Show dialog to choose import method
     const importMode = await showImportModeDialog();
     if (!importMode) {
@@ -2306,10 +2318,93 @@ export async function importKnowledgeRepository() {
     }
 
     if (importMode === 'file') {
-        return importFromFile();
+        return importFromFile(mcpServerId);
     } else {
-        return importFromServerPath();
+        return importFromServerPath(mcpServerId);
     }
+}
+
+/**
+ * Show dialog to select an MCP server for planner collection import.
+ * Returns the selected mcp_server_id, or null if cancelled.
+ */
+async function showMcpServerSelectionDialog() {
+    // Fetch available MCP servers
+    let servers = [];
+    let activeServerId = null;
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const resp = await fetch('/api/v1/mcp/servers', { headers });
+        const result = await resp.json();
+        if (result.status === 'success') {
+            servers = result.servers || [];
+            activeServerId = result.active_server_id;
+        }
+    } catch (err) {
+        console.error('[Knowledge] Failed to load MCP servers:', err);
+    }
+
+    if (servers.length === 0) {
+        if (window.showAppBanner) {
+            window.showAppBanner('No MCP servers configured. Please add an MCP server first.', 'error');
+        }
+        return null;
+    }
+
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+
+        const optionsHtml = servers.map(s => {
+            const selected = s.id === activeServerId ? 'selected' : '';
+            const label = s.id === activeServerId ? `${s.name} (active)` : s.name;
+            return `<option value="${s.id}" ${selected}>${label}</option>`;
+        }).join('');
+
+        const modal = document.createElement('div');
+        modal.className = 'bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4';
+        modal.innerHTML = `
+            <h3 class="text-xl font-semibold text-white mb-4">Select MCP Server</h3>
+            <p class="text-gray-300 mb-4">Choose the MCP server to associate with the imported planner collection:</p>
+
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">MCP Server</label>
+                <select
+                    id="mcp-server-select"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                    ${optionsHtml}
+                </select>
+            </div>
+
+            <div class="flex justify-end space-x-3">
+                <button id="mcp-select-cancel-btn" class="card-btn card-btn--neutral">Cancel</button>
+                <button id="mcp-select-confirm-btn" class="card-btn card-btn--info">Continue</button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        const cleanup = () => { if (overlay.parentNode) document.body.removeChild(overlay); };
+
+        document.getElementById('mcp-select-confirm-btn').onclick = () => {
+            const selectedId = document.getElementById('mcp-server-select').value;
+            cleanup();
+            resolve(selectedId);
+        };
+
+        document.getElementById('mcp-select-cancel-btn').onclick = () => {
+            cleanup();
+            resolve(null);
+        };
+
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { cleanup(); resolve(null); }
+        });
+    });
 }
 
 /**
@@ -2397,8 +2492,9 @@ async function showImportModeDialog() {
 
 /**
  * Import from file upload
+ * @param {string|null} mcpServerId - MCP server ID for planner imports
  */
-async function importFromFile() {
+async function importFromFile(mcpServerId = null) {
     return new Promise((resolve, reject) => {
         // Create file input
         const fileInput = document.createElement('input');
@@ -2422,6 +2518,9 @@ async function importFromFile() {
 
                 const formData = new FormData();
                 formData.append('file', file);
+                if (mcpServerId) {
+                    formData.append('mcp_server_id', mcpServerId);
+                }
 
                 const token = localStorage.getItem('tda_auth_token');
                 const response = await fetch('/api/v1/rag/collections/import', {
@@ -2468,8 +2567,9 @@ async function importFromFile() {
 
 /**
  * Import from server path
+ * @param {string|null} mcpServerId - MCP server ID for planner imports
  */
-async function importFromServerPath() {
+async function importFromServerPath(mcpServerId = null) {
     const importPath = await showImportPathDialog();
     if (!importPath) {
         return; // User cancelled
@@ -2491,7 +2591,8 @@ async function importFromServerPath() {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                import_path: importPath
+                import_path: importPath,
+                ...(mcpServerId ? { mcp_server_id: mcpServerId } : {})
             })
         });
 
