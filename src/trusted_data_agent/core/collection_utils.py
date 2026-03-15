@@ -151,8 +151,12 @@ async def import_collection_from_zip(
             from trusted_data_agent.vectorstore import (
                 get_backend_for_collection, CollectionConfig, VectorDocument
             )
-            coll_meta_stub = {"backend_type": backend_type, "backend_config": "{}"}
-            backend = await get_backend_for_collection(coll_meta_stub)
+            coll_meta_stub = {
+                "backend_type": backend_type,
+                "backend_config": "{}",
+                "vector_store_config_id": vector_store_config_id,
+            }
+            backend = await get_backend_for_collection(coll_meta_stub, user_uuid=user_uuid)
             config = CollectionConfig(name=new_collection_name, embedding_model=embedding_model)
             await backend.get_or_create_collection(config)
         else:
