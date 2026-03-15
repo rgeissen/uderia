@@ -4462,6 +4462,7 @@ async def import_collection():
             content_type = request.content_type or ''
 
             vector_store_config_id = None
+            mcp_server_id = None
 
             if 'multipart/form-data' in content_type:
                 # Mode 1: File upload from browser
@@ -4479,12 +4480,14 @@ async def import_collection():
 
                 form = await request.form
                 vector_store_config_id = form.get("vector_store_config_id") or None
+                mcp_server_id = form.get("mcp_server_id") or None
 
             elif 'application/json' in content_type:
                 # Mode 2: Import from server path
                 data = await request.get_json()
                 import_path = data.get('import_path', '').strip()
                 vector_store_config_id = data.get("vector_store_config_id") or None
+                mcp_server_id = data.get("mcp_server_id") or None
 
                 if not import_path:
                     return jsonify({"status": "error", "message": "import_path required"}), 400
@@ -4517,6 +4520,7 @@ async def import_collection():
             result = await import_collection_from_zip(
                 zip_path=zip_path,
                 user_uuid=user_uuid,
+                mcp_server_id=mcp_server_id,
                 vector_store_config_id=vector_store_config_id,
                 populate_knowledge_docs=True,
             )

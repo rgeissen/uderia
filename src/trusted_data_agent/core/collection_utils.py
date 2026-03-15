@@ -167,6 +167,15 @@ async def import_collection_from_zip(
                 embedding_function=embedding_func,
             )
 
+        # Determine MCP server binding early (needed for per-case metadata stamping)
+        if repo_type == 'planner':
+            if mcp_server_id is not None:
+                assigned_mcp_server_id = mcp_server_id
+            else:
+                assigned_mcp_server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
+        else:
+            assigned_mcp_server_id = None
+
         # Import documents (batched)
         total_added = 0
         all_metadatas_for_docs = []  # Collect for knowledge_documents population
@@ -186,7 +195,8 @@ async def import_collection_from_zip(
                         )
                     else:
                         batch_added = _add_batch_to_chroma(
-                            chroma_collection, batch, populate_knowledge_docs, all_metadatas_for_docs
+                            chroma_collection, batch, populate_knowledge_docs, all_metadatas_for_docs,
+                            mcp_server_id=assigned_mcp_server_id if repo_type == 'planner' else None,
                         )
                     total_added += batch_added
                     app_logger.info(f"  Batch {line_num}: added {batch_added} documents (total: {total_added})")
@@ -216,7 +226,8 @@ async def import_collection_from_zip(
                         )
                     else:
                         batch_added = _add_batch_to_chroma(
-                            chroma_collection, batch, populate_knowledge_docs, all_metadatas_for_docs
+                            chroma_collection, batch, populate_knowledge_docs, all_metadatas_for_docs,
+                            mcp_server_id=assigned_mcp_server_id if repo_type == 'planner' else None,
                         )
                     total_added += batch_added
 
@@ -227,15 +238,8 @@ async def import_collection_from_zip(
             document_count = chroma_collection.count()
         app_logger.info(f"Imported collection has {document_count} documents")
 
-        # Determine MCP server binding
-        if repo_type == 'planner':
-            if mcp_server_id is not None:
-                assigned_mcp_server_id = mcp_server_id
-            else:
-                assigned_mcp_server_id = APP_CONFIG.CURRENT_MCP_SERVER_ID
+        if assigned_mcp_server_id:
             app_logger.info(f"Associating planner collection with MCP server: {assigned_mcp_server_id}")
-        else:
-            assigned_mcp_server_id = None
 
         # Resolve vector store config for imported collection
         resolved_vs_config_id = vector_store_config_id  # Use override if provided
@@ -374,6 +378,7 @@ def _add_batch_to_chroma(
     batch: dict,
     collect_metadatas: bool,
     all_metadatas: list,
+    mcp_server_id: str | None = None,
 ) -> int:
     """Add a batch of documents to ChromaDB collection.
 
@@ -393,6 +398,11 @@ def _add_batch_to_chroma(
             for key in list(meta.keys()):
                 if meta[key] is None:
                     meta[key] = ""
+
+    # Stamp mcp_server_id on planner collection cases so retrieval filters match
+    if mcp_server_id and metadatas:
+        for meta in metadatas:
+            meta["mcp_server_id"] = mcp_server_id
 
     # Collect metadatas for knowledge_documents population
     if collect_metadatas and metadatas:
