@@ -803,6 +803,12 @@ class UserConsumption(Base):
     estimated_cost_usd = Column(Integer, nullable=False, default=0)  # In micro-dollars (USD × 1,000,000)
     rag_cost_saved_usd = Column(Integer, nullable=False, default=0)  # In micro-dollars (USD × 1,000,000)
     
+    # === DAILY TOKEN TRACKING ===
+    # Resets at midnight UTC alongside requests_today (via day_reset_at)
+    input_tokens_today = Column(Integer, nullable=False, default=0)
+    output_tokens_today = Column(Integer, nullable=False, default=0)
+    tokens_today = Column(Integer, nullable=False, default=0)
+
     # === RATE LIMITING ===
     requests_this_hour = Column(Integer, nullable=False, default=0)
     requests_today = Column(Integer, nullable=False, default=0)
@@ -871,7 +877,12 @@ class UserConsumption(Base):
             'output_tokens_limit': self.output_tokens_limit,
             'input_tokens_remaining': (self.input_tokens_limit - self.total_input_tokens) if self.input_tokens_limit else None,
             'output_tokens_remaining': (self.output_tokens_limit - self.total_output_tokens) if self.output_tokens_limit else None,
-            
+
+            # Daily token metrics
+            'input_tokens_today': self.input_tokens_today,
+            'output_tokens_today': self.output_tokens_today,
+            'tokens_today': self.tokens_today,
+
             # Quality metrics
             'successful_turns': self.successful_turns,
             'failed_turns': self.failed_turns,
