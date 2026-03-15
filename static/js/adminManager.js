@@ -84,6 +84,18 @@ const AdminManager = {
             });
         });
 
+        // User detail modal close
+        const userDetailClose = document.getElementById('user-detail-modal-close');
+        if (userDetailClose) {
+            userDetailClose.addEventListener('click', () => this.hideUserDetailModal());
+        }
+        const userDetailOverlay = document.getElementById('user-detail-modal-overlay');
+        if (userDetailOverlay) {
+            userDetailOverlay.addEventListener('click', (e) => {
+                if (e.target === userDetailOverlay) this.hideUserDetailModal();
+            });
+        }
+
         // Refresh consumption button
         const refreshConsumptionBtn = document.getElementById('refresh-consumption-btn');
         if (refreshConsumptionBtn) {
@@ -1171,13 +1183,13 @@ const AdminManager = {
 
             // Transform data to match expected format
             const consumptionData = data.users.map(userData => {
-                const inputPercentage = userData.input_tokens_limit 
+                const inputPercentage = userData.input_tokens_limit
                     ? (userData.total_input_tokens / userData.input_tokens_limit * 100)
                     : 0;
                 const outputPercentage = userData.output_tokens_limit
                     ? (userData.total_output_tokens / userData.output_tokens_limit * 100)
                     : 0;
-                
+
                 return {
                     user: {
                         id: userData.user_id,
@@ -1189,19 +1201,21 @@ const AdminManager = {
                         profile_name: 'N/A',
                         profile_id: null,
                         input_tokens: {
-                            used: userData.total_input_tokens,
+                            used: userData.input_tokens_today || 0,
                             limit: userData.input_tokens_limit,
                             remaining: userData.input_tokens_remaining,
                             percentage_used: Math.round(inputPercentage)
                         },
                         output_tokens: {
-                            used: userData.total_output_tokens,
+                            used: userData.output_tokens_today || 0,
                             limit: userData.output_tokens_limit,
                             remaining: userData.output_tokens_remaining,
                             percentage_used: Math.round(outputPercentage)
                         },
                         has_quota: userData.input_tokens_limit !== null || userData.output_tokens_limit !== null
-                    }
+                    },
+                    // Store full API data for detail modal
+                    _raw: userData
                 };
             });
 
@@ -6562,6 +6576,169 @@ const AdminManager = {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    },
+
+    /**
+     * Format micro-dollar cost to display string
+     */
+    formatCost(microDollars) {
+        if (!microDollars) return '$0.00';
+        const dollars = microDollars;  // already converted to dollars by to_dict()
+        if (dollars >= 1) return `$${dollars.toFixed(2)}`;
+        if (dollars >= 0.01) return `$${dollars.toFixed(3)}`;
+        return `$${dollars.toFixed(4)}`;
+    },
+
+    /**
+     * View detailed consumption for a user
+     */
+    viewUserDetails(userId) {
+        // Find user data in currently loaded consumption data
+        const entry = this.currentConsumptionData?.find(d => d.user.id === userId);
+        if (!entry || !entry._raw) {
+            window.showNotification('error', 'User data not found. Please refresh.');
+            return;
+        }
+
+        const d = entry._raw;
+        const username = this.escapeHtml(d.username || 'Unknown');
+        const period = d.current_period ? this.formatPeriodLabel(d.current_period) : 'N/A';
+
+        // Build model/provider usage lists
+        const modelsUsed = d.models_used || {};
+        const providersUsed = d.providers_used || {};
+        const modelEntries = Object.entries(modelsUsed).sort((a, b) => b[1] - a[1]);
+        const providerEntries = Object.entries(providersUsed).sort((a, b) => b[1] - a[1]);
+
+        const modelList = modelEntries.length > 0
+            ? modelEntries.map(([m, c]) => `<div class="flex justify-between text-sm"><span class="text-gray-300 truncate mr-2">${this.escapeHtml(m)}</span><span class="text-white font-medium">${c}</span></div>`).join('')
+            : '<span class="text-gray-500 text-sm">No usage yet</span>';
+
+        const providerList = providerEntries.length > 0
+            ? providerEntries.map(([p, c]) => `<div class="flex justify-between text-sm"><span class="text-gray-300">${this.escapeHtml(p)}</span><span class="text-white font-medium">${c}</span></div>`).join('')
+            : '<span class="text-gray-500 text-sm">No usage yet</span>';
+
+        // Success rate
+        const successRate = d.success_rate_percent != null ? `${d.success_rate_percent.toFixed(1)}%` : 'N/A';
+        const ragRate = d.rag_activation_rate_percent != null ? `${d.rag_activation_rate_percent.toFixed(1)}%` : 'N/A';
+
+        // Timestamps
+        const firstUsage = d.first_usage_at ? new Date(d.first_usage_at).toLocaleDateString() : 'Never';
+        const lastUsage = d.last_usage_at ? new Date(d.last_usage_at).toLocaleString() : 'Never';
+
+        const body = `
+            <div class="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                <!-- Token Usage -->
+                <div class="glass-panel rounded-lg p-4">
+                    <h4 class="text-sm font-bold text-gray-400 uppercase mb-3">Token Usage</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <div class="text-xs text-gray-500">Today</div>
+                            <div class="text-lg font-bold text-white">${this.formatTokens(d.tokens_today || 0)}</div>
+                            <div class="text-xs text-gray-400">${this.formatTokens(d.input_tokens_today || 0)} in / ${this.formatTokens(d.output_tokens_today || 0)} out</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500">This Month (${period})</div>
+                            <div class="text-lg font-bold text-white">${this.formatTokens(d.total_tokens)}</div>
+                            <div class="text-xs text-gray-400">${this.formatTokens(d.total_input_tokens)} in / ${this.formatTokens(d.total_output_tokens)} out</div>
+                        </div>
+                    </div>
+                    ${d.input_tokens_limit || d.output_tokens_limit ? `
+                        <div class="mt-3 pt-3 border-t border-gray-700">
+                            <div class="text-xs text-gray-500 mb-1">Monthly Quota</div>
+                            <div class="w-full bg-gray-700 rounded-full h-2">
+                                <div class="h-2 rounded-full ${(d.total_tokens / ((d.input_tokens_limit || 0) + (d.output_tokens_limit || 0)) * 100) >= 90 ? 'bg-red-500' : 'bg-blue-500'}" style="width: ${Math.min(100, d.total_tokens / ((d.input_tokens_limit || Infinity) + (d.output_tokens_limit || Infinity)) * 100)}%"></div>
+                            </div>
+                            <div class="text-xs text-gray-400 mt-1">Limit: ${this.formatTokens(d.input_tokens_limit)} in / ${this.formatTokens(d.output_tokens_limit)} out</div>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <!-- Quality & Cost -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="glass-panel rounded-lg p-4">
+                        <h4 class="text-sm font-bold text-gray-400 uppercase mb-3">Quality</h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Success Rate</span><span class="text-white font-medium">${successRate}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Total Turns</span><span class="text-white font-medium">${d.total_turns || 0}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Successful</span><span class="text-green-400 font-medium">${d.successful_turns || 0}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Failed</span><span class="text-red-400 font-medium">${d.failed_turns || 0}</span></div>
+                        </div>
+                    </div>
+                    <div class="glass-panel rounded-lg p-4">
+                        <h4 class="text-sm font-bold text-gray-400 uppercase mb-3">Cost & RAG</h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Est. Cost</span><span class="text-white font-medium">${this.formatCost(d.estimated_cost_usd)}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">RAG Savings</span><span class="text-green-400 font-medium">${this.formatCost(d.rag_cost_saved_usd)}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">RAG Rate</span><span class="text-white font-medium">${ragRate}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Champions</span><span class="text-white font-medium">${d.champion_cases_created || 0}</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Model & Provider Usage -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="glass-panel rounded-lg p-4">
+                        <h4 class="text-sm font-bold text-gray-400 uppercase mb-3">Models</h4>
+                        <div class="space-y-1">${modelList}</div>
+                    </div>
+                    <div class="glass-panel rounded-lg p-4">
+                        <h4 class="text-sm font-bold text-gray-400 uppercase mb-3">Providers</h4>
+                        <div class="space-y-1">${providerList}</div>
+                    </div>
+                </div>
+
+                <!-- Rate Limiting & Sessions -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="glass-panel rounded-lg p-4">
+                        <h4 class="text-sm font-bold text-gray-400 uppercase mb-3">Rate Limits</h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Requests/Hour</span><span class="text-white font-medium">${d.requests_this_hour || 0} / ${d.prompts_per_hour_limit || '∞'}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Requests/Day</span><span class="text-white font-medium">${d.requests_today || 0} / ${d.prompts_per_day_limit || '∞'}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Peak/Hour</span><span class="text-white font-medium">${d.peak_requests_per_hour || 0}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Peak/Day</span><span class="text-white font-medium">${d.peak_requests_per_day || 0}</span></div>
+                        </div>
+                    </div>
+                    <div class="glass-panel rounded-lg p-4">
+                        <h4 class="text-sm font-bold text-gray-400 uppercase mb-3">Sessions</h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Total</span><span class="text-white font-medium">${d.total_sessions || 0}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Active</span><span class="text-white font-medium">${d.active_sessions || 0}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">First Usage</span><span class="text-white font-medium">${firstUsage}</span></div>
+                            <div class="flex justify-between text-sm"><span class="text-gray-400">Last Usage</span><span class="text-white font-medium">${lastUsage}</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const overlay = document.getElementById('user-detail-modal-overlay');
+        const content = document.getElementById('user-detail-modal-content');
+        const title = document.getElementById('user-detail-modal-title');
+        const bodyEl = document.getElementById('user-detail-modal-body');
+
+        if (!overlay || !bodyEl) {
+            // Fallback to confirm modal
+            window.showConfirmation(`${username} — Details`, body);
+            return;
+        }
+
+        title.textContent = `${d.username} — Consumption Details`;
+        bodyEl.innerHTML = body;
+        overlay.classList.remove('hidden', 'opacity-0');
+        content.classList.remove('scale-95', 'opacity-0');
+    },
+
+    /**
+     * Hide user detail modal
+     */
+    hideUserDetailModal() {
+        const overlay = document.getElementById('user-detail-modal-overlay');
+        const content = document.getElementById('user-detail-modal-content');
+        if (!overlay) return;
+        overlay.classList.add('opacity-0');
+        content.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => overlay.classList.add('hidden'), 300);
     }
 };
 

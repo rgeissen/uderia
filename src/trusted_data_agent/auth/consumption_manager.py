@@ -127,6 +127,9 @@ class ConsumptionManager:
         # Reset daily counter if needed
         if not day_reset or now >= day_reset:
             consumption.requests_today = 0
+            consumption.input_tokens_today = 0
+            consumption.output_tokens_today = 0
+            consumption.tokens_today = 0
             consumption.day_reset_at = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
         
         # Commit all changes at once
@@ -227,12 +230,17 @@ class ConsumptionManager:
         consumption = self.get_or_create_consumption(user_id)
         now = datetime.now(timezone.utc)
         
-        # Update token counts
+        # Update token counts (monthly cumulative)
         total_tokens = input_tokens + output_tokens
         consumption.total_input_tokens += input_tokens
         consumption.total_output_tokens += output_tokens
         consumption.total_tokens += total_tokens
-        
+
+        # Update daily token counts (reset at midnight UTC via day_reset_at)
+        consumption.input_tokens_today += input_tokens
+        consumption.output_tokens_today += output_tokens
+        consumption.tokens_today += total_tokens
+
         # Update quality metrics
         consumption.total_turns += 1
         if status == "success":

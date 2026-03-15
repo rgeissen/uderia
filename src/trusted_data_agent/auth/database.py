@@ -95,6 +95,7 @@ def init_database():
         # Run schema migrations for existing installations (MUST run before any User queries)
         _run_user_table_migrations()
         _run_cost_table_migrations()
+        _run_consumption_table_migrations()
 
         # Create collections table (for marketplace)
         _create_collections_table()
@@ -1409,6 +1410,38 @@ def _run_cost_table_migrations():
 
     except Exception as e:
         logger.error(f"Error running cost table migrations: {e}", exc_info=True)
+
+
+def _run_consumption_table_migrations():
+    """
+    Run schema migrations for the user_consumption table.
+    Adds daily token tracking columns introduced in March 2026.
+    Safe to call multiple times (checks if columns exist).
+    """
+    import sqlite3
+
+    try:
+        db_path = DEFAULT_DB_PATH
+        if not db_path.exists():
+            return
+
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # Migration: Add daily token tracking columns
+        try:
+            cursor.execute("SELECT input_tokens_today FROM user_consumption LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Adding daily token tracking columns to user_consumption table")
+            cursor.execute("ALTER TABLE user_consumption ADD COLUMN input_tokens_today INTEGER NOT NULL DEFAULT 0")
+            cursor.execute("ALTER TABLE user_consumption ADD COLUMN output_tokens_today INTEGER NOT NULL DEFAULT 0")
+            cursor.execute("ALTER TABLE user_consumption ADD COLUMN tokens_today INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error running consumption table migrations: {e}", exc_info=True)
 
 
 def _create_default_admin_if_needed():
