@@ -3976,15 +3976,15 @@ function _getBrandedAgentName(profileType) {
     switch (profileType) {
         case 'conversation_with_tools':
         case 'llm_only':
-            return 'Ideate Agent';
+            return 'Ideate Engine';
         case 'rag_focused':
-            return 'Focus Agent';
+            return 'Focus Engine';
         case 'tool_enabled':
-            return 'Optimize Agent';
+            return 'Optimize Engine';
         case 'genie':
-            return 'Coordinate Agent';
+            return 'Coordinate Engine';
         default:
-            return 'Agent';
+            return 'Engine';
     }
 }
 
