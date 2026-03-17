@@ -175,7 +175,7 @@ function _buildTierInfoPanel(tier, name = '{name}') {
             </div>
 
             <div class="flex items-center gap-4 text-[10px] text-gray-500">
-                <span class="font-mono" style="color: ${cfg.color};">${filePath}</span>
+                <span class="font-mono tier-file-path" style="color: ${cfg.color};">${filePath}</span>
                 <span class="flex items-center gap-1">
                     <span style="color: ${info.needsManifest ? '#fbbf24' : '#6b7280'};">${info.needsManifest ? '&#10003;' : '&#10005;'}</span>
                     manifest
@@ -406,8 +406,7 @@ function showScaffoldModal() {
                 <label class="block text-xs text-gray-400 mb-1">Extension Name</label>
                 <input id="scaffold-name" type="text" placeholder="my_extension" maxlength="30"
                     class="w-full text-sm px-3 py-2 rounded-lg border bg-transparent text-gray-200 focus:outline-none"
-                    style="border-color: rgba(148,163,184,0.2); font-family: 'JetBrains Mono','Fira Code',monospace;"
-                    pattern="[a-z][a-z0-9_]*">
+                    style="border-color: rgba(148,163,184,0.2); font-family: 'JetBrains Mono','Fira Code',monospace;">
                 <div class="flex items-center justify-between mt-1">
                     <p id="scaffold-name-hint" class="text-[10px] text-gray-600">Lowercase, underscores ok. This becomes the <span class="font-mono" style="color: #fbbf24;">!name</span> trigger.</p>
                     <span id="scaffold-name-counter" class="text-[10px] text-gray-600">0/30</span>
@@ -461,7 +460,7 @@ function showScaffoldModal() {
         <div class="flex justify-end gap-3 mt-6">
             <button class="ind-button ind-button--secondary ind-button--sm close-btn">Cancel</button>
             <button id="scaffold-create-btn" class="ind-button ind-button--sm flex items-center gap-1.5"
-                style="background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24;">
+                style="background: var(--status-warning-bg, rgba(251,191,36,0.15)); border: 1px solid var(--border-primary, rgba(251,191,36,0.3)); color: var(--status-warning, #fbbf24);">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
@@ -529,7 +528,7 @@ function showScaffoldModal() {
         }
 
         // Update file path in tier info
-        const panel = tierInfoContainer.querySelector('.tier-info-panel .font-mono');
+        const panel = tierInfoContainer.querySelector('.tier-info-panel .tier-file-path');
         if (panel) {
             const info = TIER_INFO[selectedLevel];
             panel.textContent = info.fileStructure.replace(/\{name\}/g, val || '{name}');
@@ -1180,14 +1179,14 @@ function showExtensionEditor(name, source, tier, isNew = false, readOnly = false
 
     header.innerHTML = `
         <div class="flex items-center gap-3">
-            <span class="inline-flex items-center px-2.5 py-0.5 text-sm font-semibold rounded" style="background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24; font-family: 'JetBrains Mono', monospace;">!${name}</span>
+            <span class="inline-flex items-center px-2.5 py-0.5 text-sm font-semibold rounded" style="background: var(--status-warning-bg, rgba(251,191,36,0.15)); border: 1px solid var(--border-primary, rgba(251,191,36,0.3)); color: var(--status-warning, #fbbf24); font-family: 'JetBrains Mono', monospace;">!${name}</span>
             <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded" style="background: ${cfg.bg}; border: 1px solid ${cfg.border}; color: ${cfg.color};">${info.title}</span>
-            ${readOnly ? '<span class="text-[10px] text-gray-500 px-1.5 py-0.5 rounded" style="background: rgba(148,163,184,0.08);">read-only</span>' : ''}
-            ${isNew ? '<span class="text-[10px] px-1.5 py-0.5 rounded" style="background: rgba(34,197,94,0.1); color: #22c55e;">new</span>' : ''}
+            ${readOnly ? '<span class="text-[10px] px-1.5 py-0.5 rounded" style="background: rgba(148,163,184,0.08); color: var(--text-muted, #6b7280);">read-only</span>' : ''}
+            ${isNew ? '<span class="text-[10px] px-1.5 py-0.5 rounded" style="background: var(--status-success-bg, rgba(34,197,94,0.1)); color: var(--status-success, #22c55e);">new</span>' : ''}
         </div>
         <div class="flex items-center gap-2">
             <span id="editor-status" class="text-[10px] text-gray-600 mr-2"></span>
-            ${!readOnly ? `<button id="editor-save-btn" class="ind-button ind-button--sm flex items-center gap-1.5" style="background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24; opacity: 0.5;" disabled>
+            ${!readOnly ? `<button id="editor-save-btn" class="ind-button ind-button--sm flex items-center gap-1.5" style="background: var(--status-warning-bg, rgba(251,191,36,0.15)); border: 1px solid var(--border-primary, rgba(251,191,36,0.3)); color: var(--status-warning, #fbbf24); opacity: 0.5;" disabled>
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                 </svg>
