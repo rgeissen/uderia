@@ -101,6 +101,13 @@
       "model": "amazon.nova-lite-v1:0",
       "credentials": {},
       "id": "1763892251792-fvxyy5msd"
+    },
+    {
+      "name": "OpenRouter - Gemma 4",
+      "provider": "OpenRouter",
+      "model": "google/gemma-4-26b-a4b-it",
+      "credentials": {},
+      "id": "1775291352803-innr6chjy"
     }
   ],
   "active_llm_configuration_id": "1770912188373-ahlaint7f",
@@ -2577,6 +2584,11 @@
       "provider": "Ollama",
       "model_pattern": "llama3.1:8b-instruct-q8_0",
       "notes": "Llama 3.1 8B quantized for local inference"
+    },
+    {
+      "provider": "OpenRouter",
+      "model_pattern": "google/gemma-4-26b-a4b-it",
+      "notes": "Google Gemma 4 27B via OpenRouter - strong open-weight model with long context"
     }
   ],
   "friendli_serverless_models": [

@@ -290,6 +290,12 @@ const LLM_PROVIDER_TEMPLATES = {
         fields: [
             { id: 'ollama_host', label: 'Ollama Host', type: 'text', placeholder: 'e.g., http://localhost:11434', required: true }
         ]
+    },
+    OpenRouter: {
+        name: 'OpenRouter',
+        fields: [
+            { id: 'openrouter_api_key', label: 'API Key', type: 'password', placeholder: 'Enter your OpenRouter API Key', required: true }
+        ]
     }
 };
 
@@ -3422,7 +3428,8 @@ const providerColors = {
     'amazon': '#ff9900',    // AWS Orange
     'azure': '#00bfff',     // Azure Cyan
     'friendli': '#ec4899',  // Pink
-    'ollama': '#64748b'     // Slate gray
+    'ollama': '#64748b',    // Slate gray
+    'openrouter': '#6366f1' // Indigo
 };
 
 // LLM Provider description banner mapping
@@ -3434,7 +3441,8 @@ const llmDescriptionMap = {
     'amazon': 'llm-description-amazon',
     'azure': 'llm-description-azure',
     'friendli': 'llm-description-friendli',
-    'ollama': 'llm-description-ollama'
+    'ollama': 'llm-description-ollama',
+    'openrouter': 'llm-description-openrouter'
 };
 
 // Current LLM provider filter
@@ -3485,6 +3493,10 @@ const providerIcons = {
     'ollama': {
         color: '#64748b',
         icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block align-text-bottom" viewBox="0 0 24 24" fill="#64748b"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>`
+    },
+    'openrouter': {
+        color: '#6366f1',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block align-text-bottom" viewBox="0 0 24 24" fill="#6366f1"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>`
     }
 };
 
@@ -5072,7 +5084,8 @@ async function populateSystemPrompts(modal, profile) {
                         'Amazon': 'Amazon Bedrock',
                         'Azure': 'Azure OpenAI',
                         'Friendli': 'Friendli AI',
-                        'Ollama': 'Ollama (Local)'
+                        'Ollama': 'Ollama (Local)',
+                        'OpenRouter': 'OpenRouter'
                     }[profileProvider] || `${profileProvider} Master System Prompt`
                 } : {}
             },

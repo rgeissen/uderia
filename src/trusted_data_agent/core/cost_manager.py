@@ -629,7 +629,7 @@ class CostManager:
         }
 
         # Providers to check (exclude Friendli, Azure, and Ollama per requirements)
-        CHECKABLE_PROVIDERS = ['Google', 'Anthropic', 'OpenAI', 'Amazon']
+        CHECKABLE_PROVIDERS = ['Google', 'Anthropic', 'OpenAI', 'Amazon', 'OpenRouter']
 
         # Import list_models dynamically to avoid circular imports
         from trusted_data_agent.llm.handler import list_models

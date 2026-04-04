@@ -89,6 +89,8 @@ def create_langchain_llm(
         return _create_ollama_llm(model, decrypted_creds, temperature)
     elif provider == "Amazon":
         return _create_amazon_llm(model, decrypted_creds, temperature)
+    elif provider == "OpenRouter":
+        return _create_openrouter_llm(model, decrypted_creds, temperature)
     else:
         raise ValueError(f"Unsupported provider for LangChain: {provider}")
 
@@ -138,9 +140,10 @@ def _load_credentials_for_provider(user_uuid: str, provider: str, config_credent
     has_credentials = (
         credentials.get("apiKey") or
         credentials.get("api_key") or
-        credentials.get("friendli_token") or  # Friendli
-        credentials.get("azure_api_key") or   # Azure
-        credentials.get("aws_access_key_id")  # Amazon
+        credentials.get("friendli_token") or      # Friendli
+        credentials.get("azure_api_key") or       # Azure
+        credentials.get("aws_access_key_id") or   # Amazon
+        credentials.get("openrouter_api_key")      # OpenRouter
         # Ollama doesn't require credentials
     )
     logger.info(f"[DEBUG] has_credentials result: {bool(has_credentials)} (type: {type(has_credentials).__name__}, repr: {repr(has_credentials)})")
@@ -184,6 +187,11 @@ def _load_credentials_for_provider(user_uuid: str, provider: str, config_credent
                 credentials["aws_region"] = env_region
             if env_access_key or env_secret_key:
                 logger.info("Loaded AWS credentials from environment")
+        elif provider == "OpenRouter":
+            env_key = os.environ.get("OPENROUTER_API_KEY")
+            if env_key:
+                credentials["openrouter_api_key"] = env_key
+                logger.info("Loaded OpenRouter API key from environment")
 
     return credentials
 
@@ -401,9 +409,33 @@ def _create_amazon_llm(model: str, credentials: dict, temperature: float) -> Any
         raise ImportError("langchain-aws package not installed. Run: pip install langchain-aws")
 
 
+def _create_openrouter_llm(model: str, credentials: dict, temperature: float) -> Any:
+    """
+    Create LangChain ChatOpenAI instance configured for OpenRouter.
+
+    OpenRouter uses an OpenAI-compatible API with a custom base URL.
+    """
+    try:
+        from langchain_openai import ChatOpenAI
+
+        api_key = credentials.get("openrouter_api_key")
+        if not api_key:
+            raise ValueError("OpenRouter API key not found in credentials")
+
+        return ChatOpenAI(
+            model=model,
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+            temperature=temperature,
+            timeout=120,
+        )
+    except ImportError:
+        raise ImportError("langchain-openai package not installed. Run: pip install langchain-openai")
+
+
 def get_supported_providers() -> list:
     """Get list of providers supported for LangChain integration."""
-    return ["OpenAI", "Anthropic", "Google", "Azure", "Friendli", "Ollama", "Amazon"]
+    return ["OpenAI", "Anthropic", "Google", "Azure", "Friendli", "Ollama", "Amazon", "OpenRouter"]
 
 
 def is_provider_supported(provider: str) -> bool:

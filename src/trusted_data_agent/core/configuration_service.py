@@ -911,6 +911,24 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                     raise ValueError("Ollama host is required.")
                 temp_llm_instance = llm_handler.OllamaClient(host=host)
                 await temp_llm_instance.list_models()
+
+            elif provider == "OpenRouter":
+                openrouter_api_key = credentials.get("openrouter_api_key")
+                if not openrouter_api_key:
+                    raise ValueError("OpenRouter API key is required but was not provided in the configuration.")
+                app_logger.info(f"Validating OpenRouter API key with model '{model}'.")
+                temp_llm_instance = AsyncOpenAI(
+                    api_key=openrouter_api_key,
+                    base_url="https://openrouter.ai/api/v1",
+                    timeout=30.0
+                )
+                await temp_llm_instance.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": "test"}],
+                    max_tokens=1
+                )
+                app_logger.info("OpenRouter API key and model validated successfully.")
+
             else:
                 raise NotImplementedError(f"Provider '{provider}' is not yet supported.")
             app_logger.info("LLM credentials/connection validated successfully.")

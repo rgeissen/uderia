@@ -103,16 +103,33 @@ async def create_llm_client(provider: str, model: str, credentials: Dict[str, An
         api_key = credentials.get("azure_api_key")
         endpoint = credentials.get("azure_endpoint")
         api_version = credentials.get("azure_api_version")
-        
+
         if not api_key or not endpoint:
             raise ValueError("Azure API key and endpoint are required but not provided")
-        
+
         return AsyncAzureOpenAI(
             api_key=api_key,
             azure_endpoint=endpoint,
             api_version=api_version
         )
-    
+
+    elif provider == "OpenRouter":
+        openrouter_api_key = credentials.get("openrouter_api_key")
+        if not openrouter_api_key:
+            raise ValueError("OpenRouter API key is required but not provided")
+        client = AsyncOpenAI(
+            api_key=openrouter_api_key,
+            base_url="https://openrouter.ai/api/v1",
+            timeout=30.0
+        )
+        if validate:
+            await client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1
+            )
+        return client
+
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
 
@@ -247,7 +264,7 @@ async def test_llm_credentials(provider: str, model: str, credentials: Dict[str,
             if response.content:
                 return True, f"LLM connection successful ({provider} {model})."
                 
-        elif provider in ["OpenAI", "Friendli", "Azure"]:
+        elif provider in ["OpenAI", "Friendli", "Azure", "OpenRouter"]:
             # Use timeout wrapper to prevent hanging on unavailable models
             try:
                 response = await asyncio.wait_for(
