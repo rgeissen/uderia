@@ -848,7 +848,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
 
                 break # Exit retry loop on success
 
-            elif effective_provider in ["Anthropic", "OpenAI", "Azure", "Ollama", "Friendli"]:
+            elif effective_provider in ["Anthropic", "OpenAI", "Azure", "Ollama", "Friendli", "OpenRouter"]:
                 # --- MODIFICATION START: Use history_source consistently ---
                 current_history = []
                 if not disabled_history:
@@ -909,7 +909,7 @@ async def call_llm_api(llm_instance: any, prompt: str, user_uuid: str = None, se
                     if hasattr(response, 'usage'):
                         input_tokens, output_tokens = response.usage.input_tokens, response.usage.output_tokens
 
-                elif effective_provider in ["OpenAI", "Azure", "Friendli"]:
+                elif effective_provider in ["OpenAI", "Azure", "Friendli", "OpenRouter"]:
                     # --- Native multimodal for OpenAI/Azure (images only) ---
                     if multimodal_content and effective_provider in ["OpenAI", "Azure"]:
                         try:
@@ -1310,6 +1310,17 @@ async def list_models(provider: str, credentials: dict) -> list[dict]:
         client = AsyncOpenAI(api_key=credentials.get("apiKey"))
         models_page = await client.models.list()
         model_names = [model.id for model in models_page.data if "gpt" in model.id]
+
+    elif provider == "OpenRouter":
+        openrouter_api_key = credentials.get("openrouter_api_key")
+        async with httpx.AsyncClient(timeout=30.0) as http_client:
+            response = await http_client.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {openrouter_api_key}"}
+            )
+            response.raise_for_status()
+            data = response.json()
+        model_names = [m.get("id") for m in data.get("data", []) if m.get("id")]
 
     elif provider == "Friendli":
         friendli_token = credentials.get("friendli_token")

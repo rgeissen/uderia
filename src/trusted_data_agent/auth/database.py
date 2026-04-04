@@ -1586,7 +1586,8 @@ def _initialize_document_upload_configs():
         'OpenAI',      # Vision models only
         'Azure',       # Vision deployments only
         'Friendli',    # Text extraction fallback
-        'Ollama'       # Text extraction fallback
+        'Ollama',      # Text extraction fallback
+        'OpenRouter'   # Text extraction fallback (model-dependent)
     ]
     
     try:

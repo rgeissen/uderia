@@ -81,6 +81,12 @@ class DocumentUploadConfig:
             "supported_formats": [],
             "max_file_size_mb": 0,
             "description": "Ollama - text extraction fallback (model-dependent)"
+        },
+        "OpenRouter": {
+            "capability": DocumentUploadCapability.TEXT_EXTRACTION,
+            "supported_formats": [],
+            "max_file_size_mb": 0,
+            "description": "OpenRouter - text extraction fallback (model-dependent)"
         }
     }
     

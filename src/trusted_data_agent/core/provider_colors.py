@@ -67,6 +67,11 @@ PROVIDER_COLORS = {
         "primary": "#64748b",     # Slate gray
         "secondary": "#94a3b8",   # Lighter gray
         "name": "Ollama"
+    },
+    "openrouter": {
+        "primary": "#6366f1",     # Indigo
+        "secondary": "#818cf8",   # Lighter indigo
+        "name": "OpenRouter"
     }
 }
 

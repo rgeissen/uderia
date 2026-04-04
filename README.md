@@ -334,6 +334,7 @@ Maintain complete control over your data exposure strategy with flexible deploym
 * **Multi-Provider LLM Support**: Freedom to choose your AI infrastructure:
   - **Cloud Hyperscalers**: Google (Gemini), Anthropic (Claude), OpenAI (GPT-4o), Azure OpenAI
   - **AWS Bedrock**: Foundation models and inference profiles for custom/provisioned models
+  - **OpenRouter**: Unified gateway to 100+ open and proprietary models via a single API key
   - **Friendli.AI**: High-performance serverless and dedicated endpoint support
   - **Ollama**: Fully local, offline LLM execution on your own infrastructure
   - Dynamic provider switching without configuration restart
@@ -383,7 +384,7 @@ Maintain complete control over your data exposure strategy with flexible deploym
 
 * **Document Upload & Multimodal Analysis**: Attach documents and images directly in chat conversations:
   - Native multimodal delivery for capable providers (Google Gemini, Anthropic Claude, OpenAI GPT-4o, Azure, AWS Bedrock Claude)
-  - Automatic text extraction fallback for all other providers (Friendli, Ollama, Bedrock Nova)
+  - Automatic text extraction fallback for all other providers (OpenRouter, Friendli, Ollama, Bedrock Nova)
   - Supports PDF, DOCX, TXT, MD, and image formats (JPG, PNG, GIF, WebP)
   - Drag-and-drop or click-to-attach with image thumbnail previews and Visual/Text processing badges
   - Provider-aware routing: images sent natively to vision models, documents via base64 or text extraction as appropriate
@@ -455,6 +456,7 @@ Transparent, real-time cost tracking with fine-grained control over spending at 
   - OpenAI GPT-4o and GPT-4o-mini with tiered pricing
   - Azure OpenAI (GPT-4, GPT-3.5-Turbo) with regional pricing
   - AWS Bedrock (foundation models, inference profiles)
+  - OpenRouter (100+ models with live pricing via model catalog)
   - Friendli.AI serverless and dedicated endpoints
   - Ollama (local models, zero external cost)
 
@@ -2679,7 +2681,7 @@ MCP servers connect using three transport protocols, each designed for specific 
 
 1. **LLM Providers Tab:** Configure one or more LLM provider connections:
    - **Name:** A descriptive name (e.g., "Google Gemini 2.0", "Claude Sonnet")
-   - **Provider:** Select from Google, Anthropic, OpenAI, Azure, AWS Bedrock, Friendli.AI, or Ollama
+   - **Provider:** Select from Anthropic, AWS Bedrock, Azure, Friendli.AI, Google, Ollama, OpenAI, or OpenRouter
    - **Model:** Choose a specific model from the provider
    - **Credentials:** Enter required authentication details:
      - **Cloud providers:** API Key
@@ -3409,6 +3411,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **04-Apr-2026:** OpenRouter Support - Unified gateway to 100+ open and proprietary models (Llama, Mistral, Gemma, and more) via a single API key, with full integration across the Fusion Optimizer, LangChain conversation agent, model listing, cost tracking, and document upload fallback
 *   **10-Mar-2026:** Hybrid Search - Three search modes for Knowledge Repositories on Qdrant Cloud: Semantic (dense vector similarity), Hybrid (Reciprocal Rank Fusion combining dense + sparse BM25), and Keyword (sparse BM25 only) with per-collection configuration, adjustable keyword weight slider, capability-based UI controls, and automatic fallback to Semantic for ChromaDB and Teradata backends
 *   **08-Mar-2026:** Teradata EVS Backend - Enterprise vector store integration with server-side embedding (Amazon Bedrock / Azure AI), server-side chunking, connection resilience with stale-connection detection and serialized reconnect, and EVS object ownership safety
 *   **07-Mar-2026:** ChromaDB & Qdrant Cloud Backends - Two production-ready backends: ChromaDB (embedded, zero-config default) and Qdrant Cloud (managed cloud with AsyncQdrantClient, optional gRPC, deterministic UUID5 ID mapping)
