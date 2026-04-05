@@ -1716,6 +1716,52 @@ export async function showLLMConfigurationModal(configId = null, preselectedProv
         }
 
         credentialsContainer.innerHTML = html;
+
+        // FriendliAI dedicated endpoint: toggle model input mode when URL changes
+        if (provider === 'Friendli') {
+            const urlInput = credentialsContainer.querySelector('[data-credential="friendli_endpoint_url"]');
+            if (urlInput) {
+                urlInput.addEventListener('input', () => updateFriendliModelInputMode(urlInput.value));
+                // Apply immediately (handles edit mode where value is already populated)
+                updateFriendliModelInputMode(urlInput.value);
+            }
+        }
+    }
+
+    // For FriendliAI dedicated endpoints: swap dropdown for a free-text endpoint ID input
+    function updateFriendliModelInputMode(endpointUrl) {
+        const modelDropdown = document.getElementById('llm-modal-model-dropdown');
+        const refreshBtn = document.getElementById('llm-modal-refresh-models');
+        const modelInput = document.getElementById('llm-modal-model');
+        let manualInput = document.getElementById('llm-modal-model-manual');
+
+        if (endpointUrl && endpointUrl.trim()) {
+            // Dedicated endpoint mode — show text input, hide dropdown + refresh
+            if (!manualInput) {
+                manualInput = document.createElement('input');
+                manualInput.type = 'text';
+                manualInput.id = 'llm-modal-model-manual';
+                manualInput.placeholder = 'Enter endpoint ID (e.g. depps38232ivn8v)';
+                manualInput.className = 'flex-1 p-2 rounded-md outline-none';
+                manualInput.style.cssText = 'background-color: var(--input-bg); border: 1px solid var(--border-primary); color: var(--text-primary);';
+                manualInput.addEventListener('input', () => {
+                    if (modelInput) modelInput.value = manualInput.value.trim();
+                });
+                modelDropdown?.parentElement?.insertBefore(manualInput, modelDropdown);
+            }
+            // Pre-fill from hidden input if a model is already set
+            if (modelInput && modelInput.value && !manualInput.value) {
+                manualInput.value = modelInput.value;
+            }
+            modelDropdown?.classList.add('hidden');
+            if (refreshBtn) refreshBtn.classList.add('hidden');
+            manualInput.classList.remove('hidden');
+        } else {
+            // Serverless mode — show dropdown, hide manual input
+            if (manualInput) manualInput.classList.add('hidden');
+            modelDropdown?.classList.remove('hidden');
+            if (refreshBtn) refreshBtn.classList.remove('hidden');
+        }
     }
 
     // Function to refresh models
@@ -1917,7 +1963,9 @@ export async function showLLMConfigurationModal(configId = null, preselectedProv
     refreshBtn.addEventListener('click', refreshModels);
 
     // Auto-refresh models when editing (credentials are already set)
-    if (isEdit && config?.credentials && Object.keys(config.credentials).length > 0) {
+    // Skip for dedicated Friendli endpoints — model ID is entered manually
+    const isFriendliDedicated = config?.provider === 'Friendli' && config?.credentials?.friendli_endpoint_url;
+    if (isEdit && !isFriendliDedicated && config?.credentials && Object.keys(config.credentials).length > 0) {
         // Small delay to ensure modal is visible
         setTimeout(() => refreshModels(), 100);
     }

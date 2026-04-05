@@ -59,14 +59,12 @@ async def create_llm_client(provider: str, model: str, credentials: Dict[str, An
 
         # Set a 30-second timeout to prevent hanging on unavailable models
         if endpoint_url:
-            # Dedicated endpoint
-            client = AsyncOpenAI(api_key=friendli_api_key, base_url=endpoint_url, timeout=30.0)
-            if validate:
-                validation_url = f"{endpoint_url.rstrip('/')}/v1/models"
-                headers = {"Authorization": f"Bearer {friendli_api_key}"}
-                async with httpx.AsyncClient(timeout=30.0) as http_client:
-                    response = await http_client.get(validation_url, headers=headers)
-                    response.raise_for_status()
+            # Dedicated endpoint — ensure base_url ends with /v1 so the OpenAI SDK
+            # constructs the correct path: .../dedicated/v1/chat/completions
+            dedicated_base = endpoint_url.rstrip('/')
+            if not dedicated_base.endswith('/v1'):
+                dedicated_base = f"{dedicated_base}/v1"
+            client = AsyncOpenAI(api_key=friendli_api_key, base_url=dedicated_base, timeout=30.0)
             return client
         else:
             # Serverless endpoint
@@ -264,6 +262,11 @@ async def test_llm_credentials(provider: str, model: str, credentials: Dict[str,
             if response.content:
                 return True, f"LLM connection successful ({provider} {model})."
                 
+        elif provider == "Friendli" and credentials.get("friendli_endpoint_url"):
+            # Dedicated endpoint — skip test call (endpoint may be stopped for cost
+            # management and the completion URL requires /v1 which the user may omit)
+            return True, f"Dedicated Friendli endpoint configured ({model})."
+
         elif provider in ["OpenAI", "Friendli", "Azure", "OpenRouter"]:
             # Use timeout wrapper to prevent hanging on unavailable models
             try:

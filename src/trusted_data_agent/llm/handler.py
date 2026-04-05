@@ -1327,14 +1327,9 @@ async def list_models(provider: str, credentials: dict) -> list[dict]:
         endpoint_url = credentials.get("friendli_endpoint_url")
 
         if endpoint_url:
-            request_url = f"{endpoint_url.rstrip('/')}/v1/models"
-            headers = {"Authorization": f"Bearer {friendli_token}"}
-            async with httpx.AsyncClient() as client:
-                app_logger.info(f"Fetching Friendli.ai models from: {request_url}")
-                response = await client.get(request_url, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-            model_names = [model.get("id") for model in data if model.get("id")]
+            # Dedicated endpoint — /v1/models is not supported; model ID is
+            # provided manually by the user in the configuration dialog
+            model_names = []
         else:
             # Friendli.ai Serverless mode: Query database for available models
             app_logger.info("Friendli.ai Serverless mode: Querying database for available models.")

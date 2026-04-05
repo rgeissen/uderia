@@ -1958,12 +1958,14 @@ class PlanExecutor:
 
             # Create and execute agent with real-time SSE event handler
             # Pass self.event_handler for immediate SSE streaming during execution
+            # Respect capability flag: some LLMs don't support function calling
+            effective_tools = [] if getattr(llm_instance, '_no_function_calling', False) else all_tools
             agent = ConversationAgentExecutor(
                 profile=profile_config,
                 user_uuid=self.user_uuid,
                 session_id=self.session_id,
                 llm_instance=llm_instance,
-                mcp_tools=all_tools,
+                mcp_tools=effective_tools,
                 async_event_handler=self.event_handler,  # Real-time SSE via asyncio.create_task()
                 max_iterations=APP_CONFIG.LANGCHAIN_MAX_ITERATIONS,
                 conversation_history=conversation_history,

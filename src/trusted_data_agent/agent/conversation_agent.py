@@ -224,12 +224,15 @@ class ConversationAgentExecutor:
             logger.warning("CONVERSATION_WITH_TOOLS_EXECUTION prompt not found, using default")
             prompt = self._get_default_prompt()
 
-        # Inject available tools into prompt
+        # Inject available tools into prompt (omit section entirely when no tools available)
         tool_descriptions = "\n".join([
             f"- {tool.name}: {tool.description}"
             for tool in self.mcp_tools
         ])
-        prompt = prompt.replace("{tools_context}", f"AVAILABLE TOOLS:\n{tool_descriptions}")
+        if tool_descriptions:
+            prompt = prompt.replace("{tools_context}", f"AVAILABLE TOOLS:\n{tool_descriptions}")
+        else:
+            prompt = prompt.replace("{tools_context}", "")
 
         # Inject component instructions (use pre-computed from CW module if available)
         comp_section = self.component_instructions
@@ -284,7 +287,6 @@ RESPONSE FORMAT:
 
     def _build_agent(self):
         """Build the LangGraph react agent."""
-        # Create LangGraph react agent
         return create_react_agent(
             model=self.llm_instance,
             tools=self.mcp_tools
