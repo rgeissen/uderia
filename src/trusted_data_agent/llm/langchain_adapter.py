@@ -319,15 +319,23 @@ def _create_friendli_llm(model: str, credentials: dict, temperature: float) -> A
         # CRITICAL: Streaming disabled for Friendli — Llama models may not emit stop tokens
         # in streaming mode, causing infinite token generation. Non-streaming mode enforces
         # max_tokens server-side. Token usage extracted from response's usage field instead.
-        return ChatOpenAI(
+        # Dedicated endpoints use a conservative max_tokens (8192) since model context limits
+        # are not surfaced by FriendliAI for dedicated endpoints (e.g. Gemma 3 caps at 8192).
+        max_tokens = 8192 if endpoint_url else 16384
+        llm = ChatOpenAI(
             model=model,
             api_key=friendli_token,
             base_url=base_url,
             temperature=temperature,
-            max_tokens=16384,  # Cap response length
+            max_tokens=max_tokens,
             timeout=120,  # HTTP timeout
             streaming=False,  # Disable streaming — Friendli/Llama may generate infinite tokens in streaming mode
         )
+        if endpoint_url:
+            # Dedicated endpoints (e.g. Gemma beta) reject OpenAI-style function calling.
+            # Mark so the conversation agent skips bind_tools for this instance.
+            llm._no_function_calling = True
+        return llm
     except ImportError:
         raise ImportError("langchain-openai package not installed. Run: pip install langchain-openai")
 

@@ -506,9 +506,12 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                     elif provider == "Friendli":
                         is_dedicated = bool(credentials.get("friendli_endpoint_url"))
                         if is_dedicated:
+                            _ep = credentials.get("friendli_endpoint_url", "").rstrip('/')
+                            if not _ep.endswith('/v1'):
+                                _ep = f"{_ep}/v1"
                             temp_llm_instance = AsyncOpenAI(
                                 api_key=credentials.get("friendli_token"),
-                                base_url=credentials.get("friendli_endpoint_url")
+                                base_url=_ep
                             )
                         else:
                             temp_llm_instance = AsyncOpenAI(
@@ -871,15 +874,12 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                     if not friendli_api_key:
                         raise ValueError("Friendli.ai API key is required but was not provided in the configuration.")
 
-                    if endpoint_url: # Dedicated Endpoint: Validate by listing models
-                        app_logger.info("Validating Friendli.ai Dedicated Endpoint by listing models.")
-                        validation_url = f"{endpoint_url.rstrip('/')}/v1/models"
-                        headers = {"Authorization": f"Bearer {friendli_api_key}"}
-                        async with httpx.AsyncClient() as client:
-                            response = await client.get(validation_url, headers=headers)
-                            response.raise_for_status()
-                        temp_llm_instance = AsyncOpenAI(api_key=friendli_api_key, base_url=endpoint_url)
-                        app_logger.info("Friendli.ai Dedicated Endpoint connection validated successfully.")
+                    if endpoint_url: # Dedicated Endpoint: skip model-listing (not supported)
+                        app_logger.info("Friendli.ai Dedicated Endpoint configured (validation skipped — /v1/models not supported on dedicated endpoints).")
+                        _dedicated_base = endpoint_url.rstrip('/')
+                        if not _dedicated_base.endswith('/v1'):
+                            _dedicated_base = f"{_dedicated_base}/v1"
+                        temp_llm_instance = AsyncOpenAI(api_key=friendli_api_key, base_url=_dedicated_base)
                     else: # Serverless Endpoint: Validate with a test completion call
                         app_logger.info(f"Validating Friendli.ai Serverless Endpoint with model '{model}'.")
                         if not model:
