@@ -540,10 +540,10 @@ export function sortSessionsHierarchically(sessions) {
     // Build the final sorted list starting with top-level sessions
     const sorted = [];
 
-    // Sort top-level sessions by created_at (NEWEST FIRST - most recent at top)
+    // Sort top-level sessions by last_updated (NEWEST FIRST - most recently active at top)
     topLevelSessions.sort((a, b) => {
-        const timeA = new Date(a.created_at || 0).getTime();
-        const timeB = new Date(b.created_at || 0).getTime();
+        const timeA = new Date(a.last_updated || a.created_at || 0).getTime();
+        const timeB = new Date(b.last_updated || b.created_at || 0).getTime();
         return timeB - timeA;  // Reversed: newest first
     });
 
@@ -4468,7 +4468,28 @@ export function moveSessionToTop(sessionId) {
             insertAfter.insertAdjacentElement('afterend', slaveWrapper);
             insertAfter = slaveWrapper;
         });
+
+        // Recalculate last-child connectors after any rearrangement
+        if (slaveWrappers.length > 0) {
+            refreshGenieConnectors(sessionId);
+        }
     }
+}
+
+/**
+ * Recalculates which Genie slave wrapper is the last child for a given parent
+ * and updates the `last-child` CSS class accordingly (controls └ vs ├ connector).
+ * Must be called after any DOM reordering of slave wrappers.
+ * @param {string} parentSessionId
+ */
+export function refreshGenieConnectors(parentSessionId) {
+    if (!DOM.sessionList) return;
+    const siblings = Array.from(
+        DOM.sessionList.querySelectorAll(`.genie-wrapper[data-parent-id="${parentSessionId}"]`)
+    );
+    siblings.forEach((wrapper, index) => {
+        wrapper.classList.toggle('last-child', index === siblings.length - 1);
+    });
 }
 
 

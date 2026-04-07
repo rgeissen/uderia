@@ -442,11 +442,8 @@ export function subscribeToNotifications() {
                             const lastSlaveWrapper = existingSlaveWrappers[existingSlaveWrappers.length - 1];
                             lastSlaveWrapper.insertAdjacentElement('afterend', sessionItem);
 
-                            // Update the previous last child to no longer be the last child
-                            // Remove the 'genie-wrapper-last' class so it shows ├─ with vertical line
-                            if (lastSlaveWrapper.classList && lastSlaveWrapper.classList.contains('genie-wrapper-last')) {
-                                lastSlaveWrapper.classList.remove('genie-wrapper-last');
-                            }
+                            // Recalculate last-child connectors (└ vs ├) after inserting the new slave
+                            UI.refreshGenieConnectors(parentSessionId);
                         }
 
                         // Update genie master badges to add collapse toggle to parent if needed
