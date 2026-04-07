@@ -51,65 +51,71 @@ def backfill(dry_run: bool = False) -> bool:
         logger.error(f"session_index.db not found at {SESSION_INDEX_DB}")
         return False
 
-    conn = sqlite3.connect(str(SESSION_INDEX_DB))
-    conn.row_factory = sqlite3.Row
+    # Open read-only for the initial scan (works even when DB is owned by Docker user)
+    ro_conn = sqlite3.connect(f"file:{SESSION_INDEX_DB}?mode=ro", uri=True)
+    ro_conn.row_factory = sqlite3.Row
     try:
-        rows = conn.execute(
+        rows = ro_conn.execute(
             "SELECT session_id, user_uuid FROM session_index WHERE status = 'unknown'"
         ).fetchall()
-
-        if not rows:
-            print("✓ No sessions with status='unknown' found — nothing to do.")
-            return True
-
-        print(f"\nFound {len(rows)} session(s) with status='unknown'\n")
-
-        updated = skipped = errors = 0
-
-        for row in rows:
-            session_id = row["session_id"]
-            user_uuid = row["user_uuid"]
-
-            # Locate the session JSON file
-            session_file = SESSIONS_DIR / user_uuid / f"{session_id}.json"
-            if not session_file.exists():
-                logger.warning(f"  ⚠  {session_id}: file not found at {session_file}, skipping")
-                skipped += 1
-                continue
-
-            try:
-                with open(session_file, "r", encoding="utf-8") as f:
-                    session_data = json.load(f)
-            except Exception as e:
-                logger.error(f"  ❌ {session_id}: failed to read JSON — {e}")
-                errors += 1
-                continue
-
-            wf = session_data.get("last_turn_data", {}).get("workflow_history", [])
-            status = compute_session_status(wf)
-
-            name = session_data.get("name", "Untitled")
-            print(f"  {'[DRY-RUN] ' if dry_run else ''}{session_id[:8]}… \"{name}\" → {status}")
-
-            if not dry_run:
-                conn.execute(
-                    "UPDATE session_index SET status = ? WHERE session_id = ?",
-                    (status, session_id)
-                )
-            updated += 1
-
-        if not dry_run:
-            conn.commit()
-
-        print(f"\n{'[DRY-RUN] ' if dry_run else ''}Results:")
-        print(f"  ✓ Updated : {updated}")
-        print(f"  ⚠  Skipped : {skipped}  (session file not found)")
-        print(f"  ❌ Errors  : {errors}")
-
-        return errors == 0
-
     finally:
-        conn.close()
+        ro_conn.close()
+
+    if not rows:
+        print("✓ No sessions with status='unknown' found — nothing to do.")
+        return True
+
+    print(f"\nFound {len(rows)} session(s) with status='unknown'\n")
+
+    updated = skipped = errors = 0
+    updates: list[tuple[str, str]] = []  # (status, session_id)
+
+    for row in rows:
+        session_id = row["session_id"]
+        user_uuid = row["user_uuid"]
+
+        # Locate the session JSON file
+        session_file = SESSIONS_DIR / user_uuid / f"{session_id}.json"
+        if not session_file.exists():
+            logger.warning(f"  ⚠  {session_id}: file not found at {session_file}, skipping")
+            skipped += 1
+            continue
+
+        try:
+            with open(session_file, "r", encoding="utf-8") as f:
+                session_data = json.load(f)
+        except Exception as e:
+            logger.error(f"  ❌ {session_id}: failed to read JSON — {e}")
+            errors += 1
+            continue
+
+        wf = session_data.get("last_turn_data", {}).get("workflow_history", [])
+        status = compute_session_status(wf)
+
+        name = session_data.get("name", "Untitled")
+        print(f"  {'[DRY-RUN] ' if dry_run else ''}{session_id[:8]}… \"{name}\" → {status}")
+
+        updates.append((status, session_id))
+        updated += 1
+
+    if not dry_run and updates:
+        # Open read-write only when we actually need to write
+        rw_conn = sqlite3.connect(str(SESSION_INDEX_DB))
+        try:
+            rw_conn.executemany(
+                "UPDATE session_index SET status = ? WHERE session_id = ?",
+                updates
+            )
+            rw_conn.commit()
+        finally:
+            rw_conn.close()
+
+    print(f"\n{'[DRY-RUN] ' if dry_run else ''}Results:")
+    print(f"  ✓ Updated : {updated}")
+    print(f"  ⚠  Skipped : {skipped}  (session file not found)")
+    print(f"  ❌ Errors  : {errors}")
+
+    return errors == 0
 
 
 def main():
