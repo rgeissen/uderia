@@ -1033,6 +1033,9 @@ async function processStream(responseBody, originSessionId) {
                             // Handle session metadata updates during execution
                             const { session_id, models_used, profile_tags_used, last_updated, provider, model, name, dual_model_info } = eventData.payload;
                             UI.updateSessionModels(session_id, models_used, profile_tags_used);
+                            UI.updateSessionTimestamp(session_id, last_updated);
+                            if (name) UI.updateSessionListItemName(session_id, name);
+                            UI.moveSessionToTop(session_id);
                             if (session_id === state.currentSessionId) {
                                 state.currentProvider = provider;
                                 state.currentModel = model;

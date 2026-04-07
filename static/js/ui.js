@@ -4451,8 +4451,23 @@ export function moveSessionToTop(sessionId) {
         }
     } else {
         // Regular session (not a slave) - move to top
+        // For Genie master sessions, also collect and move all slave wrappers so the
+        // visual hierarchy stays intact (slaves immediately follow their master).
+        const slaveWrappers = Array.from(
+            DOM.sessionList.querySelectorAll(`.genie-wrapper[data-parent-id="${sessionId}"]`)
+        );
+
         elementToMove.remove();
+        slaveWrappers.forEach(w => w.remove());
+
         DOM.sessionList.prepend(elementToMove);
+
+        // Re-insert slaves in their original relative order, directly after the master
+        let insertAfter = elementToMove;
+        slaveWrappers.forEach(slaveWrapper => {
+            insertAfter.insertAdjacentElement('afterend', slaveWrapper);
+            insertAfter = slaveWrapper;
+        });
     }
 }
 
