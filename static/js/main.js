@@ -1659,11 +1659,11 @@ async function initializeRAGAutoCompletion() {
                     p.tag && activeIds.includes(p.id)
                 );
                 
-                // Sort profiles: default first, then others
+                // Sort profiles: default first, then alphabetical
                 const sortedProfiles = activeProfilesWithTags.sort((a, b) => {
                     if (a.id === defaultProfileId) return -1;
                     if (b.id === defaultProfileId) return 1;
-                    return 0;
+                    return (a.name || '').localeCompare(b.name || '');
                 });
                 
                 if (inputValue === '@') {
