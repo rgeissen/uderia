@@ -1280,6 +1280,20 @@ async def _run_genie_execution(
                 app_logger.info(f"[Genie] Session name updated to '{session_name}' "
                               f"({session_name_input_tokens} in / {session_name_output_tokens} out)")
 
+        # Send session_model_update so the master session bubbles to the top of the history panel
+        # (all other profile types emit this; Genie was the only one missing it)
+        _genie_session_data = await session_manager.get_session(user_uuid, session_id)
+        if _genie_session_data:
+            await event_handler({
+                "session_id": session_id,
+                "models_used": _genie_session_data.get("models_used", []),
+                "profile_tags_used": _genie_session_data.get("profile_tags_used", []),
+                "last_updated": _genie_session_data.get("last_updated"),
+                "provider": provider,
+                "model": model,
+                "name": _genie_session_data.get("name", "New Chat"),
+            }, "session_model_update")
+
         return final_payload
 
     except Exception as e:
