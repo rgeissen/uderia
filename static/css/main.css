@@ -6288,6 +6288,107 @@ button.bg-gray-700.px-2:hover {
     border-color: var(--border-primary);
 }
 
+/* Profile modal tab bar — light theme */
+/* Tab outer container (bg-gradient-to-br from-gray-800/30) and tab bar (bg-gray-900/60) */
+[data-theme="light"] div:has(> #profile-tab-mcp-resources) {
+    background: var(--bg-secondary) !important;
+    background-image: none !important;
+    border-color: var(--border-primary) !important;
+}
+[data-theme="light"] div:has(> div > #profile-tab-mcp-resources) {
+    background: var(--card-bg) !important;
+    background-image: none !important;
+    border-color: var(--border-primary) !important;
+}
+[data-theme="light"] #profile-tab-mcp-resources,
+[data-theme="light"] #profile-tab-intelligence,
+[data-theme="light"] #profile-tab-skills,
+[data-theme="light"] #profile-tab-system-prompts {
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    color: var(--text-muted);
+}
+[data-theme="light"] #profile-tab-mcp-resources:hover,
+[data-theme="light"] #profile-tab-intelligence:hover,
+[data-theme="light"] #profile-tab-skills:hover,
+[data-theme="light"] #profile-tab-system-prompts:hover {
+    background: var(--hover-bg) !important;
+    color: var(--text-primary);
+}
+/* Active tab: class from-gray-800/70 is added by JS on activation */
+[data-theme="light"] #profile-tab-mcp-resources.from-gray-800\/70,
+[data-theme="light"] #profile-tab-intelligence.from-gray-800\/70,
+[data-theme="light"] #profile-tab-skills.from-gray-800\/70,
+[data-theme="light"] #profile-tab-system-prompts.from-gray-800\/70 {
+    color: var(--text-primary) !important;
+}
+
+/* Component Configuration section — light theme */
+[data-theme="light"] #component-config-section {
+    background: var(--bg-tertiary);
+    border-color: var(--border-primary);
+}
+[data-theme="light"] #component-config-section h4 {
+    color: var(--text-primary);
+}
+[data-theme="light"] #profile-component-toggles > div {
+    background: var(--card-bg);
+    border-color: var(--border-primary);
+}
+[data-theme="light"] #profile-component-toggles .text-gray-200 {
+    color: var(--text-primary);
+}
+[data-theme="light"] #profile-component-toggles .text-gray-400 {
+    color: var(--text-tertiary);
+}
+[data-theme="light"] #profile-component-toggles span.bg-gray-700\/50 {
+    background: var(--bg-elevated);
+    color: var(--text-tertiary);
+}
+[data-theme="light"] #profile-component-toggles .comp-intensity-select {
+    background: var(--input-bg);
+    border-color: var(--border-primary);
+    color: var(--text-primary);
+}
+
+/* Skills tab — light theme */
+[data-theme="light"] #profile-content-skills .rounded-lg.border {
+    background: var(--card-bg);
+    border-color: var(--border-primary);
+}
+[data-theme="light"] #profile-content-skills .rounded-lg.border > div:first-child {
+    background: var(--bg-tertiary);
+    border-color: var(--border-primary);
+}
+[data-theme="light"] #profile-content-skills h4 {
+    color: var(--text-primary);
+}
+[data-theme="light"] #profile-content-skills p {
+    color: var(--text-secondary);
+}
+[data-theme="light"] #profile-modal-skills-list > div:first-child {
+    background: var(--bg-tertiary);
+    border-color: var(--border-primary);
+}
+[data-theme="light"] #profile-modal-skills-list > div:first-child span {
+    color: var(--text-secondary);
+}
+[data-theme="light"] #profile-modal-skills-list [data-skill-row] {
+    background: var(--card-bg);
+    border-color: var(--border-primary);
+}
+[data-theme="light"] #profile-modal-skills-list [data-skill-row]:hover {
+    background: var(--card-bg-hover);
+    border-color: var(--border-secondary);
+}
+[data-theme="light"] #profile-modal-skills-list [data-skill-row] .text-white {
+    color: var(--text-primary);
+}
+[data-theme="light"] #profile-modal-skills-list [data-skill-row] .text-gray-400 {
+    color: var(--text-tertiary);
+}
+
 /* Two-column section grid for tablets */
 .profile-two-col {
     display: grid;

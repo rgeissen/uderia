@@ -3047,7 +3047,8 @@ export function renderProfiles() {
             container.innerHTML = `<div class="text-center text-gray-400 py-8"><p>${emptyMsg}</p></div>`;
             return;
         }
-        const { packGroups, ungrouped } = groupByAgentPack(profiles);
+        const sorted = [...profiles].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        const { packGroups, ungrouped } = groupByAgentPack(sorted);
         let html = '';
         for (const [, group] of packGroups) {
             if (group.resources.length === 1) {
