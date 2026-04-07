@@ -4431,6 +4431,7 @@ export function moveSessionToTop(sessionId) {
             // Parent not found, fallback to top
             elementToMove.remove();
             DOM.sessionList.prepend(elementToMove);
+            refreshGenieConnectors(parentSessionId);
             return;
         }
 
@@ -4449,6 +4450,9 @@ export function moveSessionToTop(sessionId) {
             const lastSibling = allSiblingWrappers[allSiblingWrappers.length - 1];
             lastSibling.insertAdjacentElement('afterend', elementToMove);
         }
+
+        // Recalculate last-child connectors (└ vs ├) after slave is repositioned
+        refreshGenieConnectors(parentSessionId);
     } else {
         // Regular session (not a slave) - move to top
         // For Genie master sessions, also collect and move all slave wrappers so the
