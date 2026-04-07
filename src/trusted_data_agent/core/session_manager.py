@@ -132,6 +132,22 @@ async def _init_session_index():
         app_logger.error(f"Failed to initialize session index: {e}", exc_info=True)
 
 
+def _compute_session_status(wf: list) -> str:
+    """Derive session status from workflow history turns.
+
+    Returns one of: 'empty', 'success', 'partial', 'failed'
+    """
+    valid_turns = [t for t in wf if t.get("isValid", True)]
+    if not valid_turns:
+        return "empty"
+    last_status = valid_turns[-1].get("status", "success")
+    if last_status == "error":
+        return "failed"
+    if last_status == "cancelled":
+        return "partial"
+    return "success"
+
+
 async def _upsert_session_index(session_id: str, session_data: dict):
     """Insert or update a session's metadata in the index. Fire-and-forget safe."""
     if not _session_index_ready:
@@ -142,9 +158,10 @@ async def _upsert_session_index(session_id: str, session_data: dict):
         input_tokens = session_data.get("input_tokens", 0) or 0
         output_tokens = session_data.get("output_tokens", 0) or 0
         total_tokens = input_tokens + output_tokens
-        # Turn count from last_turn_data workflow_history or top-level
+        # Turn count and status from last_turn_data workflow_history or top-level
         wf = session_data.get("last_turn_data", {}).get("workflow_history", [])
         turn_count = len([t for t in wf if t.get("isValid", True)]) if wf else session_data.get("turn_count", 0)
+        status = _compute_session_status(wf)
         async with aiosqlite.connect(str(SESSION_INDEX_DB)) as db:
             await db.execute("""
                 INSERT INTO session_index
@@ -152,8 +169,8 @@ async def _upsert_session_index(session_id: str, session_data: dict):
                      profile_tag, profile_id, archived, archived_at,
                      is_temporary, temporary_purpose, models_used,
                      profile_tags_used, genie_metadata,
-                     total_tokens, turn_count, provider, model, profile_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     total_tokens, turn_count, status, provider, model, profile_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) DO UPDATE SET
                     name=excluded.name,
                     last_updated=excluded.last_updated,
@@ -168,6 +185,7 @@ async def _upsert_session_index(session_id: str, session_data: dict):
                     genie_metadata=excluded.genie_metadata,
                     total_tokens=excluded.total_tokens,
                     turn_count=excluded.turn_count,
+                    status=excluded.status,
                     provider=excluded.provider,
                     model=excluded.model,
                     profile_type=excluded.profile_type
@@ -188,6 +206,7 @@ async def _upsert_session_index(session_id: str, session_data: dict):
                 json.dumps(genie_metadata),
                 total_tokens,
                 turn_count,
+                status,
                 session_data.get("provider"),
                 session_data.get("model"),
                 session_data.get("profile_type"),
