@@ -446,7 +446,8 @@ class GenieCoordinator:
         event_callback: Optional[Callable[[str, Dict], None]] = None,
         genie_config: Optional[Dict[str, Any]] = None,
         current_nesting_level: int = 0,
-        provenance: Optional[Any] = None
+        provenance: Optional[Any] = None,
+        skill_result: Optional[Any] = None,
     ):
         """
         Initialize the Genie Coordinator.
@@ -466,6 +467,7 @@ class GenieCoordinator:
                          - queryTimeout: Query timeout in seconds (60-900)
                          - maxIterations: Max agent iterations (1-25)
             current_nesting_level: Current depth in nested Genie hierarchy (0 = top-level)
+            skill_result: Optional resolved skill content to inject into the coordinator system prompt
         """
         self.genie_profile = genie_profile
         self.slave_profiles = slave_profiles
@@ -477,6 +479,7 @@ class GenieCoordinator:
         self.event_callback = event_callback
         self.current_nesting_level = current_nesting_level
         self.provenance = provenance  # EPC: Provenance chain from execution_service
+        self.skill_result = skill_result  # Pre-resolved skill content for coordinator prompt
 
         # Extract effective config values with defaults
         genie_config = genie_config or {}
@@ -670,6 +673,13 @@ class GenieCoordinator:
             self.genie_profile.get("id"), self.user_uuid
         )
         system_prompt = system_prompt.replace("{component_instructions_section}", comp_section)
+
+        # Inject skill content into coordinator system prompt
+        if self.skill_result and self.skill_result.has_content:
+            skill_block = self.skill_result.get_system_prompt_block()
+            if skill_block:
+                system_prompt += f"\n\n{skill_block}"
+                logger.debug(f"Injected skill content into genie coordinator prompt (~{self.skill_result.total_estimated_tokens} tokens)")
 
         # Store system prompt for use in execute()
         self.system_prompt = system_prompt

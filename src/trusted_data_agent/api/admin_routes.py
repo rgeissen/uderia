@@ -2176,7 +2176,8 @@ async def save_genie_global_settings():
     {
         "temperature": {"value": 0.7, "is_locked": false},
         "queryTimeout": {"value": 300, "is_locked": true},
-        "maxIterations": {"value": 10, "is_locked": false}
+        "maxIterations": {"value": 10, "is_locked": false},
+        "maxNestingDepth": {"value": 3, "is_locked": false}
     }
     """
     from trusted_data_agent.core.config_manager import get_config_manager
@@ -2191,7 +2192,7 @@ async def save_genie_global_settings():
             }), 400
 
         # Validate settings
-        valid_keys = {'temperature', 'queryTimeout', 'maxIterations'}
+        valid_keys = {'temperature', 'queryTimeout', 'maxIterations', 'maxNestingDepth'}
         for key in data.keys():
             if key not in valid_keys:
                 return jsonify({
@@ -2222,6 +2223,14 @@ async def save_genie_global_settings():
                 return jsonify({
                     'status': 'error',
                     'message': 'Max iterations must be between 1 and 25'
+                }), 400
+
+        if 'maxNestingDepth' in data:
+            max_depth = data['maxNestingDepth'].get('value')
+            if max_depth is not None and (max_depth < 1 or max_depth > 10):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Max nesting depth must be between 1 and 10'
                 }), 400
 
         config_manager = get_config_manager()

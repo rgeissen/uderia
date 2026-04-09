@@ -5400,6 +5400,106 @@ function collectPrimerStatements() {
     return statements;
 }
 
+// IFOC colour config for KG profile badges (matches knowledgeGraphPanelHandler.js)
+const KG_IFOC_CONFIG = {
+    llm_only:     { label: 'Ideate',     color: '#4ade80' },
+    rag_focused:  { label: 'Focus',      color: '#3b82f6' },
+    tool_enabled: { label: 'Optimize',   color: '#F15F22' },
+    genie:        { label: 'Coordinate', color: '#9333ea' },
+};
+
+/**
+ * Render the Knowledge Graphs section in the profile edit modal.
+ * Shows all KGs assigned to (or owned by) the given profile, with a
+ * radio button to set which one is active.  Activation is immediate
+ * (same PATCH endpoint as the Resource Panel) — not deferred to Save.
+ */
+async function renderKnowledgeGraphsForProfile(profileId, kgSection, kgList) {
+    try {
+        const response = await API.loadKnowledgeGraphList();
+        const allKgs = response.knowledge_graphs || [];
+
+        // KGs where this profile is the owner OR appears in assigned_profiles
+        const relevantKgs = allKgs.filter(kg =>
+            kg.profile_id === profileId ||
+            (kg.assigned_profiles || []).some(ap => ap.id === profileId)
+        );
+
+        if (relevantKgs.length === 0) {
+            kgSection.classList.add('hidden');
+            return;
+        }
+
+        kgSection.classList.remove('hidden');
+
+        kgList.innerHTML = relevantKgs.map(kg => {
+            const isOwner = kg.profile_id === profileId;
+            // Determine is_active for this profile
+            let isActive = false;
+            if (isOwner) {
+                isActive = !!kg.is_active_for_owner;
+            } else {
+                const entry = (kg.assigned_profiles || []).find(ap => ap.id === profileId);
+                isActive = entry ? !!entry.is_active : false;
+            }
+
+            const ifoc = KG_IFOC_CONFIG[kg.profile_type] || { label: kg.profile_type || '?', color: '#6b7280' };
+            const ownerLabel = isOwner
+                ? '<span class="text-xs text-gray-500 ml-1">(own)</span>'
+                : '';
+            const ifocBadge = `<span class="text-xs font-semibold px-1.5 py-0.5 rounded-full" style="color:${ifoc.color};background:${ifoc.color}20;border:1px solid ${ifoc.color}40;">${ifoc.label}</span>`;
+            const tagLabel = kg.profile_tag
+                ? `<span class="text-xs font-mono text-gray-500">@${kg.profile_tag}</span>`
+                : '';
+
+            return `
+                <div class="flex items-center justify-between py-2.5 bg-gray-800/30 hover:bg-gray-800/50 rounded-lg border border-gray-700/30 hover:border-gray-600/50 transition-all" style="padding-left:16px;padding-right:16px;">
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="text-sm text-gray-200 truncate">${escapeHtml(kg.profile_name || kg.profile_id)}</span>
+                        ${tagLabel}
+                        ${ifocBadge}
+                        ${ownerLabel}
+                    </div>
+                    <div class="flex items-center justify-center" style="width:50px;">
+                        <label class="ind-toggle">
+                            <input type="radio"
+                                   name="kg-active-selection"
+                                   data-kg-owner-id="${kg.profile_id}"
+                                   data-assigned-profile-id="${profileId}"
+                                   ${isActive ? 'checked' : ''}>
+                            <span class="ind-track"></span>
+                        </label>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Activation handler — fires immediately, no Save needed
+        kgList.addEventListener('change', async (e) => {
+            const radio = e.target.closest('input[type="radio"][name="kg-active-selection"]');
+            if (!radio) return;
+
+            const kgOwnerId = radio.dataset.kgOwnerId;
+            const assignedProfileId = radio.dataset.assignedProfileId;
+
+            try {
+                await API.activateKgForProfile(kgOwnerId, assignedProfileId);
+                // Sync Resource Panel if visible
+                const { refreshKnowledgeGraphsPanel } = await import('./knowledgeGraphPanelHandler.js');
+                if (document.getElementById('knowledge-graphs-content')) {
+                    await refreshKnowledgeGraphsPanel();
+                }
+            } catch (err) {
+                console.error('[Profile Modal] KG activation failed:', err);
+            }
+        });
+
+    } catch (err) {
+        console.error('[Profile Modal] Failed to load knowledge graphs:', err);
+        kgSection.classList.add('hidden');
+    }
+}
+
 async function showProfileModal(profileId = null, defaultProfileType = null) {
     const profile = profileId ? configState.profiles.find(p => p.id === profileId) : null;
     const isEdit = !!profile;
@@ -6501,6 +6601,13 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     // Initial render
     renderCollections();
 
+    // Render Knowledge Graphs section (only for existing profiles)
+    const kgSection = modal.querySelector('#profile-modal-kg-section');
+    const kgList = modal.querySelector('#profile-modal-kg-list');
+    if (kgSection && kgList && isEdit && profile?.id) {
+        await renderKnowledgeGraphsForProfile(profile.id, kgSection, kgList);
+    }
+
     // NOW set the MCP select onchange handler (after renderCollections is defined)
     mcpSelect.onchange = () => {
         populateResources(mcpSelect.value);
@@ -7365,6 +7472,24 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
         const finalProfileType = profileType;
         console.log('[Profile Modal] Final visibility update with profileType:', finalProfileType);
         updateSectionVisibility(finalProfileType);
+
+        // Re-apply tab state — updateSectionVisibility calls classList.remove('hidden')
+        // on tab content divs which fights the tab switcher. Re-activate the correct tab
+        // after visibility is settled.
+        const _mcpTab = modal.querySelector('#profile-tab-mcp-resources');
+        const _intTab = modal.querySelector('#profile-tab-intelligence');
+        const _mcpContent = modal.querySelector('#profile-content-mcp-resources');
+        const _intContent = modal.querySelector('#profile-content-intelligence');
+        if (_mcpTab && _mcpTab.style.display !== 'none' && _mcpContent) {
+            // MCP Resources is visible — it should be the default active tab
+            _intContent && _intContent.classList.add('hidden');
+            // Only un-hide MCP content if it was shown by updateSectionVisibility
+            _mcpContent.classList.remove('hidden');
+        } else if (_intTab && _intContent) {
+            // MCP Resources tab is hidden (rag_focused, genie, llm_only without tools)
+            // Intelligence Collections is the only/default tab
+            _intContent.classList.remove('hidden');
+        }
     }, 100); // Small delay to ensure all DOM updates are complete
 }
 
