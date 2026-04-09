@@ -3286,7 +3286,7 @@ const AdminManager = {
             // Store original values for dirty tracking
             this.optimizerSettingsOriginal = this.getOptimizerSettingsSnapshot();
             this.optimizerSettingsDirty = false;
-            this.updateOptimizerSaveButton();
+            this._updateSaveButton('save-expert-settings-btn', this.optimizerSettingsDirty);
 
         } catch (error) {
             console.error('[AdminManager] Error loading optimizer settings:', error);
@@ -3468,7 +3468,7 @@ const AdminManager = {
             // Success - update dirty state
             this.optimizerSettingsOriginal = this.getOptimizerSettingsSnapshot();
             this.optimizerSettingsDirty = false;
-            this.updateOptimizerSaveButton();
+            this._updateSaveButton('save-expert-settings-btn', this.optimizerSettingsDirty);
 
             window.showNotification('success', 'Optimizer settings saved successfully');
 

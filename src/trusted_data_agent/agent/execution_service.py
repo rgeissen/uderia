@@ -474,65 +474,9 @@ async def run_agent_execution(
                 app_logger.debug(f"Updated last_executed_profile_id to {active_profile.get('id')} (@{active_profile.get('tag')})")
                 await session_manager._save_session(user_uuid, session_id, session_data)
 
-        # Route Genie profiles to Genie coordinator
-        if active_profile_type == "genie" and active_profile:
-            app_logger.info(f"🔮 Detected Genie profile '{active_profile.get('tag')}' - routing to Genie coordinator")
-            final_result_payload = await _run_genie_execution(
-                user_uuid=user_uuid,
-                session_id=session_id,
-                user_input=user_input,
-                event_handler=event_handler,
-                genie_profile=active_profile,
-                task_id=task_id,
-                disabled_history=disabled_history,  # Pass history context flag
-                is_session_primer=is_session_primer,  # Pass session primer flag
-                attachments=attachments  # Pass document upload attachments
-            )
-
-            # --- EXTENSION EXECUTION: Genie path ---
-            if extension_specs and final_result_payload:
-                # Read prior turn tokens from workflow_history (genie saves turn data before returning)
-                _prior_turn_input = 0
-                _prior_turn_output = 0
-                _ext_provider = None
-                _ext_model = None
-                try:
-                    _session_data = await session_manager.get_session(user_uuid, session_id)
-                    if _session_data:
-                        _wh = _session_data.get("last_turn_data", {}).get("workflow_history", [])
-                        if _wh:
-                            _latest = _wh[-1]
-                            _prior_turn_input = _latest.get("turn_input_tokens", 0) or 0
-                            _prior_turn_output = _latest.get("turn_output_tokens", 0) or 0
-                            _ext_provider = _latest.get("provider")
-                            _ext_model = _latest.get("model")
-                except Exception:
-                    pass
-
-                ext_results, ext_events = await _run_extensions(
-                    extension_specs=extension_specs,
-                    final_payload=final_result_payload,
-                    user_input=user_input,
-                    session_id=session_id,
-                    user_uuid=user_uuid,
-                    event_handler=event_handler,
-                    llm_config_id=active_profile.get("llmConfigurationId") if active_profile else None,
-                )
-                if ext_results:
-                    final_result_payload["extension_results"] = ext_results
-                    await _persist_extension_results(
-                        ext_results, ext_events, user_uuid, session_id, event_handler,
-                        prior_turn_input=_prior_turn_input,
-                        prior_turn_output=_prior_turn_output,
-                        provider=_ext_provider,
-                        model=_ext_model,
-                    )
-
-            return final_result_payload
-        # --- END GENIE PROFILE DETECTION ---
-
-        # --- SKILL RESOLUTION: Resolve pre-processing skills before executor ---
+        # --- SKILL RESOLUTION: Resolve pre-processing skills before executor/genie ---
         # Two sources: (1) profile auto-assigned skills, (2) manual per-query skills
+        # Runs for ALL profile types (tool_enabled, rag_focused, llm_only, genie)
         skill_result = None
         try:
             from trusted_data_agent.skills.manager import get_skill_manager
@@ -606,6 +550,64 @@ async def run_agent_execution(
         except Exception as e:
             app_logger.error(f"Failed to resolve skills: {e}", exc_info=True)
             skill_result = None
+
+        # Route Genie profiles to Genie coordinator
+        if active_profile_type == "genie" and active_profile:
+            app_logger.info(f"🔮 Detected Genie profile '{active_profile.get('tag')}' - routing to Genie coordinator")
+            final_result_payload = await _run_genie_execution(
+                user_uuid=user_uuid,
+                session_id=session_id,
+                user_input=user_input,
+                event_handler=event_handler,
+                genie_profile=active_profile,
+                task_id=task_id,
+                disabled_history=disabled_history,  # Pass history context flag
+                is_session_primer=is_session_primer,  # Pass session primer flag
+                attachments=attachments,  # Pass document upload attachments
+                skill_result=skill_result,  # Pass resolved skills to genie coordinator
+            )
+
+            # --- EXTENSION EXECUTION: Genie path ---
+            if extension_specs and final_result_payload:
+                # Read prior turn tokens from workflow_history (genie saves turn data before returning)
+                _prior_turn_input = 0
+                _prior_turn_output = 0
+                _ext_provider = None
+                _ext_model = None
+                try:
+                    _session_data = await session_manager.get_session(user_uuid, session_id)
+                    if _session_data:
+                        _wh = _session_data.get("last_turn_data", {}).get("workflow_history", [])
+                        if _wh:
+                            _latest = _wh[-1]
+                            _prior_turn_input = _latest.get("turn_input_tokens", 0) or 0
+                            _prior_turn_output = _latest.get("turn_output_tokens", 0) or 0
+                            _ext_provider = _latest.get("provider")
+                            _ext_model = _latest.get("model")
+                except Exception:
+                    pass
+
+                ext_results, ext_events = await _run_extensions(
+                    extension_specs=extension_specs,
+                    final_payload=final_result_payload,
+                    user_input=user_input,
+                    session_id=session_id,
+                    user_uuid=user_uuid,
+                    event_handler=event_handler,
+                    llm_config_id=active_profile.get("llmConfigurationId") if active_profile else None,
+                )
+                if ext_results:
+                    final_result_payload["extension_results"] = ext_results
+                    await _persist_extension_results(
+                        ext_results, ext_events, user_uuid, session_id, event_handler,
+                        prior_turn_input=_prior_turn_input,
+                        prior_turn_output=_prior_turn_output,
+                        provider=_ext_provider,
+                        model=_ext_model,
+                    )
+
+            return final_result_payload
+        # --- END GENIE PROFILE DETECTION ---
 
         # --- MODIFICATION START: Pass new parameters to PlanExecutor ---
         executor = PlanExecutor(
@@ -697,7 +699,8 @@ async def _run_genie_execution(
     disabled_history: bool = False,
     current_nesting_level: int = 0,
     is_session_primer: bool = False,
-    attachments: list = None
+    attachments: list = None,
+    skill_result=None,
 ):
     """
     Execute a query using Genie coordination for SSE streaming.
@@ -824,7 +827,8 @@ async def _run_genie_execution(
             event_callback=lambda t, p: asyncio.create_task(genie_sse_event_handler(t, p)),
             genie_config=effective_genie_config,
             current_nesting_level=current_nesting_level,
-            provenance=_genie_provenance
+            provenance=_genie_provenance,
+            skill_result=skill_result,
         )
 
         # Load existing child sessions to preserve context across multiple queries
@@ -1163,6 +1167,7 @@ async def _run_genie_execution(
                 'genie_events': combined_genie_events,  # Include session name events
                 'kg_enrichment_event': result.get('kg_enrichment_event'),  # KG enrichment for persistence
                 'context_window_snapshot_event': genie_cw_snapshot_event,  # CW snapshot for reload
+                'skills_applied': skill_result.to_applied_list() if skill_result and skill_result.has_content else [],
                 'success': success,
                 'final_response': coordinator_response[:500] if coordinator_response else '',
                 'status': 'success' if success else 'failed',
