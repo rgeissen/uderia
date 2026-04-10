@@ -826,6 +826,23 @@ Unlike simple AI assistants, Coordinate profiles can orchestrate *other Coordina
 - **Transparent Execution**: See exactly which experts are consulted and why
 - **Context Preservation**: Each expert maintains conversation history across turns
 
+**Coordinator Pass-Through Optimization:**
+
+When consulting a single expert is sufficient, the coordinator skips its own synthesis LLM call and passes the expert's answer through directly. This halves coordinator token cost and latency for focused single-expert questions.
+
+*Pass-through fires when all of the following are true:*
+- Exactly **one expert** was consulted (routing LLM called a single tool)
+- **No prior conversation history** is present — i.e. the first turn in Full Context mode, or any turn when Turn Summaries mode is active
+- The expert returned a non-empty answer
+
+*Pass-through is always skipped when:*
+- **Multiple experts** were consulted — their answers must be combined
+- **Conversation history is present** (Full Context mode, turn 2 and beyond) — the coordinator weaves prior turns into its answer
+
+All profile types qualify for pass-through: Optimize (`tool_enabled`) experts run their own internal synthesis pipeline, so the coordinator receives a finished natural-language answer, not raw data.
+
+The Live Status panel shows a **"Synthesis Skipped"** card (instead of "LLM Synthesis Started / Results") when pass-through fires, making the optimization visible.
+
 **Configuration Example:**
 ```json
 {
@@ -3411,6 +3428,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **10-Apr-2026:** Genie Coordinator Pass-Through — Skips coordinator synthesis for single-expert queries with no prior context, cutting coordinator token cost in half. Live Status shows a "Synthesis Skipped" card.
 *   **04-Apr-2026:** OpenRouter Support - Unified gateway to 100+ open and proprietary models (Llama, Mistral, Gemma, and more) via a single API key, with full integration across the Fusion Optimizer, LangChain conversation agent, model listing, cost tracking, and document upload fallback
 *   **10-Mar-2026:** Hybrid Search - Three search modes for Knowledge Repositories on Qdrant Cloud: Semantic (dense vector similarity), Hybrid (Reciprocal Rank Fusion combining dense + sparse BM25), and Keyword (sparse BM25 only) with per-collection configuration, adjustable keyword weight slider, capability-based UI controls, and automatic fallback to Semantic for ChromaDB and Teradata backends
 *   **08-Mar-2026:** Teradata EVS Backend - Enterprise vector store integration with server-side embedding (Amazon Bedrock / Azure AI), server-side chunking, connection resilience with stale-connection detection and serialized reconnect, and EVS object ownership safety

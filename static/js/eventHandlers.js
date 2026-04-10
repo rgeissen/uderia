@@ -3504,6 +3504,7 @@ function getSystemPromptSummaryHTML() {
                 <p class="text-xs text-gray-400 mb-3">Latest enhancements and updates to the Uderia Platform.</p>
                 <div class="whats-new-container">
                     <ul class="list-disc list-inside text-xs text-gray-300 space-y-1">
+                       <li><strong>10-Apr-2026:</strong> Genie Coordinator Pass-Through — Skips coordinator synthesis for single-expert queries with no prior context, cutting coordinator token cost in half.</li>
                        <li><strong>06-Nov-2025:</strong> UI Real-Time Monitoring of Rest Requests</li>
                        <li><strong>31-Oct-2025:</strong> Fully configurable Context Management (Turn & Session)</li>
                        <li><strong>28-Oct-2025:</strong> Turn Replay & Turn Reload Plan</li>
