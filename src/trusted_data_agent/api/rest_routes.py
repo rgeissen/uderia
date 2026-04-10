@@ -7002,8 +7002,42 @@ async def get_profile_resources(profile_id: str):
                 })
             structured_tools["System Tools"] = system_category
 
-        # TDA_* tools are core system tools — always enabled regardless of profile config
+        # Always-active system tools: CLIENT_SIDE_TOOLS (TDA_CurrentDate, TDA_LLMTask, etc.)
+        # AND all generative Component Tools (TDA_Charting, TDA_Canvas, TDA_KnowledgeGraph, etc.).
+        # Neither category is user-controlled — both must always render as enabled.
         TDA_CORE_TOOLS = {t['name'] for t in CLIENT_SIDE_TOOLS}
+        try:
+            from trusted_data_agent.components.manager import get_component_manager as _gcm
+            _comp_tool_defs = _gcm().get_tool_definitions({})
+            if _comp_tool_defs:
+                # Expand always-active set to include all component tool names
+                TDA_CORE_TOOLS |= {t['name'] for t in _comp_tool_defs}
+
+                # Inject Component Tools into structured_tools if absent (e.g. after reclassification
+                # once the adapter no longer stores them in classification_results)
+                _existing = {t['name'] for tools in structured_tools.values() for t in tools}
+                _missing_comp = [t for t in _comp_tool_defs if t['name'] not in _existing]
+                if _missing_comp:
+                    _comp_category = []
+                    for _ct in _missing_comp:
+                        _args = []
+                        for _an, _ad in _ct.get("args", {}).items():
+                            if isinstance(_ad, dict):
+                                _args.append({
+                                    "name": _an,
+                                    "type": _ad.get("type", "any"),
+                                    "description": _ad.get("description", "No description."),
+                                    "required": _ad.get("required", False)
+                                })
+                        _comp_category.append({
+                            "name": _ct["name"],
+                            "description": _ct.get("description", ""),
+                            "arguments": _args,
+                            "disabled": False
+                        })
+                    structured_tools["Component Tools"] = _comp_category
+        except Exception:
+            pass
 
         # Rebuild with correct disabled flags for this profile
         profile_tools = {}
@@ -7344,11 +7378,30 @@ async def get_profile_classification(profile_id: str):
     prompt_count = sum(len(prompts) for prompts in classification_results.get('prompts', {}).values())
     app_logger.info(f"Returning classification for profile {profile_id}: {len(classification_results.get('tools', {}))} tool categories with {tool_count} tools, {len(classification_results.get('prompts', {}))} prompt categories with {prompt_count} prompts")
     
+    # Inform the frontend which tools are always-active system tools.
+    # Covers CLIENT_SIDE_TOOLS (TDA_CurrentDate, TDA_LLMTask, etc.) AND all generative
+    # Component Tools (TDA_Charting, TDA_Canvas, TDA_KnowledgeGraph, etc.).
+    # Both categories are injected at runtime and never user-controlled, so the modal
+    # must always render them as active regardless of what is in profile.tools.
+    from trusted_data_agent.mcp_adapter.adapter import CLIENT_SIDE_TOOLS as _CST
+    system_tool_names = [t['name'] for t in _CST]
+
+    try:
+        # get_tool_definitions({}) uses the backward-compat path: componentConfig absent →
+        # all components active. This covers all installed action components dynamically.
+        from trusted_data_agent.components.manager import get_component_manager
+        comp_manager = get_component_manager()
+        component_tool_defs = comp_manager.get_tool_definitions({})
+        system_tool_names += [t['name'] for t in (component_tool_defs or [])]
+    except Exception:
+        pass  # Component manager unavailable — safe to skip
+
     return jsonify({
         "status": "success",
         "profile_id": profile_id,
         "classification_mode": classification_mode,
-        "classification_results": classification_results
+        "classification_results": classification_results,
+        "system_tools": system_tool_names
     }), 200
 
 

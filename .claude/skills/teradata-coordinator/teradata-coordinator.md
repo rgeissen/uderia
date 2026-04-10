@@ -9,8 +9,9 @@ This skill documents the TDEXP genie coordinator profile and its 4 expert sub-pr
 | TDSQL | rag_focused | SQL syntax, query writing, optimization | Knowledge only (Collection 4: Teradata SQL Fundamentals, 424 chunks) |
 | TDDIC | rag_focused | Teradata Data Dictionary (DBC.* views) | Knowledge only (Collection 3: Teradata Data Dictionary, 1006 chunks) |
 | TDADM | rag_focused | System administration, TASM, workload mgmt | Knowledge only (Collection 5: Teradata Administration, 1107 chunks) |
-| TDEXE | llm_only | Live SQL execution against fitness_db | 30 MCP tools (base_*, dba_*, sql_*, qlty_*) |
-| TDEXP | genie | Coordinator for all 4 experts above | fitness_db KG active |
+| TDEXO | tool_enabled | Live SQL execution against fitness_db | 30 MCP tools (base_*, dba_*, sql_*, qlty_*) — Qwen3-30B |
+| TDEXP | genie | Coordinator for all 4 experts above | fitness_db KG active — Qwen3-235B |
+| TDEXE | llm_only | (retired — replaced by TDEXO) | Qwen3-30B, no longer in TDEXP slave list |
 
 ## Profile IDs (tda_auth.db → user_preferences)
 
@@ -18,21 +19,22 @@ This skill documents the TDEXP genie coordinator profile and its 4 expert sub-pr
 TDSQL : profile-1775746202552-hsuoocmaj
 TDDIC : profile-1775746108006-wh0syrzkr
 TDADM : profile-1775746027109-w8yz7dlxr
-TDEXE : profile-1775746606192-0tl5jhrt4
-TDEXP : profile-1775746850745-1ddi65z0s
+TDEXO : profile-1775820116334-jrflhvxv1   (tool_enabled, Qwen3-30B — active executor)
+TDEXP : profile-1775746850745-1ddi65z0s   (genie, Qwen3-235B — coordinator)
+TDEXE : profile-1775746606192-0tl5jhrt4   (llm_only, retired)
 ```
 
 ## Profile Descriptions (coordinator routing triggers)
 
 **TDSQL:** Teradata SQL Expert. Provides guidance on SQL syntax, query construction and optimization, JOINs, subqueries, window functions, EXPLAIN plans, indexes, and SQL best practices. Consult for: writing or reviewing SQL statements, understanding SQL functions, query tuning, and SQL-related how-to questions. Does NOT execute queries against the database.
 
-**TDDIC:** Teradata Data Dictionary Expert. Expert on Teradata system views (DBC.*), database objects (tables, views, macros, stored procedures), column definitions, access rights, statistics, data types, user/database metadata, and schema catalog exploration. Consult for: understanding what objects exist in the system, navigating DBC views, interpreting metadata, and any question about Teradata's internal catalog. Does NOT execute queries against the database.
+**TDDIC:** Teradata Data Dictionary Expert. Expert on how Teradata system views (DBC.*) work: their structure, purpose, and usage patterns. Consult for: understanding how to USE DBC views, navigating catalog documentation, interpreting Teradata metadata concepts, access rights concepts, statistics concepts. Does NOT know what objects exist in application databases like fitness_db — does NOT execute queries against the database.
 
 **TDADM:** Teradata Administrator Expert. Expert in system administration: workload management (TASM, TIWM), resource groups, priority scheduling, session management, user/role/zone administration, backup and restore procedures, system monitoring, space management, system configuration, and operational DBA tasks. Consult for: administration how-to questions, operational procedures, system health analysis, and DBA responsibilities. Does NOT execute queries against the database.
 
-**TDEXE:** Teradata SQL Executor. Executes live SQL queries against the fitness_db database and returns actual data. Use EXCLUSIVELY when: the user wants real data retrieved from the database, needs to verify actual table contents, requests row counts or data samples, or any task requiring live query execution. Can run SELECT, data quality checks, and analytical queries. This is the ONLY expert that accesses live data.
+**TDEXO:** Teradata SQL Executor (Optimizer). Executes live SQL queries against the fitness_db database and returns actual data. Use EXCLUSIVELY when: the user wants real data retrieved from the database, needs to verify actual table contents, requests row counts or data samples, needs to discover what tables or columns actually exist in fitness_db, needs to check user access rights or permissions (DBC.AccessRights, DBC.UserRights), or any task requiring live query execution against the database or DBC system views. This is the ONLY expert that accesses live data and knows what objects and access rights actually exist.
 
-**TDEXP:** Teradata Expert Coordinator. Routes Teradata questions to the right specialist: TDSQL for SQL writing and optimization, TDDIC for data dictionary and schema metadata, TDADM for system administration and operations, TDEXE for live SQL execution against fitness_db. For complex questions, consults multiple experts and synthesizes their responses into a unified answer.
+**TDEXP:** Teradata Expert Coordinator. Routes Teradata questions to the right specialist: TDSQL for SQL writing and optimization, TDDIC for data dictionary and schema metadata, TDADM for system administration and operations, TDEXO for live SQL execution against fitness_db. For complex questions, consults multiple experts and synthesizes their responses into a unified answer.
 
 ## Coordinator Skill (teradata-coordinator)
 
@@ -44,8 +46,8 @@ The `teradata-coordinator` skill is enabled on TDEXP and injected into its syste
 1. SQL syntax/writing → TDSQL
 2. DBC views / metadata → TDDIC
 3. Admin / operations → TDADM
-4. Live data / execution → TDEXE
-5. SQL + data → TDSQL + TDEXE
+4. Live data / execution / access rights → TDEXO
+5. SQL + data → TDSQL + TDEXO
 6. Multi-domain → all relevant experts, synthesize
 
 ## Knowledge Graph Assignments

@@ -730,6 +730,13 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                     # Clear needs_reclassification flag after successful classification
                     config_manager.update_profile(profile_id, {"needs_reclassification": False}, user_uuid)
                     app_logger.info(f"Cleared needs_reclassification flag for profile {profile_id} after classification")
+
+                    # Re-load classification from DB to inject CLIENT_SIDE_TOOLS (TDA_*) into
+                    # APP_STATE['structured_tools'] and regenerate contexts. The adapter now excludes
+                    # TDA_* from classification_results, so they must be injected via this path
+                    # (same injection code as the cache-hit path in load_profile_classification_into_state).
+                    load_profile_classification_into_state(profile_id, user_uuid)
+                    app_logger.debug(f"Re-loaded classification after fresh run to inject system tools for profile {profile_id}")
                 else:
                     # For cached classification, also ensure profile has tools/prompts initialized
                     # This fixes the bug where cached profiles had all resources deactivated
