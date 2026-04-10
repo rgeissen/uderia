@@ -107,7 +107,8 @@ def main():
     args = parser.parse_args()
     dry_run = not args.execute
 
-    chroma_path = PROJECT_ROOT / ".chromadb_rag_cache"
+    from trusted_data_agent.core.config import APP_CONFIG
+    chroma_path = PROJECT_ROOT / APP_CONFIG.RAG_PERSIST_DIR
     if not chroma_path.exists():
         print(f"ERROR: ChromaDB directory not found at {chroma_path}")
         sys.exit(1)
