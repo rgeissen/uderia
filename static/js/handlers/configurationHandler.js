@@ -4590,11 +4590,14 @@ function attachProfileEventListeners() {
                 const result = await API.getProfileClassification(profileId);
                 
                 if (result.status === 'success') {
-                    // Update profile with fresh classification results
+                    // Update profile with fresh classification results.
+                    // system_tools: always-active platform tools (TDA_*) returned by the API —
+                    // these are never in profile.tools but must always render as active.
                     const profileWithResults = {
                         ...profile,
                         classification_results: result.classification_results,
-                        classification_mode: result.classification_mode
+                        classification_mode: result.classification_mode,
+                        system_tools: new Set(result.system_tools || [])
                     };
                     showClassificationModal(profileWithResults);
                 } else {
@@ -4723,6 +4726,9 @@ function showClassificationModal(profile) {
     
     // Helper function to check if a tool/prompt is active in the profile
     const isActive = (name, type) => {
+        // System tools (TDA_*) are always-active platform tools, never in profile.tools.
+        // Mirror the same override logic that the Resource Panel applies server-side.
+        if (type === 'tool' && profile.system_tools && profile.system_tools.has(name)) return true;
         const list = type === 'tool' ? profile.tools : profile.prompts;
         if (!list || list.length === 0) return false;
         if (list.includes('*')) return true;

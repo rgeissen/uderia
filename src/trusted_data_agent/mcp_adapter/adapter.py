@@ -669,8 +669,15 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
     if loaded_prompts:
         STATE['mcp_prompts'] = {prompt.name: prompt for prompt in loaded_prompts}
 
+    # CLIENT_SIDE_TOOLS (TDA_*) are always-active platform tools, not MCP server tools.
+    # They must not be sent to the LLM for classification or stored in classification_results.
+    # They are injected into APP_STATE separately at runtime (configuration_service.py).
+    client_side_names = {t['name'] for t in CLIENT_SIDE_TOOLS}
+
     all_capabilities = []
-    all_capabilities.extend([f"- {tool.name} (tool): {tool.description}" for tool in loaded_tools])
+    all_capabilities.extend([f"- {tool.name} (tool): {tool.description}"
+                              for tool in loaded_tools
+                              if tool.name not in client_side_names])
 
     for p in loaded_prompts:
         prompt_str = f"- {p.name} (prompt): {p.description or 'No description available.'}"
@@ -736,6 +743,9 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
     disabled_tools_list = STATE.get("disabled_tools", [])
 
     for tool in loaded_tools:
+        if tool.name in client_side_names:
+            continue  # Always-active system tools; injected separately at runtime, not stored in classification_results
+
         if skip_classification:  # 'light' mode
             category = "All Tools"
         else:  # 'full' mode
