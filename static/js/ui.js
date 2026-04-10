@@ -2268,6 +2268,21 @@ function _renderGenieStep(eventData, parentContainer, isFinal = false) {
                 break;
             }
 
+            case 'genie_synthesis_skipped': {
+                const tag = details.profile_tag ? `@${details.profile_tag}` : 'expert';
+                detailsEl.innerHTML = `
+                    <div class="status-kv-grid">
+                        <div class="status-kv-key">Status</div>
+                        <div class="status-kv-value text-slate-400">⚡ Skipped</div>
+                        <div class="status-kv-key">Expert</div>
+                        <div class="status-kv-value">${escapeHtml(tag)}</div>
+                        <div class="status-kv-key">Reason</div>
+                        <div class="status-kv-value text-slate-400">${escapeHtml(details.reason || 'Single knowledge expert, no prior context')}</div>
+                    </div>
+                `;
+                break;
+            }
+
             case 'genie_coordination_complete': {
                 const totalDuration = details.total_duration_ms ? `${(details.total_duration_ms / 1000).toFixed(2)}s` : 'N/A';
                 const usedCount = details.profiles_used?.length || 0;

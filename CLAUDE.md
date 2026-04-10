@@ -361,6 +361,22 @@ When adding profile type badges/labels in any JS handler, use this mapping — d
    - Synthesizes results across profiles
    - Best for: Complex multi-domain questions
 
+**Genie Synthesis Pass-Through Optimisation:**
+
+When only one expert is consulted and the coordinator has no prior conversation history to weave, the coordinator skips the synthesis LLM call and passes the expert's answer through directly. This halves token cost and latency for single-expert queries.
+
+`conversation_history` is empty (triggering pass-through) when:
+- **Full Context mode, turn 1** — no prior turns exist yet
+- **Turn Summaries mode, any turn** — history is always disabled
+
+| Condition | Synthesis? | Reason |
+|---|---|---|
+| Single expert (any type) + no history | ❌ Pass through | Expert answer is already complete prose — `tool_enabled` experts run their own internal synthesis; coordinator receives `final_answer_text`, not raw data |
+| Multiple experts (any mode) | ✅ Yes | Results from different domains must be combined |
+| Single expert + history present (Full Context, turn 2+) | ✅ Yes | Coordinator weaves cross-turn context |
+
+Implementation: `src/trusted_data_agent/agent/genie_coordinator.py` — early break inside `on_tool_end` handler. Condition: `_routing_tool_call_count == 1 and not conversation_history`.
+
 Session data tracks:
 - `profile_id` - Current active profile
 - `profile_tag` - Current profile tag

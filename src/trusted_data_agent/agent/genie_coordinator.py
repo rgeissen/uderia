@@ -848,6 +848,8 @@ After gathering information from profiles, provide a synthesized answer that:
 
             output = ""
             tools_used = []
+            _routing_tool_call_count = 0  # Number of parallel tool calls in routing decision
+            _passed_through = False        # True when early break skipped synthesis LLM
 
             # Use astream_events to track LLM calls with token usage
             # Pass recursion_limit in config to control max agent iterations
@@ -882,7 +884,13 @@ After gathering information from profiles, provide a synthesized answer that:
                 # Capture component payloads from direct component tool calls
                 # (TDA_Charting, etc. — merged at init time alongside SlaveSessionTools)
                 if event_kind == "on_tool_end":
-                    tool_output = event_data.get("output", "")
+                    _raw_output = event_data.get("output", "")
+                    # LangGraph wraps tool returns in a ToolMessage; extract plain string
+                    tool_output = (
+                        _raw_output.content
+                        if hasattr(_raw_output, "content")
+                        else str(_raw_output) if _raw_output else ""
+                    )
                     from trusted_data_agent.components.utils import extract_component_payload
                     _parsed = extract_component_payload(tool_output)
                     if _parsed:
@@ -895,6 +903,34 @@ After gathering information from profiles, provide a synthesized answer that:
                             "success": True,
                             "session_id": self.parent_session_id
                         })
+                    elif (
+                        _routing_tool_call_count == 1           # routing called exactly one expert
+                        and event_name not in self.component_tool_names  # it's a slave tool
+                        and not conversation_history             # no cross-turn context to weave
+                        and self.invoked_profiles               # expert tag already captured
+                    ):
+                        # Pass-through: break before synthesis LLM fires.
+                        # Safe because _routing_tool_call_count == 1 guarantees the routing
+                        # LLM requested exactly one expert, so this on_tool_end is the last
+                        # tool event. The synthesis LLM has not started yet.
+                        invoked_tag = self.invoked_profiles[0]
+                        invoked_profile = next(
+                            (p for p in self.slave_profiles if p.get("tag") == invoked_tag),
+                            None
+                        )
+                        invoked_type = invoked_profile.get("profile_type", "") if invoked_profile else ""
+                        # All profile types qualify: tool_enabled experts already run their
+                        # own synthesis internally — the coordinator receives final_answer_text,
+                        # not raw data. Synthesis only earns its cost when multiple experts
+                        # need combining or conversation history is present.
+                        if tool_output:
+                            output = tool_output
+                            _passed_through = True
+                            logger.info(
+                                f"[Genie] Pass-through: single {invoked_type} expert @{invoked_tag}, "
+                                f"no prior context — breaking before synthesis LLM"
+                            )
+                            break  # Exit astream_events; synthesis LLM never fires
 
                 # Track token usage from LLM calls
                 # Some providers emit on_llm_end, others emit on_chat_model_end
@@ -922,6 +958,13 @@ After gathering information from profiles, provide a synthesized answer that:
 
                     # Determine step type based on output
                     has_tool_calls = hasattr(llm_output, 'tool_calls') and llm_output.tool_calls
+
+                    # Capture how many parallel experts the routing LLM requested.
+                    # Used by the on_tool_end pass-through check to distinguish
+                    # single-expert routing (count=1) from multi-expert (count>1).
+                    if self.llm_call_count == 1 and has_tool_calls:
+                        _routing_tool_call_count = len(llm_output.tool_calls)
+
                     if self.llm_call_count == 1:
                         step_name = "Routing Decision" if has_tool_calls else "Response Generation"
                     else:
@@ -970,28 +1013,36 @@ After gathering information from profiles, provide a synthesized answer that:
                                         if tool_name and tool_name not in tools_used:
                                             tools_used.append(tool_name)
 
-            # Emit synthesis start event
-            # Use tracked invoked profiles (already clean tags like "FIT", "TDAT")
-            self._emit_event("genie_synthesis_start", {
-                "profiles_consulted": self.invoked_profiles,
-                "session_id": self.parent_session_id
-            })
+            # Emit synthesis events only when synthesis actually ran.
+            # Pass-through queries break early — no synthesis LLM was called.
+            if _passed_through:
+                self._emit_event("genie_synthesis_skipped", {
+                    "profile_tag": self.invoked_profiles[0] if self.invoked_profiles else None,
+                    "reason": "Single knowledge expert, no prior context",
+                    "session_id": self.parent_session_id
+                })
+            else:
+                self._emit_event("genie_synthesis_start", {
+                    "profiles_consulted": self.invoked_profiles,
+                    "session_id": self.parent_session_id
+                })
 
             # Calculate duration
             total_duration_ms = int((time.time() - start_time) * 1000)
 
-            # Prepare response preview for status window (truncate if too long)
-            response_preview = None
-            if output:
-                response_preview = output[:500] + "..." if len(output) > 500 else output
+            if not _passed_through:
+                # Prepare response preview for status window (truncate if too long)
+                response_preview = None
+                if output:
+                    response_preview = output[:500] + "..." if len(output) > 500 else output
 
-            # Emit synthesis complete event with the response (matches other profiles' "LLM Synthesis Results")
-            self._emit_event("genie_synthesis_complete", {
-                "profiles_consulted": self.invoked_profiles,
-                "session_id": self.parent_session_id,
-                "synthesized_response": response_preview,
-                "success": True
-            })
+                # Emit synthesis complete event with the response (matches other profiles' "LLM Synthesis Results")
+                self._emit_event("genie_synthesis_complete", {
+                    "profiles_consulted": self.invoked_profiles,
+                    "session_id": self.parent_session_id,
+                    "synthesized_response": response_preview,
+                    "success": True
+                })
 
             # Emit coordination complete event (without response - it's in genie_synthesis_complete)
             # Calculate turn cost for completion card

@@ -817,6 +817,8 @@ function getGenieTitle(eventType, payload) {
             return 'LLM Synthesis Started';
         case 'genie_synthesis_complete':
             return 'LLM Synthesis Results';
+        case 'genie_synthesis_skipped':
+            return 'Synthesis Skipped';
         case 'genie_coordination_complete':
             return payload.success ? 'Coordinator Complete' : 'Coordinator Failed';
         case 'genie_component_invoked':
@@ -1418,7 +1420,7 @@ async function processStream(responseBody, originSessionId) {
                                eventName === 'genie_routing_decision' ||
                                eventName === 'genie_slave_invoked' || eventName === 'genie_slave_progress' ||
                                eventName === 'genie_slave_completed' || eventName === 'genie_synthesis_start' ||
-                               eventName === 'genie_synthesis_complete' ||
+                               eventName === 'genie_synthesis_complete' || eventName === 'genie_synthesis_skipped' ||
                                eventName === 'genie_coordination_complete' ||
                                eventName === 'genie_component_invoked' ||
                                eventName === 'genie_component_completed') {
