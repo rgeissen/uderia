@@ -463,7 +463,8 @@ export function handleGenieEvent(eventType, payload) {
             break;
 
         case 'genie_synthesis_complete':
-            // Informational event for Live Status window - no state tracking needed
+        case 'genie_synthesis_skipped':
+            // Informational events for Live Status window - no state tracking needed
             break;
 
         case 'genie_coordination_complete':

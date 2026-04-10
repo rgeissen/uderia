@@ -14237,6 +14237,7 @@ async def _run_kg_agent_turn(user_uuid: str, session_id: str, query: str, profil
         event_handler=_kg_event_handler,
         source="kg_constructor",
         profile_override_id=profile_id,
+        is_session_primer=True,
     )
 
     return result or final_payload

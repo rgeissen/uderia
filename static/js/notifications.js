@@ -137,6 +137,8 @@ function _getGenieStepTitle(eventType, payload) {
             return 'LLM Synthesis Started';
         case 'genie_synthesis_complete':
             return 'LLM Synthesis Results';
+        case 'genie_synthesis_skipped':
+            return 'Synthesis Skipped';
         case 'genie_coordination_complete':
             return payload.success ? 'Coordination Complete' : 'Coordination Failed';
         default:
@@ -643,6 +645,7 @@ export function subscribeToNotifications() {
             case 'genie_slave_progress':
             case 'genie_slave_completed':
             case 'genie_synthesis_start':
+            case 'genie_synthesis_skipped':
             case 'genie_coordination_complete': {
                 const payload = data.payload || {};
                 // Only handle events for current session
