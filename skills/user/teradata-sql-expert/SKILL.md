@@ -4,6 +4,12 @@ description: Teradata-specific SQL conversion rules and best practices for writi
 user-invokable: true
 ---
 
+---
+name: teradata-sql-expert
+description: Teradata-specific SQL conversion rules and best practices for writing correct, idiomatic Teradata SQL.
+user-invokable: true
+---
+
 If you would like to create SQL, you must follow the following conversion rules:
 
 **Conversion Rules:**

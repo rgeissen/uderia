@@ -1641,14 +1641,25 @@ Files: `src/trusted_data_agent/core/cost_manager.py`
 
 ### Agent Packs System
 
-**Purpose:** Portable bundles containing profiles, collections, and MCP servers for quick deployment.
+**Purpose:** Portable bundles containing profiles, collections, MCP servers, and skills for quick deployment.
 
 **Key Features:**
 - Export/import complete agent configurations as `.agentpack` files
+- Auto-bundles user skills that are **auto-enabled** (`active: true` in `skillsConfig`) on any participating profile — skills are restored on import
 - Publish to marketplace for sharing
 - Install from marketplace with one click
-- Automatic dependency resolution (profiles, collections, MCP servers)
+- Automatic dependency resolution (profiles, collections, MCP servers, skills)
 - Version management and update notifications
+
+**Manifest Format Versions:**
+
+| Version | What it adds |
+|---------|-------------|
+| `1.1` | Base: profiles + collections |
+| `1.2` | Adds `vector_store_configurations` array |
+| `1.3` | Adds `skills` array; profile entries include `skillsConfig` |
+
+Version is determined automatically at export time: `1.3` if skills present, `1.2` if only VS configs, otherwise `1.1`.
 
 **Files:**
 - `src/trusted_data_agent/core/agent_pack_manager.py` - Pack creation and installation
@@ -2001,7 +2012,8 @@ npx tailwindcss build
 - OpenAI (GPT-4o)
 - Azure OpenAI
 - AWS Bedrock
-- Friendli.AI
+- Friendli.AI (including dedicated endpoints — configure via `dedicated_endpoint` field in LLM config)
+- OpenRouter (access 100+ models via unified API; configured as a distinct provider type)
 - Ollama (local, offline)
 
 ### Apache Airflow Integration
@@ -2103,6 +2115,12 @@ Example: "Using the n8n-uderia skill, how do I configure profile override in a w
 
 ## Recent Major Changes
 
+- **Apr 2026**: Agent Pack skills bundling (v1.3 manifest) - auto-enabled user skills included in export/restored on import
+- **Apr 2026**: Skills support for Genie coordinator - skill content injected into coordinator system prompt and user context
+- **Apr 2026**: Genie pass-through optimisation - coordinator skips synthesis LLM call when single expert is consulted with no conversation history
+- **Apr 2026**: Skills marketplace - publish status annotation in skill list; browse filters exclude own published skills
+- **Apr 2026**: OpenRouter provider support - access 100+ models via unified OpenRouter API
+- **Apr 2026**: FriendliAI dedicated endpoint support - configurable per-LLM-config `dedicated_endpoint` field
 - **Feb 2026**: Agent Packs system - install/export/publish agent packs with marketplace
 - **Feb 2026**: Template Management UI - hot-reload and validation in admin panel
 - **Feb 2026**: Unified Relationships API Migration - deprecated legacy check-sessions endpoints

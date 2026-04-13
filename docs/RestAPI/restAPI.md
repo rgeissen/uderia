@@ -34,6 +34,9 @@
    - [Component Architecture](#323-component-architecture)
    - [Context Window Management](#324-context-window-management)
    - [Prompt Execution](#325-prompt-execution)
+   - [Vector Store Configuration Management](#326-vector-store-configuration-management)
+   - [Execution Provenance & Audit Trail](#327-execution-provenance--audit-trail)
+   - [Knowledge Graph Marketplace](#328-knowledge-graph-marketplace)
 4. [Data Models](#4-data-models)
 5. [Code Examples](#5-code-examples)
 6. [Security Best Practices](#6-security-best-practices)
@@ -80,7 +83,7 @@ http://127.0.0.1:5050/api
 
 1. **Authenticate** - Login and obtain an access token (JWT or long-lived token)
 2. **Configure Profile** - Create a profile that combines:
-   - An **LLM Provider** (Google, Anthropic, Azure, AWS, Friendli, or Ollama)
+   - An **LLM Provider** (Google, Anthropic, Azure, AWS, Friendli, OpenRouter, or Ollama)
    - An **MCP Server** (your data source and tools)
 3. **Set as Default** - Mark your profile as the default for your user account
 
@@ -3914,6 +3917,10 @@ curl -X POST http://localhost:5050/api/v1/agent-packs/import \
   -F "conflict_strategy=rename"
 ```
 
+**Notes:**
+- v1.3+ packs: bundled user skills are automatically installed to the user skills directory before profiles are created; skill manager is reloaded so auto-enabled skill assignments in `skillsConfig` are immediately active
+- `conflict_strategy` valid values: `replace` (delete existing conflicting profiles/collections), `expand` (auto-rename, e.g. `TAG` → `TAG2`)
+
 **Client Behavior:**
 - Show upload progress bar
 - Display conflict resolution options if conflicts detected
@@ -3947,10 +3954,11 @@ Content-Disposition: attachment; filename="Sales_Analytics_Pack.agentpack"
 ```
 
 **Export Contents:**
-- `manifest.json` - Pack metadata (name, version, author, description)
-- `profiles/` - All profiles (coordinator + sub-profiles)
-- `collections/` - All associated RAG collections
-- `README.md` - Usage documentation
+- `manifest.json` - Pack metadata, profiles (with `skillsConfig`), collection refs, skills refs
+- `collections/` - All associated RAG collections as `.zip` files
+- `skills/` - User skills that are auto-enabled (`active: true`) on any exported profile, as `.skill` zip files (v1.3+ only)
+
+**Manifest format versions:** `1.1` (base), `1.2` (+ vector store configs), `1.3` (+ skills). Version is selected automatically.
 
 **Error Responses:**
 ```json
@@ -4829,7 +4837,8 @@ Manage LLM provider configurations including API keys, models, and settings. The
 - OpenAI (GPT-4o)
 - Azure OpenAI
 - AWS Bedrock
-- Friendli.AI
+- Friendli.AI (serverless or dedicated endpoint)
+- OpenRouter (unified API for 100+ models)
 - Ollama (local, offline)
 
 **Key Features:**
@@ -4954,6 +4963,59 @@ Add a new LLM provider configuration.
   }
 }
 ```
+
+**Request Body (Friendli.AI - Serverless):**
+```json
+{
+  "name": "Friendli Qwen3 Serverless",
+  "provider": "Friendli",
+  "model": "Qwen/Qwen3-235B-A22B",
+  "credentials": {
+    "friendli_token": "flp_..."
+  },
+  "settings": {
+    "temperature": 0.7,
+    "max_tokens": 8192
+  }
+}
+```
+
+**Request Body (Friendli.AI - Dedicated Endpoint):**
+```json
+{
+  "name": "Friendli Qwen3 Dedicated",
+  "provider": "Friendli",
+  "model": "Qwen/Qwen3-235B-A22B",
+  "credentials": {
+    "friendli_token": "flp_...",
+    "friendli_endpoint_url": "https://serving.friendli.ai/dedicated/..."
+  },
+  "settings": {
+    "temperature": 0.7,
+    "max_tokens": 8192
+  }
+}
+```
+
+> **Dedicated endpoint:** When `friendli_endpoint_url` is set, the client connects to that specific deployment instead of the shared serverless tier. The URL is automatically normalized to end with `/v1` for OpenAI-compatible routing. Dedicated endpoints do not support connection testing during creation (connection tested implicitly on first use).
+
+**Request Body (OpenRouter):**
+```json
+{
+  "name": "OpenRouter GPT-4o",
+  "provider": "OpenRouter",
+  "model": "openai/gpt-4o",
+  "credentials": {
+    "openrouter_api_key": "sk-or-..."
+  },
+  "settings": {
+    "temperature": 0.7,
+    "max_tokens": 8192
+  }
+}
+```
+
+> **OpenRouter:** Routes requests to `https://openrouter.ai/api/v1` using the OpenAI-compatible SDK. Model names use the `provider/model-name` format (e.g., `anthropic/claude-3-5-sonnet`, `meta-llama/llama-3.1-70b-instruct`). See [openrouter.ai/models](https://openrouter.ai/models) for the full list.
 
 **Request Body (Ollama - Local):**
 ```json
@@ -9681,6 +9743,615 @@ curl -X POST http://localhost:5050/api/v1/prompts/base_tableBusinessDesc/execute
 
 ---
 
+### 3.26. Vector Store Configuration Management
+
+Manage named vector store backend configurations. Each configuration binds a backend type (ChromaDB, Qdrant Cloud, or Teradata) to its connection credentials and is referenced by RAG and knowledge collections.
+
+**Supported Backends:**
+- `chromadb` — Embedded/local, client-side SentenceTransformer embeddings (default)
+- `qdrant` — Qdrant Cloud managed vector DB, client-side embeddings, optional hybrid search
+- `teradata` — Teradata In-Database Vector Store (EVS), server-side embeddings via AWS Bedrock or Azure
+
+---
+
+#### 3.26.1. List Allowed Backends
+
+Returns the list of vector store backends available to the current user's tier.
+
+**Endpoint:** `GET /api/v1/vectorstore/allowed-backends`
+**Authentication:** Required
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "allowed_backends": ["chromadb", "qdrant", "teradata"],
+  "user_tier": "admin"
+}
+```
+
+---
+
+#### 3.26.2. Get Backend Capabilities
+
+Returns the capability set for a given backend type. Used by the UI to show/hide features (e.g., hybrid search toggle for Qdrant).
+
+**Endpoint:** `GET /api/v1/vectorstore/capabilities?backend_type=qdrant`
+**Authentication:** Not required
+
+**Query Parameters:**
+- `backend_type` (string): `chromadb`, `qdrant`, or `teradata` (default: `chromadb`)
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "backend_type": "qdrant",
+  "capabilities": [
+    "CREATE_COLLECTION", "DELETE_COLLECTION", "ADD_DOCUMENTS",
+    "DELETE_DOCUMENTS", "SIMILARITY_SEARCH", "GET_BY_ID", "COUNT",
+    "UPSERT", "GET_BY_METADATA_FILTER", "UPDATE_METADATA",
+    "EMBEDDING_PASSTHROUGH", "GET_ALL", "HYBRID_SEARCH"
+  ]
+}
+```
+
+**Capability Reference:**
+
+| Capability | Backends | Description |
+|-----------|---------|-------------|
+| `HYBRID_SEARCH` | Qdrant only | Dense + sparse combined search |
+| `SERVER_SIDE_EMBEDDING` | Teradata only | LLM embeddings computed server-side |
+| `SERVER_SIDE_CHUNKING` | Teradata only | Raw file upload; SDK handles chunking |
+| `GET_ALL` | ChromaDB, Qdrant, Teradata | Full collection retrieval |
+
+---
+
+#### 3.26.3. List Vector Store Configurations
+
+**Endpoint:** `GET /api/v1/vectorstore/configurations`
+**Authentication:** Required
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "configurations": [
+    {
+      "id": "vs-default-chromadb",
+      "name": "Default (ChromaDB)",
+      "backend_type": "chromadb",
+      "collection_count": 3
+    },
+    {
+      "id": "vs-qdrant-prod",
+      "name": "Qdrant Cloud Production",
+      "backend_type": "qdrant",
+      "collection_count": 1
+    }
+  ]
+}
+```
+
+---
+
+#### 3.26.4. Create Vector Store Configuration
+
+**Endpoint:** `POST /api/v1/vectorstore/configurations`
+**Authentication:** Required
+
+**Request Body (Qdrant Cloud):**
+```json
+{
+  "id": "vs-qdrant-prod",
+  "name": "Qdrant Cloud Production",
+  "backend_type": "qdrant",
+  "credentials": {
+    "url": "https://your-cluster.qdrant.io",
+    "api_key": "your-qdrant-api-key"
+  },
+  "connection_tested": true
+}
+```
+
+**Request Body (Teradata):**
+```json
+{
+  "id": "vs-teradata-1",
+  "name": "Teradata EVS Production",
+  "backend_type": "teradata",
+  "credentials": {
+    "host": "your-teradata-host",
+    "username": "your-user",
+    "password": "your-password",
+    "database": "your_db"
+  },
+  "connection_tested": true
+}
+```
+
+> **Note:** For Teradata configurations, `connection_tested: true` is required — run `POST /api/v1/vectorstore/test-connection` first.
+
+**Validation Rules:**
+- `id`: Required, must be unique
+- `name`: Required, must be unique for user
+- `backend_type`: Must be one of `chromadb`, `qdrant`, `teradata`
+- Credentials are encrypted with Fernet before storage; never returned in list responses
+
+**Success Response:** `201 Created`
+```json
+{
+  "status": "success",
+  "message": "Vector store configuration created successfully",
+  "configuration": { "id": "vs-qdrant-prod", "name": "...", "backend_type": "qdrant" }
+}
+```
+
+---
+
+#### 3.26.5. Get Vector Store Configuration
+
+Returns configuration details including decrypted credentials (for the configuration editor).
+
+**Endpoint:** `GET /api/v1/vectorstore/configurations/{config_id}`
+**Authentication:** Required
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "configuration": {
+    "id": "vs-qdrant-prod",
+    "name": "Qdrant Cloud Production",
+    "backend_type": "qdrant",
+    "credentials": {
+      "url": "https://your-cluster.qdrant.io",
+      "api_key": "your-qdrant-api-key"
+    }
+  }
+}
+```
+
+---
+
+#### 3.26.6. Update Vector Store Configuration
+
+**Endpoint:** `PUT /api/v1/vectorstore/configurations/{config_id}`
+**Authentication:** Required
+
+**Request Body:** Same structure as create; only provided fields are updated. Omit `credentials` to leave them unchanged.
+
+> **Note:** The `backend_type` of the built-in `vs-default-chromadb` configuration cannot be changed.
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Vector store configuration updated successfully"
+}
+```
+
+---
+
+#### 3.26.7. Delete Vector Store Configuration
+
+**Endpoint:** `DELETE /api/v1/vectorstore/configurations/{config_id}`
+**Authentication:** Required
+
+> **Warning:** Deleting a configuration that is referenced by active collections will cascade-archive those sessions. Use `GET /api/v1/artifacts/vectorstore-config/{config_id}/relationships` to check impact before deleting.
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Vector store configuration deleted successfully"
+}
+```
+
+---
+
+#### 3.26.8. Test Connection (Inline)
+
+Test a vector store connection without saving credentials.
+
+**Endpoint:** `POST /api/v1/vectorstore/test-connection`
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "backend_type": "qdrant",
+  "credentials": {
+    "url": "https://your-cluster.qdrant.io",
+    "api_key": "your-qdrant-api-key"
+  }
+}
+```
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Connection successful",
+  "backend_type": "qdrant",
+  "details": {
+    "collections_count": 5,
+    "version": "1.7.4"
+  }
+}
+```
+
+---
+
+#### 3.26.9. Test Saved Configuration Connection
+
+Test connectivity for an already-saved configuration.
+
+**Endpoint:** `POST /api/v1/vectorstore/configurations/{config_id}/test`
+**Authentication:** Required
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Connection successful",
+  "config_id": "vs-qdrant-prod"
+}
+```
+
+**Error Response (connection failed):**
+```json
+{
+  "status": "error",
+  "message": "Connection failed: Authentication failed",
+  "config_id": "vs-qdrant-prod"
+}
+```
+
+---
+
+### 3.27. Execution Provenance & Audit Trail
+
+The Execution Provenance Chain (EPC) provides cryptographically verifiable audit trails for every AI-generated response. Each turn stores a signed hash chain (Ed25519) that can be verified offline using the exported public key.
+
+**Use Cases:**
+- Regulatory compliance: prove what data was used to generate a response
+- Tamper detection: verify no turn was silently modified after the fact
+- Offline auditing: export provenance bundles for external review
+
+---
+
+#### 3.27.1. Get Session Provenance
+
+Retrieve provenance chains for all turns in a session.
+
+**Endpoint:** `GET /api/v1/sessions/{session_id}/provenance`
+**Authentication:** Required
+
+**Success Response:**
+```json
+{
+  "session_id": "session-abc123",
+  "turns": [
+    {
+      "turn": 1,
+      "profile_type": "tool_enabled",
+      "status": "success",
+      "provenance": {
+        "provenance_chain": [
+          {
+            "step": "strategic_plan",
+            "hash": "sha256:abc123...",
+            "signature": "ed25519:xyz...",
+            "timestamp": "2026-04-13T10:00:00Z"
+          }
+        ],
+        "provenance_meta": {
+          "session_id": "session-abc123",
+          "turn": 1,
+          "profile_tag": "OPTIM"
+        }
+      }
+    }
+  ],
+  "total_turns": 3,
+  "turns_with_provenance": 3
+}
+```
+
+---
+
+#### 3.27.2. Get Single Turn Provenance
+
+**Endpoint:** `GET /api/v1/sessions/{session_id}/provenance/turn/{turn_number}`
+**Authentication:** Required
+
+**Success Response:**
+```json
+{
+  "session_id": "session-abc123",
+  "turn": 1,
+  "provenance": {
+    "provenance_chain": [ ... ],
+    "provenance_meta": { ... }
+  }
+}
+```
+
+**Error Responses:**
+- `404` — Turn not found or session not found
+- `200` with `"provenance": null` — Turn exists but has no provenance data (e.g., older sessions)
+
+---
+
+#### 3.27.3. Verify Provenance Integrity
+
+Cryptographically verify the provenance chain for a session (L1 per-turn hash integrity + L3 cross-turn chain continuity).
+
+**Endpoint:** `POST /api/v1/sessions/{session_id}/provenance/verify`
+**Authentication:** Required
+**Body:** Empty
+
+**Success Response:**
+```json
+{
+  "session_id": "session-abc123",
+  "verification": {
+    "valid": true,
+    "turns_verified": 3,
+    "turns_failed": 0,
+    "details": [
+      { "turn": 1, "valid": true },
+      { "turn": 2, "valid": true },
+      { "turn": 3, "valid": true }
+    ]
+  }
+}
+```
+
+**Tamper Detected Response:**
+```json
+{
+  "session_id": "session-abc123",
+  "verification": {
+    "valid": false,
+    "turns_failed": 1,
+    "details": [
+      { "turn": 2, "valid": false, "reason": "Hash mismatch at step 'tool_result'" }
+    ]
+  }
+}
+```
+
+---
+
+#### 3.27.4. Export Provenance (Offline Audit)
+
+Download provenance data as a self-contained JSON file for offline verification. Includes the public key PEM so the verifier does not need to contact the server.
+
+**Endpoint:** `GET /api/v1/sessions/{session_id}/provenance/export`
+**Authentication:** Required
+
+**Response:** `application/json` attachment — `provenance_{session_id}.json`
+
+```json
+{
+  "export_version": 1,
+  "session_id": "session-abc123",
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\n...",
+  "key_fingerprint": "SHA256:abc123...",
+  "turns": [
+    {
+      "turn": 1,
+      "user_query": "Show me all tables in the database",
+      "profile_type": "tool_enabled",
+      "status": "success",
+      "provenance_chain": [ ... ],
+      "provenance_meta": { ... }
+    }
+  ]
+}
+```
+
+**cURL:**
+```bash
+curl -X GET "http://localhost:5050/api/v1/sessions/$SESSION_ID/provenance/export" \
+  -H "Authorization: Bearer $TOKEN" \
+  -o "provenance_${SESSION_ID}.json"
+```
+
+---
+
+#### 3.27.5. Get Provenance Public Key
+
+Download the Ed25519 public key PEM used to sign provenance chains. Use this for offline signature verification.
+
+**Endpoint:** `GET /api/v1/provenance/public-key`
+**Authentication:** Required
+
+**Success Response:**
+```json
+{
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2Vw...\n-----END PUBLIC KEY-----\n",
+  "key_fingerprint": "SHA256:abc123...",
+  "algorithm": "Ed25519"
+}
+```
+
+**Error:** `503` if the provenance key has not been initialized.
+
+---
+
+### 3.28. Knowledge Graph Marketplace
+
+Publish, browse, and install database schema knowledge graphs (entity-relationship models) via the marketplace. KGs are linked to profiles and provide schema-aware context for the Fusion Optimizer.
+
+**Admin Control:** The KG marketplace can be disabled globally via `PUT /api/v1/admin/kg-marketplace-settings`.
+
+---
+
+#### 3.28.1. Publish Knowledge Graph
+
+Publish the knowledge graph associated with a profile to the marketplace.
+
+**Endpoint:** `POST /api/v1/knowledge-graph/{profile_id}/publish`
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "name": "Retail Analytics Schema",
+  "description": "Entity-relationship model for the retail_db database",
+  "domain": "retail",
+  "version": "1.0.0",
+  "author": "Data Team",
+  "tags": ["retail", "sql", "ecommerce"],
+  "visibility": "public"
+}
+```
+
+For targeted (private) publishing:
+```json
+{
+  "name": "Internal Finance Schema",
+  "visibility": "targeted",
+  "user_ids": ["uuid-of-user1", "uuid-of-user2"]
+}
+```
+
+**Validation:**
+- Profile's knowledge graph must contain at least one entity
+- `visibility`: `"public"` or `"targeted"` (targeted requires `user_ids`)
+- A profile can only have one active marketplace listing (returns `409` if already published)
+
+**Success Response:** `201 Created`
+```json
+{
+  "status": "success",
+  "marketplace_id": "kg-marketplace-uuid",
+  "message": "Knowledge graph published successfully"
+}
+```
+
+---
+
+#### 3.28.2. Browse Marketplace Knowledge Graphs
+
+**Endpoint:** `GET /api/v1/marketplace/knowledge-graphs`
+**Authentication:** Required
+
+**Query Parameters:**
+- `search` (string): Full-text search over name, description, domain
+- `domain` (string): Filter by domain (e.g., `retail`, `finance`, `healthcare`)
+- `sort` (string): `newest` (default), `popular`, `rating`
+- `page` (integer): Page number (default: 1)
+- `per_page` (integer): Results per page (default: 20, max: 100)
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "knowledge_graphs": [
+    {
+      "id": "kg-marketplace-uuid",
+      "name": "Retail Analytics Schema",
+      "description": "...",
+      "domain": "retail",
+      "version": "1.0.0",
+      "author": "Data Team",
+      "tags": ["retail", "sql"],
+      "entity_count": 12,
+      "relationship_count": 18,
+      "install_count": 45,
+      "average_rating": 4.2,
+      "published_at": "2026-04-01T10:00:00Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "per_page": 20
+}
+```
+
+---
+
+#### 3.28.3. Get Knowledge Graph Detail
+
+**Endpoint:** `GET /api/v1/marketplace/knowledge-graphs/{marketplace_id}`
+**Authentication:** Required
+
+**Success Response:** Full detail including entities list, relationships, ratings summary, and install history.
+
+---
+
+#### 3.28.4. Install Knowledge Graph
+
+Install a marketplace knowledge graph into a target profile.
+
+**Endpoint:** `POST /api/v1/marketplace/knowledge-graphs/{marketplace_id}/install`
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "target_profile_id": "profile-1764006444002-z0hdduce9"
+}
+```
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Knowledge graph installed into profile 'OPTIM'"
+}
+```
+
+---
+
+#### 3.28.5. Fork Knowledge Graph
+
+Alias for install — creates a private copy in the target profile.
+
+**Endpoint:** `POST /api/v1/marketplace/knowledge-graphs/{marketplace_id}/fork`
+**Authentication:** Required
+**Request Body:** Same as install.
+
+---
+
+#### 3.28.6. Rate Knowledge Graph
+
+**Endpoint:** `POST /api/v1/marketplace/knowledge-graphs/{marketplace_id}/rate`
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "rating": 5,
+  "comment": "Excellent schema coverage, saved hours of discovery work"
+}
+```
+
+**Validation:** `rating` must be 1–5. One rating per user per KG (update existing if re-rated).
+
+---
+
+#### 3.28.7. Unpublish Knowledge Graph
+
+Remove a knowledge graph from the marketplace (publisher only).
+
+**Endpoint:** `DELETE /api/v1/marketplace/knowledge-graphs/{marketplace_id}`
+**Authentication:** Required (publisher only)
+
+**Success Response:**
+```json
+{
+  "status": "success",
+  "message": "Knowledge graph unpublished successfully"
+}
+```
+
+---
+
 ## 4. Data Models
 
 ### 4.1. The Task Object
@@ -10802,6 +11473,41 @@ If you continue to experience issues:
 ---
 
 ## 9. API Updates & Migration Notes
+
+### Recent Changes (April 2026)
+
+#### ➕ New Provider: OpenRouter
+**What Changed:** OpenRouter is now a supported LLM provider (`provider: "OpenRouter"`). It routes to `https://openrouter.ai/api/v1` and uses the `openrouter_api_key` credential field. Model names follow the `provider/model-name` format (e.g., `openai/gpt-4o`, `anthropic/claude-3-5-sonnet`).
+
+**See Also:** Section 3.16.2 for the request body example.
+
+#### ➕ FriendliAI Dedicated Endpoint Support
+**What Changed:** Friendli.AI configurations now support a `friendli_endpoint_url` credential field to route requests to a dedicated deployment instead of the shared serverless tier.
+
+**See Also:** Section 3.16.2 for the request body examples (serverless vs. dedicated).
+
+#### ➕ New Sections: Vector Store, Provenance, KG Marketplace
+**What Changed:** Three API surface areas that were previously undocumented are now fully documented:
+- **Section 3.26** — Vector Store Configuration Management (`/v1/vectorstore/*`)
+- **Section 3.27** — Execution Provenance & Audit Trail (`/v1/sessions/{id}/provenance/*`)
+- **Section 3.28** — Knowledge Graph Marketplace (`/v1/marketplace/knowledge-graphs/*`)
+
+#### 🔄 Agent Pack v1.3 — Skill Bundling
+**What Changed:** Agent pack export now bundles user skills that are auto-enabled on any exported profile. Import installs bundled skills before creating profiles.
+
+**Manifest version:** `1.3` when skills are present (see Section 3.14 for details).
+
+**Backward Compatibility:** ✅ v1.1 and v1.2 packs continue to work unchanged.
+
+#### 🔄 Skill List: Marketplace Publish Status
+**What Changed:** `GET /v1/skills` now annotates each skill with `is_marketplace_listed` (bool) and `marketplace_id` (string|null) for the current user's publish status.
+
+**Backward Compatibility:** ✅ New fields added; existing fields unchanged.
+
+#### 🔄 Skill Marketplace Browse: Excludes Own Skills
+**What Changed:** `GET /v1/marketplace/skills` no longer returns skills published by the caller. Publishers browse the marketplace from the perspective of other users.
+
+---
 
 ### Recent Changes (November 2025)
 
