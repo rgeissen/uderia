@@ -21,6 +21,7 @@ Skills provide transparent, auditable context enhancement. They are **fully tran
 11. [Admin Governance](#11-admin-governance)
 12. [CSS & Visual Design](#12-css--visual-design)
 13. [File Reference](#13-file-reference)
+14. [Agent Pack Integration (v1.3)](#14-agent-pack-integration-v13)
 
 ---
 
@@ -371,6 +372,27 @@ Both `system_prompt` and `user_message` are local variables.
 
 Same pattern as LLM-Only — skill content appended to local `system_prompt` and prepended to local `user_message` used for RAG synthesis.
 
+### Genie Coordinator Profile
+
+**File:** `genie_coordinator.py:686-698`
+
+```python
+# Inject skill content into coordinator system prompt
+if self.skill_result and self.skill_result.has_content:
+    skill_block = self.skill_result.get_system_prompt_block()
+    if skill_block:
+        system_prompt += f"\n\n{skill_block}"
+
+# Inject user_context block prepended to the current query
+uc_block = self.skill_result.get_user_context_block() if self.skill_result else ""
+human_content = f"{uc_block}\n\n{query}" if uc_block else query
+messages.append(HumanMessage(content=human_content))
+```
+
+Skills with `injection_target: "system_prompt"` augment the coordinator's routing instructions (e.g., domain-specific delegation rules). Skills with `injection_target: "user_context"` are prepended to the query sent to the coordinator's LangChain agent. Both injections use **local variables** — not persisted.
+
+**Typical use case:** A `teradata-coordinator` skill injected into a Genie coordinator system prompt provides Teradata-specific routing rules (`TDSQL` → SQL questions, `TDEXO` → live execution, etc.).
+
 ### Summary Table
 
 | Profile | Injection Variable | File:Line | Scope |
@@ -378,6 +400,7 @@ Same pattern as LLM-Only — skill content appended to local `system_prompt` and
 | `tool_enabled` | `planning_prompt` (local) | `planner.py:2752` | Single `plan_strategy()` call |
 | `llm_only` | `system_prompt` + `user_message` (local) | `executor.py:2654-2679` | Single conversation LLM call |
 | `rag_focused` | `system_prompt` + `user_message` (local) | `executor.py:3564-3587` | Single RAG synthesis call |
+| `genie` | `system_prompt` + `human_content` (local) | `genie_coordinator.py:686-698` | Per-coordinator LangChain agent invocation |
 
 ---
 
@@ -574,6 +597,26 @@ Targeted visibility reuses the existing `marketplace_sharing_grants` table (from
 | `/v1/marketplace/skills/{id}/install` | POST | Install skill from marketplace |
 | `/v1/marketplace/skills/{id}/rate` | POST | Rate marketplace skill (1-5 stars + comment) |
 | `/v1/marketplace/skills/{id}` | DELETE | Unpublish from marketplace (publisher only) |
+
+**Marketplace publish status in `GET /v1/skills`:**
+
+The skill list endpoint annotates each skill with the current user's marketplace publish status:
+
+```json
+{
+  "skills": [
+    {
+      "skill_id": "teradata-coordinator",
+      "is_marketplace_listed": true,
+      "marketplace_id": "abc123..."
+    }
+  ]
+}
+```
+
+`is_marketplace_listed: false` and `marketplace_id: null` when the skill has not been published. This allows the Skills UI to show publish/unpublish buttons without a separate round-trip.
+
+**Browse marketplace (`GET /v1/marketplace/skills`) excludes the caller's own published skills** — publishers see only skills published by others. This prevents confusing self-visibility in the marketplace browser.
 
 ### Query Execution with Skills
 
@@ -880,6 +923,77 @@ Skills (emerald):     Extensions (amber):
 
 ---
 
+## 14. Agent Pack Integration (v1.3)
+
+Agent packs (`.agentpack` files) bundle skills alongside profiles and collections. This enables one-click deployment of complete agent configurations, including the skills that power them.
+
+### Export: Bundling Auto-Enabled Skills
+
+During `POST /v1/agent-packs/export`, the manager scans every exported profile's `skillsConfig.skills[]` array. Any skill with `active: true` that is a **user skill** (`_is_user: true` in its manifest) is bundled into the pack:
+
+```python
+# agent_pack_manager.py — collect skills to bundle
+for profile in selected_profiles:
+    for skill_entry in profile.get("skillsConfig", {}).get("skills", []):
+        if not skill_entry.get("active", False):
+            continue
+        s_manifest = skill_manager.get_skill_manifest(skill_id)
+        if s_manifest and s_manifest.get("_is_user", False):
+            skills_to_bundle[skill_id] = {"manifest": s_manifest, "content": ...}
+```
+
+Each skill is packaged as a `.skill` zip file (`skills/<skill_id>.skill`) containing:
+- `skill.json` — manifest (cleaned of export metadata)
+- `<skill_id>.md` — raw markdown content
+- `SKILL.md` — Claude Code compatible format with YAML frontmatter
+
+The manifest `skills` array lists all bundled skills:
+```json
+{
+  "format_version": "1.3",
+  "skills": [
+    {
+      "id": "teradata-coordinator",
+      "file": "skills/teradata-coordinator.skill",
+      "name": "Teradata Coordinator",
+      "description": "Routing rules for the Teradata expert coordinator"
+    }
+  ]
+}
+```
+
+**Manifest version logic:** `1.3` if any skills present, `1.2` if only VS configs, `1.1` otherwise.
+
+### Import: Installing Bundled Skills
+
+During `POST /v1/agent-packs/import`, skills are installed **before** profiles are created so that `skillsConfig` assignments are immediately resolvable:
+
+1. Extract `manifest.skills[]` entries
+2. For each entry, read the `.skill` zip from the `skills/` subdirectory
+3. Call `_install_skill_from_zip_bytes()` → `skill_manager.save_skill()`
+4. `skill_manager.reload()` so profiles can reference newly installed skills
+5. Profiles created with `skillsConfig` intact (auto-enabled assignments preserved)
+
+### `skills/user/` Repository Directory
+
+The project ships a `skills/user/` directory containing sample/reference user skills:
+
+```
+skills/user/
+├── teradata-coordinator/    # Routing rules for TDEXP genie coordinator
+│   ├── skill.json
+│   ├── SKILL.md
+│   └── teradata-coordinator.md
+└── teradata-sql-expert/     # Teradata-specific SQL conversion rules
+    ├── skill.json
+    ├── SKILL.md
+    └── teradata-sql-expert.md
+```
+
+These are **reference skills** tracked in the repo. At runtime, user skills live in `~/.tda/skills/` (or the database-backed user skills store). To deploy a reference skill, install it through the Skills UI or via `PUT /v1/skills/<skill_id>`.
+
+---
+
 ## 13. File Reference
 
 ### Backend
@@ -891,12 +1005,15 @@ Skills (emerald):     Extensions (amber):
 | `src/trusted_data_agent/skills/manager.py` | Discovery pipeline, singleton `SkillManager` |
 | `src/trusted_data_agent/skills/db.py` | Per-user activation CRUD (`user_skills` table) |
 | `src/trusted_data_agent/skills/settings.py` | Admin governance (`skill_settings` table) |
-| `src/trusted_data_agent/agent/execution_service.py` | Skill resolution at lines 455-494, history at 312-324 |
+| `src/trusted_data_agent/agent/execution_service.py` | Skill resolution at lines 455-494, history at 312-324; genie skill passthrough to coordinator |
 | `src/trusted_data_agent/agent/executor.py` | Injection at 2654-2679 (llm_only), 3564-3587 (rag_focused) |
 | `src/trusted_data_agent/agent/planner.py` | Injection at 2752-2759 (tool_enabled) |
+| `src/trusted_data_agent/agent/genie_coordinator.py` | Injection at 686-698 (genie coordinator system prompt + user context) |
+| `src/trusted_data_agent/core/agent_pack_manager.py` | v1.3 skill bundling (export) and `_install_skill_from_zip_bytes()` (import) |
 | `src/trusted_data_agent/api/rest_routes.py` | REST skill endpoints, skill_specs in query execution |
 | `src/trusted_data_agent/api/routes.py` | SSE skill passthrough in `/ask_stream` |
 | `src/trusted_data_agent/api/admin_routes.py` | Skill governance endpoints |
+| `src/trusted_data_agent/api/skills_routes.py` | Marketplace publish status annotation in list; browse excludes own skills |
 
 ### Frontend
 

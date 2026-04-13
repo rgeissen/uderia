@@ -21,7 +21,9 @@ The Coordinator (profile type `genie`) is the only profile type that does not in
 11. [Database Schema](#11-database-schema)
 12. [REST API Endpoints](#12-rest-api-endpoints)
 13. [Safety Mechanisms](#13-safety-mechanisms)
-14. [File Reference](#14-file-reference)
+14. [Pass-Through Optimisation](#14-pass-through-optimisation)
+15. [Skills Injection](#15-skills-injection)
+16. [File Reference](#16-file-reference)
 
 ---
 
@@ -816,14 +818,121 @@ Transient UI-only events (`status_indicator_update`, `token_update`) are filtere
 
 ---
 
-## 14. File Reference
+## 14. Pass-Through Optimisation
+
+When only **one expert** is consulted and the coordinator has **no prior conversation history** to weave, the coordinator skips the synthesis LLM call entirely and passes the expert's answer directly to the user. This halves token cost and latency for single-expert queries.
+
+### Trigger Conditions
+
+| Condition | Synthesis? | Reason |
+|-----------|------------|--------|
+| Single expert + no history | ❌ Pass through | Expert answer is already complete prose; no multi-source combining needed |
+| Multiple experts (any mode) | ✅ Yes | Results from different domains must be combined |
+| Single expert + history present (Full Context, turn 2+) | ✅ Yes | Coordinator weaves cross-turn context |
+
+`conversation_history` is empty (triggering pass-through) in two situations:
+- **Full Context mode, turn 1** — no prior turns exist yet
+- **Turn Summaries mode, any turn** — history is always disabled in this mode
+
+### Implementation
+
+**File:** `genie_coordinator.py` — inside the `on_tool_end` event handler
+
+```python
+elif (
+    _routing_tool_call_count == 1           # exactly one expert invoked
+    and self.llm_call_count == 1            # no re-dispatch: still first LLM iteration
+    and event_name not in self.component_tool_names  # it's a slave tool
+    and not conversation_history             # no cross-turn context to weave
+    and self.invoked_profiles               # expert tag captured
+):
+    # Break before synthesis LLM fires
+    output = tool_output
+    _passed_through = True
+```
+
+The condition `llm_call_count == 1` prevents the optimisation from firing when the coordinator re-dispatches to the same expert a second time (which increments `llm_call_count` to 2).
+
+### Rich HTML Pass-Through
+
+`tool_enabled` experts produce rich HTML output (tables, charts, formatted reports) but return only a plain-text summary (`final_answer_text`) to the coordinator's tool layer. To preserve the rich rendering, `SlaveSessionTool` caches the full HTML response keyed by `parent_session_id:profile_tag`. The pass-through path reads this cache and delivers the rich HTML to the user:
+
+```python
+# SlaveSessionTool._execute_and_poll()
+html_response = result.get("final_answer") or final_response
+if html_response and html_response != final_response:
+    _slave_html_responses[f"{self.parent_session_id}:{self.profile_tag}"] = html_response
+
+# GenieCoordinator pass-through path
+html_key = f"{self.parent_session_id}:{invoked_tag}"
+_passed_through_html = _slave_html_responses.pop(html_key, None)
+```
+
+### All Profile Types Qualify
+
+`tool_enabled`, `llm_only`, `rag_focused`, and nested `genie` experts all qualify. `tool_enabled` experts run their own internal Fusion Optimizer synthesis — the coordinator receives a finished answer, not raw data — so there is no multi-source combining to perform.
+
+---
+
+## 15. Skills Injection
+
+The Coordinator supports pre-processing skills just like other profile types. Skills can inject routing rules, domain expertise, or behavioral instructions directly into the coordinator's LLM context.
+
+### How It Works
+
+`execution_service.py` resolves skills for **all** profile types (including `genie`) before routing to the coordinator. The resolved `SkillResult` is passed to `GenieCoordinator.__init__()` as `skill_result`.
+
+```python
+# execution_service.py — skill resolution applies to genie profiles too
+skill_result = skill_manager.resolve_skills(resolved_specs)
+final_result_payload = await _run_genie_execution(
+    ...,
+    skill_result=skill_result,  # passed through to GenieCoordinator
+)
+```
+
+Inside the coordinator, skill content is injected at two points:
+
+**System prompt injection** (`genie_coordinator.py:686-698`):
+```python
+if self.skill_result and self.skill_result.has_content:
+    skill_block = self.skill_result.get_system_prompt_block()
+    if skill_block:
+        system_prompt += f"\n\n{skill_block}"
+```
+
+**User context injection** (prepended to the query sent to the LangChain agent):
+```python
+uc_block = self.skill_result.get_user_context_block() if self.skill_result else ""
+human_content = f"{uc_block}\n\n{query}" if uc_block else query
+messages.append(HumanMessage(content=human_content))
+```
+
+### Typical Use Cases
+
+| Skill Type | `injection_target` | Example |
+|------------|-------------------|---------|
+| Routing rules | `system_prompt` | `teradata-coordinator` — Teradata domain routing (TDSQL, TDDIC, TDADM, TDEXO) |
+| Query pre-processing | `user_context` | `teradata-sql-expert` — SQL dialect rules prepended to the query |
+
+### Skills are Transient
+
+Skill content injected into the coordinator follows the same transience rules as all other profile types: it is injected into **local variables** per-request and never stored in `chat_object` or any persistent session file. See [Skill Architecture — Section 6](SKILL_ARCHITECTURE.md#6-skill-lifecycle--transience) for details.
+
+### Profile Configuration
+
+Skills are assigned to a genie profile via `skillsConfig.skills[]` in the profile configuration (same structure as other profile types). Skills with `active: true` are resolved and injected automatically. The coordinator profile's skills tab in the Setup UI provides the same skill assignment interface as other profiles.
+
+---
+
+## 16. File Reference
 
 ### Backend
 
 | File | Purpose | Key Components |
 |------|---------|---------------|
-| `src/trusted_data_agent/agent/genie_coordinator.py` | Coordinator engine | `GenieCoordinator`, `SlaveSessionTool`, execution logic |
-| `src/trusted_data_agent/agent/execution_service.py` | Genie routing | `_run_genie_execution()` (line 655), profile type detection (line 478) |
+| `src/trusted_data_agent/agent/genie_coordinator.py` | Coordinator engine | `GenieCoordinator`, `SlaveSessionTool`, pass-through at `on_tool_end`, skill injection at lines 686-698 |
+| `src/trusted_data_agent/agent/execution_service.py` | Genie routing | `_run_genie_execution()` (line 655), skill resolution for genie (line 479), `skill_result` passthrough (line 567) |
 | `src/trusted_data_agent/agent/profile_prompt_resolver.py` | Prompt loading | `get_genie_coordinator_prompt()` (line 180) |
 | `src/trusted_data_agent/agent/prompt_mapping.py` | Prompt mapping | `genie_coordination` category (line 124) |
 | `src/trusted_data_agent/core/config_manager.py` | Profile validation | Genie validation (line 1176), circular dependency detection (line 1233) |
@@ -858,3 +967,4 @@ Transient UI-only events (`status_indicator_update`, `token_update`) are filtere
 - [Context Window Architecture](CONTEXT_WINDOW_ARCHITECTURE.md) — Context window management for genie profile type
 - [Knowledge Graph Architecture](KNOWLEDGE_GRAPH_ARCHITECTURE.md) — KG enrichment injected into coordinator context
 - [Cost Tracking Architecture](COST_TRACKING_ARCHITECTURE.md) — Cost calculation for coordinator LLM calls
+- [Skill Architecture](SKILL_ARCHITECTURE.md) — Full skill system documentation including coordinator injection (Section 5) and Agent Pack bundling (Section 14)
