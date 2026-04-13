@@ -223,6 +223,7 @@ async def get_rag_questions(current_user):
     
     # Determine which collections to query based on profile and user access
     allowed_collection_ids = None
+    profile = None
     if profile_id:
         config_manager = get_config_manager()
         profiles = config_manager.get_profiles(user_uuid)
@@ -288,6 +289,13 @@ async def get_rag_questions(current_user):
         
         return jsonify({"questions": sorted(list(questions))[:limit]})
     
+    # Per-profile relevance threshold (fallback to global config)
+    min_relevance = (
+        profile.get("autocompleteMinRelevance", APP_CONFIG.AUTOCOMPLETE_MIN_RELEVANCE)
+        if profile
+        else APP_CONFIG.AUTOCOMPLETE_MIN_RELEVANCE
+    )
+
     # Semantic search: query each allowed collection and aggregate results
     all_results = []
     for coll_id, collection in retriever.collections.items():
@@ -323,7 +331,7 @@ async def get_rag_questions(current_user):
 
             # Extract questions with their similarity scores, filtering by relevance threshold
             # Post-filter to exclude session primers (handles missing field gracefully)
-            max_distance = 1.0 - APP_CONFIG.AUTOCOMPLETE_MIN_RELEVANCE
+            max_distance = 1.0 - min_relevance
             if results and results.get("metadatas") and results["metadatas"][0]:
                 for idx, metadata in enumerate(results["metadatas"][0]):
                     if "user_query" in metadata:

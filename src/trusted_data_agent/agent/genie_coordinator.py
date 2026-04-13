@@ -53,6 +53,11 @@ _event_callbacks: Dict[str, Callable[[str, Dict], None]] = {}
 # Module-level provenance chains (keyed by parent_session_id) — EPC
 _provenance_chains: Dict[str, Any] = {}
 
+# Module-level full HTML response cache for pass-through (keyed by parent_session_id:profile_tag)
+# Stores the slave's rich final_answer HTML so the coordinator can pass it through intact
+# instead of using the plain-text final_answer_text summary.
+_slave_html_responses: Dict[str, str] = {}
+
 
 class SlaveSessionTool(BaseTool):
     """
@@ -348,7 +353,7 @@ class SlaveSessionTool(BaseTool):
                 headers={"Authorization": f"Bearer {self.auth_token}"},
                 json={
                     "prompt": query,
-                    "profile_id": self.profile_id
+                    "profile_id": self.profile_id,
                 }
             )
 
@@ -407,6 +412,13 @@ class SlaveSessionTool(BaseTool):
                         result.get("final_response") or     # Legacy field
                         result.get("final_answer", "")      # HTML formatted - fallback
                     )
+                    # Cache the full HTML response for pass-through rendering.
+                    # When synthesis is skipped, the coordinator delivers the slave's answer
+                    # directly to the user — we want the rich HTML (table, charts, etc.),
+                    # not the plain-text summary stored in final_answer_text.
+                    html_response = result.get("final_answer") or final_response
+                    if html_response and html_response != final_response:
+                        _slave_html_responses[f"{self.parent_session_id}:{self.profile_tag}"] = html_response
                     logger.info(f"@{self.profile_tag} completed successfully (text length: {len(final_response)})")
                     return final_response
 
@@ -850,6 +862,7 @@ After gathering information from profiles, provide a synthesized answer that:
             tools_used = []
             _routing_tool_call_count = 0  # Number of parallel tool calls in routing decision
             _passed_through = False        # True when early break skipped synthesis LLM
+            _passed_through_html = None    # Full slave HTML for pass-through display (vs text-only output)
 
             # Use astream_events to track LLM calls with token usage
             # Pass recursion_limit in config to control max agent iterations
@@ -905,14 +918,17 @@ After gathering information from profiles, provide a synthesized answer that:
                         })
                     elif (
                         _routing_tool_call_count == 1           # routing called exactly one expert
+                        and self.llm_call_count == 1            # no re-dispatch: still the first LLM iteration
                         and event_name not in self.component_tool_names  # it's a slave tool
                         and not conversation_history             # no cross-turn context to weave
                         and self.invoked_profiles               # expert tag already captured
                     ):
                         # Pass-through: break before synthesis LLM fires.
-                        # Safe because _routing_tool_call_count == 1 guarantees the routing
-                        # LLM requested exactly one expert, so this on_tool_end is the last
-                        # tool event. The synthesis LLM has not started yet.
+                        # Safe because _routing_tool_call_count == 1 AND llm_call_count == 1
+                        # together guarantee the routing LLM made exactly one decision with
+                        # one expert, so this on_tool_end is the last tool event.
+                        # llm_call_count == 1 prevents this from firing when the coordinator
+                        # re-dispatches to the same expert a second time (llm_call_count > 1).
                         invoked_tag = self.invoked_profiles[0]
                         invoked_profile = next(
                             (p for p in self.slave_profiles if p.get("tag") == invoked_tag),
@@ -925,6 +941,11 @@ After gathering information from profiles, provide a synthesized answer that:
                         # need combining or conversation history is present.
                         if tool_output:
                             output = tool_output
+                            # Retrieve the slave's full HTML response (stored by _execute_and_poll).
+                            # Used by the caller to display rich content (tables, charts, etc.)
+                            # while keeping `output` (plain text) available for LLM if needed.
+                            html_key = f"{self.parent_session_id}:{invoked_tag}"
+                            _passed_through_html = _slave_html_responses.pop(html_key, None)
                             _passed_through = True
                             logger.info(
                                 f"[Genie] Pass-through: single {invoked_type} expert @{invoked_tag}, "
@@ -1105,6 +1126,7 @@ After gathering information from profiles, provide a synthesized answer that:
 
             return {
                 "coordinator_response": output,
+                "coordinator_html": _passed_through_html,  # Full slave HTML for pass-through display; None when synthesis ran
                 "tools_used": tools_used,
                 "slave_sessions": turn_slave_sessions,
                 "genie_events": self.collected_events,  # For plan reload

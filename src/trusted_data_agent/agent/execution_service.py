@@ -1001,6 +1001,10 @@ async def _run_genie_execution(
 
         # Extract the final response
         coordinator_response = result.get('coordinator_response', '')
+        # In pass-through mode the coordinator preserves the slave's full HTML response
+        # (tables, charts, key observations) separately from the plain-text summary.
+        # Fall back to coordinator_response when synthesis ran (coordinator_html is None).
+        coordinator_html = result.get('coordinator_html') or coordinator_response
         success = result.get('success', False)
 
         # Generate component HTML from coordinator's direct component tool calls
@@ -1067,7 +1071,9 @@ async def _run_genie_execution(
         try:
             # Add coordinator response to session history (user message was already saved by caller)
             # Include component HTML (chart, code, etc.) for UI display if present
-            genie_html_content = (coordinator_response + genie_component_html) if genie_component_html else None
+            genie_html_content = coordinator_html + (genie_component_html or "")
+            if genie_html_content == coordinator_response:
+                genie_html_content = None  # No separate HTML needed when content is identical
             await session_manager.add_message_to_histories(
                 user_uuid=user_uuid,
                 session_id=session_id,
@@ -1206,7 +1212,7 @@ async def _run_genie_execution(
 
         # Send final answer event with proper fields for frontend and extensions
         # Include component HTML (chart divs, etc.) in the visual response but keep clean text for extensions
-        genie_visual_response = (coordinator_response + genie_component_html) if genie_component_html else coordinator_response
+        genie_visual_response = (coordinator_html + genie_component_html) if genie_component_html else coordinator_html
         final_payload = {
             "final_answer": genie_visual_response,  # Required by eventHandlers.js (includes component divs)
             "final_answer_text": coordinator_response,  # Plain text for extensions (ExtensionContext.answer_text)
