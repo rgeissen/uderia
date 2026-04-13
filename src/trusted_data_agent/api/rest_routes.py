@@ -11474,11 +11474,14 @@ async def execute_genie_query(session_id: str):
 
                     # 2. Add coordinator response to session history (for UI display)
                     coordinator_response = result.get('coordinator_response', '')
+                    coordinator_html = result.get('coordinator_html') or coordinator_response
+                    genie_html_content = coordinator_html if coordinator_html != coordinator_response else None
                     await session_manager.add_message_to_histories(
                         user_uuid=user_uuid,
                         session_id=session_id,
                         role='assistant',
                         content=coordinator_response,
+                        html_content=genie_html_content,
                         profile_tag=profile_tag
                     )
 
@@ -11540,7 +11543,7 @@ async def execute_genie_query(session_id: str):
                             "session_id": session_id,
                             "turn_id": turn_number if 'turn_number' in dir() else 1,
                             "user_input": query,
-                            "final_answer": result.get("coordinator_response", ""),
+                            "final_answer": result.get("coordinator_html") or result.get("coordinator_response", ""),
                             "profile_tag": profile.get('tag', 'GENIE'),
                             "success": result.get("success", False),
                             "tools_used": result.get("tools_used", []),

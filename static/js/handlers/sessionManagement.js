@@ -523,6 +523,16 @@ function _replayRestEventBuffer(sessionId) {
             continue;
         }
 
+        // --- Skill events (pre-processing, all profile types) ---
+        if (eventType === 'skills_applied') {
+            UI.updateStatusWindow({
+                step: 'Skills applied',
+                details: event.payload || {},
+                type: 'skills_applied'
+            }, false, 'skills');
+            continue;
+        }
+
         // --- Lifecycle events (all profile types) ---
         if (eventType === 'execution_start' || eventType === 'execution_complete' ||
             eventType === 'execution_error' || eventType === 'execution_cancelled') {
