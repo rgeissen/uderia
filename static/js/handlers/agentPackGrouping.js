@@ -51,7 +51,7 @@ function buildBriefList(resources, maxShow = 3) {
 }
 
 function buildStatusSummary(resources) {
-    const active = resources.filter(r => r.enabled !== false).length;
+    const active = resources.filter(r => !!r.enabled).length;
     const inactive = resources.length - active;
     const parts = [];
     if (active > 0) parts.push(`<span class="text-green-400">${active} active</span>`);
