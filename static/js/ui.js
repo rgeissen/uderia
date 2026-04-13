@@ -6530,8 +6530,9 @@ function createKnowledgeRepositoryCard(col) {
     const toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
     toggleBtn.className = col.enabled
-        ? 'card-btn card-btn--warning'
-        : 'card-btn card-btn--success';
+        ? 'toggle-knowledge-btn card-btn card-btn--warning'
+        : 'toggle-knowledge-btn card-btn card-btn--success';
+    toggleBtn.dataset.enabled = col.enabled ? 'true' : 'false';
     toggleBtn.textContent = col.enabled ? 'Disable' : 'Enable';
     toggleBtn.addEventListener('click', () => {
         if (window.ragCollectionManagement) {
@@ -6799,8 +6800,9 @@ function createCollectionCard(col) {
             const toggleBtn = document.createElement('button');
             toggleBtn.type = 'button';
             toggleBtn.className = col.enabled
-                ? 'card-btn card-btn--warning'
-                : 'card-btn card-btn--success';
+                ? 'toggle-knowledge-btn card-btn card-btn--warning'
+                : 'toggle-knowledge-btn card-btn card-btn--success';
+            toggleBtn.dataset.enabled = col.enabled ? 'true' : 'false';
             toggleBtn.textContent = col.enabled ? 'Disable' : 'Enable';
             toggleBtn.addEventListener('click', () => {
                 if (window.ragCollectionManagement) {
