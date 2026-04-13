@@ -1659,10 +1659,14 @@ async function initializeRAGAutoCompletion() {
                     p.tag && activeIds.includes(p.id)
                 );
                 
-                // Sort profiles: default first, then alphabetical
+                // Sort profiles: default first, then by IFOC order (Ideate → Focus → Optimize → Coordinate), then alphabetical within each group
+                const ifocOrder = { 'llm_only': 0, 'rag_focused': 1, 'tool_enabled': 2, 'genie': 3 };
                 const sortedProfiles = activeProfilesWithTags.sort((a, b) => {
                     if (a.id === defaultProfileId) return -1;
                     if (b.id === defaultProfileId) return 1;
+                    const typeA = ifocOrder[a.profile_type] ?? 99;
+                    const typeB = ifocOrder[b.profile_type] ?? 99;
+                    if (typeA !== typeB) return typeA - typeB;
                     return (a.name || '').localeCompare(b.name || '');
                 });
                 
