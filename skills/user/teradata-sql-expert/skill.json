@@ -1,0 +1,19 @@
+{
+  "name": "teradata-sql-expert",
+  "version": "1.0.0",
+  "description": "Teradata-specific SQL conversion rules and best practices for writing correct, idiomatic Teradata SQL.",
+  "author": "User",
+  "tags": [
+    "teradata",
+    "sql",
+    "database",
+    "best-practices"
+  ],
+  "keywords": [],
+  "use_cases": [],
+  "main_file": "teradata-sql-expert.md",
+  "last_updated": "2026-03-11",
+  "uderia": {
+    "injection_target": "user_context"
+  }
+}

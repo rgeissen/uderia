@@ -350,6 +350,11 @@ def create_app():
             asyncio.create_task(rag_processing_worker())
         app_logger.info(f"Started {_rag_worker_count} RAG processing worker(s)")
 
+        # Eagerly initialize skill manager so startup log shows which directory is used
+        from trusted_data_agent.skills.manager import get_skill_manager
+        _sm = get_skill_manager()
+        app_logger.info(f"Skills loaded from: {_sm.user_dir} ({len(_sm.manifests)} skill(s))")
+
         # Print ready message now that all initialization is complete
         host = APP_STATE.get('server_host', '127.0.0.1')
         port = APP_STATE.get('server_port', 5050)

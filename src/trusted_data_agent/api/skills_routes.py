@@ -106,6 +106,28 @@ async def list_skills():
         if not settings.get("user_skills_enabled", True):
             skills = [s for s in skills if s.get("is_builtin")]
 
+        # Annotate with marketplace publish status for current user
+        import sqlite3
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        try:
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT skill_id, id, visibility FROM marketplace_skills WHERE publisher_user_id = ?",
+                (user_uuid,),
+            )
+            published = {row["skill_id"]: {"marketplace_id": row["id"], "visibility": row["visibility"]}
+                         for row in cursor.fetchall()}
+            conn.close()
+        except Exception:
+            published = {}
+
+        for s in skills:
+            pub = published.get(s["skill_id"])
+            s["is_marketplace_listed"] = pub is not None
+            s["marketplace_id"] = pub["marketplace_id"] if pub else None
+
         return jsonify({
             "skills": skills,
             "_settings": {
@@ -869,12 +891,13 @@ async def browse_marketplace_skills():
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
 
-        # Visibility filter: public + targeted for current user
+        # Visibility filter: public + targeted for current user, excluding own published skills
         where_clauses = [
             "(s.visibility = 'public' OR (s.visibility = 'targeted' AND s.id IN "
-            "(SELECT resource_id FROM marketplace_sharing_grants WHERE resource_type = 'skill' AND grantee_user_id = ?)))"
+            "(SELECT resource_id FROM marketplace_sharing_grants WHERE resource_type = 'skill' AND grantee_user_id = ?)))",
+            "s.publisher_user_id != ?",
         ]
-        params = [user_uuid]
+        params = [user_uuid, user_uuid]
 
         if injection_target != "all":
             where_clauses.append("s.injection_target = ?")

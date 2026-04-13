@@ -171,6 +171,15 @@ function _createSkillCard(skill, activation) {
     targetBadge.textContent = targetCfg.label;
     left.appendChild(targetBadge);
 
+    // Published badge
+    if (skill.is_marketplace_listed) {
+        const publishedBadge = document.createElement('span');
+        publishedBadge.className = 'text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap';
+        publishedBadge.style.cssText = 'background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.25);';
+        publishedBadge.textContent = 'Published';
+        left.appendChild(publishedBadge);
+    }
+
     header.appendChild(left);
 
     // Action buttons
@@ -216,40 +225,56 @@ function _createSkillCard(skill, activation) {
     });
     actions.appendChild(exportBtn);
 
-    // Publish button (user-created only, marketplace enabled)
+    // Publish / Unpublish button (user-created only, marketplace enabled)
     if (!isBuiltin && _skillSettings.user_skills_marketplace_enabled !== false) {
-        const publishBtn = document.createElement('button');
-        publishBtn.className = 'p-1 rounded transition-colors';
-        publishBtn.style.cssText = 'color: var(--text-muted);';
-        publishBtn.title = 'Publish to marketplace';
-        publishBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>';
-        const _pubIcon = publishBtn.innerHTML;
-        publishBtn.addEventListener('click', async () => {
-            try {
-                publishBtn.disabled = true;
-                publishBtn.textContent = '...';
-                const res = await fetch(`/api/v1/skills/${skill.skill_id}/publish`, {
-                    method: 'POST',
-                    headers: _authHeaders(),
-                    body: JSON.stringify({ visibility: 'public' }),
-                });
-                const data = await res.json();
-                if (res.ok) {
-                    _notify('success', data.message || 'Published to marketplace');
-                    publishBtn.textContent = 'Published';
-                    publishBtn.disabled = true;
-                } else {
-                    _notify('error', data.error || 'Publish failed');
-                    publishBtn.disabled = false;
-                    publishBtn.innerHTML = _pubIcon;
-                }
-            } catch (err) {
-                _notify('error', 'Publish failed: ' + err.message);
-                publishBtn.disabled = false;
-                publishBtn.innerHTML = _pubIcon;
-            }
-        });
-        actions.appendChild(publishBtn);
+        if (skill.is_marketplace_listed) {
+            // Already published — show Unpublish as a small text button
+            const unpublishBtn = document.createElement('button');
+            unpublishBtn.className = 'inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded transition-colors whitespace-nowrap';
+            unpublishBtn.style.cssText = 'background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #f87171;';
+            unpublishBtn.title = 'Remove from marketplace';
+            unpublishBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M3 3l18 18"/></svg>Unpublish';
+            unpublishBtn.addEventListener('mouseenter', () => { unpublishBtn.style.background = 'rgba(239,68,68,0.18)'; });
+            unpublishBtn.addEventListener('mouseleave', () => { unpublishBtn.style.background = 'rgba(239,68,68,0.08)'; });
+            unpublishBtn.addEventListener('click', () => {
+                window.showConfirmation(
+                    'Unpublish Skill',
+                    `<p>Remove <strong>"${skill.name}"</strong> from the marketplace?</p>`,
+                    async () => {
+                        unpublishBtn.disabled = true;
+                        try {
+                            const res = await fetch(`/api/v1/marketplace/skills/${skill.marketplace_id}`, {
+                                method: 'DELETE',
+                                headers: _authHeaders(),
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                                _notify('success', data.message || 'Skill unpublished');
+                                loadSkills();
+                            } else {
+                                _notify('error', data.error || 'Unpublish failed');
+                                unpublishBtn.disabled = false;
+                            }
+                        } catch (err) {
+                            _notify('error', 'Unpublish failed: ' + err.message);
+                            unpublishBtn.disabled = false;
+                        }
+                    }
+                );
+            });
+            actions.appendChild(unpublishBtn);
+        } else {
+            // Not yet published — show Publish icon button
+            const publishBtn = document.createElement('button');
+            publishBtn.className = 'p-1 rounded transition-colors';
+            publishBtn.title = 'Publish to marketplace';
+            publishBtn.style.cssText = 'color: var(--text-muted);';
+            publishBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>';
+            publishBtn.addEventListener('click', () => {
+                if (window.openSkillPublishModal) window.openSkillPublishModal(skill);
+            });
+            actions.appendChild(publishBtn);
+        }
     }
 
     // Delete button (user-created only)
@@ -1135,6 +1160,8 @@ export async function loadSkills() {
         `;
     }
 }
+
+window.loadSkills = loadSkills;
 
 export function initializeSkillHandlers() {
     // Filters
