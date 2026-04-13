@@ -244,6 +244,24 @@
             border-color: rgba(217,119,6,0.35);
             color: #b45309;
         }
+        .ext-red-btn {
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.2);
+            color: #f87171;
+        }
+        .ext-red-btn:hover {
+            background: rgba(239,68,68,0.18);
+            border-color: rgba(239,68,68,0.35);
+        }
+        [data-theme="light"] .ext-red-btn {
+            background: rgba(220,38,38,0.08);
+            border-color: rgba(220,38,38,0.25);
+            color: #dc2626;
+        }
+        [data-theme="light"] .ext-red-btn:hover {
+            background: rgba(220,38,38,0.15);
+            border-color: rgba(220,38,38,0.4);
+        }
         .ext-activation-card {
             background: rgba(251,191,36,0.03);
             border: 1px solid rgba(251,191,36,0.1);
@@ -10384,6 +10402,130 @@
                     <button type="submit" id="publish-collection-submit" class="card-btn card-btn--success">
                         Publish Collection
                     </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Publish Skill Modal -->
+    <div id="publish-skill-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden opacity-0">
+        <div id="publish-skill-modal-content" class="glass-panel rounded-xl shadow-2xl w-full max-w-lg p-6 transform scale-95 opacity-0">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-white">Publish to Marketplace</h2>
+                <button type="button" id="publish-skill-modal-close" class="p-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <form id="publish-skill-form" class="space-y-4">
+                <input type="hidden" id="publish-skill-id" name="skill_id">
+                <div class="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <p class="text-sm text-gray-400 mb-2">Publishing:</p>
+                    <p id="publish-skill-name" class="text-white font-semibold"></p>
+                    <p id="publish-skill-description" class="text-sm text-gray-400 mt-1"></p>
+                </div>
+                <div>
+                    <label for="publish-skill-visibility" class="block text-sm font-medium text-gray-300 mb-2">
+                        Visibility <span class="text-red-400">*</span>
+                    </label>
+                    <select id="publish-skill-visibility" name="visibility" required
+                            class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none text-white">
+                        <option value="">Select visibility...</option>
+                        <option value="public">Public - Anyone can discover and install</option>
+                        <option value="targeted">Targeted - Share with specific users only</option>
+                    </select>
+                </div>
+                <div id="publish-skill-users-section" class="hidden">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        Share with Users <span class="text-red-400">*</span>
+                    </label>
+                    <div class="relative mb-2">
+                        <input type="text" id="publish-skill-users-search" placeholder="Search users..."
+                               class="w-full p-2 pl-8 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:border-blue-500">
+                        <svg class="w-4 h-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </div>
+                    <div id="publish-skill-users-list" class="max-h-40 overflow-y-auto space-y-1 bg-white/5 rounded-lg p-2 border border-white/10">
+                        <p class="text-sm text-gray-500 text-center py-2">Select visibility "Targeted" to see users</p>
+                    </div>
+                    <p id="publish-skill-users-count" class="text-xs text-gray-400 mt-1">0 users selected</p>
+                </div>
+                <div class="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
+                    <div class="flex gap-3">
+                        <svg class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <div class="text-sm text-green-200">
+                            <p class="font-semibold mb-1">Share your skill</p>
+                            <p>Publishing makes your skill available in the marketplace. Others can install it to benefit from your expertise.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-600">
+                    <button type="button" id="publish-skill-cancel" class="card-btn card-btn--neutral">Cancel</button>
+                    <button type="submit" id="publish-skill-submit" class="card-btn card-btn--success">Publish Skill</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Publish Extension Modal -->
+    <div id="publish-extension-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden opacity-0">
+        <div id="publish-extension-modal-content" class="glass-panel rounded-xl shadow-2xl w-full max-w-lg p-6 transform scale-95 opacity-0">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-white">Publish to Marketplace</h2>
+                <button type="button" id="publish-extension-modal-close" class="p-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <form id="publish-extension-form" class="space-y-4">
+                <input type="hidden" id="publish-extension-id" name="extension_id">
+                <div class="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <p class="text-sm text-gray-400 mb-2">Publishing:</p>
+                    <p id="publish-extension-name" class="text-white font-semibold"></p>
+                    <p id="publish-extension-description" class="text-sm text-gray-400 mt-1"></p>
+                </div>
+                <div>
+                    <label for="publish-extension-visibility" class="block text-sm font-medium text-gray-300 mb-2">
+                        Visibility <span class="text-red-400">*</span>
+                    </label>
+                    <select id="publish-extension-visibility" name="visibility" required
+                            class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none text-white">
+                        <option value="">Select visibility...</option>
+                        <option value="public">Public - Anyone can discover and install</option>
+                        <option value="targeted">Targeted - Share with specific users only</option>
+                    </select>
+                </div>
+                <div id="publish-extension-users-section" class="hidden">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        Share with Users <span class="text-red-400">*</span>
+                    </label>
+                    <div class="relative mb-2">
+                        <input type="text" id="publish-extension-users-search" placeholder="Search users..."
+                               class="w-full p-2 pl-8 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:border-blue-500">
+                        <svg class="w-4 h-4 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </div>
+                    <div id="publish-extension-users-list" class="max-h-40 overflow-y-auto space-y-1 bg-white/5 rounded-lg p-2 border border-white/10">
+                        <p class="text-sm text-gray-500 text-center py-2">Select visibility "Targeted" to see users</p>
+                    </div>
+                    <p id="publish-extension-users-count" class="text-xs text-gray-400 mt-1">0 users selected</p>
+                </div>
+                <div class="bg-amber-900/20 border border-amber-500/30 rounded-lg p-4">
+                    <div class="flex gap-3">
+                        <svg class="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <div class="text-sm text-amber-200">
+                            <p class="font-semibold mb-1">Share your extension</p>
+                            <p>Publishing makes your extension available in the marketplace. Others can install it to benefit from your enhancements.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-600">
+                    <button type="button" id="publish-extension-cancel" class="card-btn card-btn--neutral">Cancel</button>
+                    <button type="submit" id="publish-extension-submit" class="card-btn card-btn--success">Publish Extension</button>
                 </div>
             </form>
         </div>

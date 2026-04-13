@@ -593,5 +593,8 @@ def get_skill_manager() -> SkillManager:
     """Get or create the singleton SkillManager instance."""
     global _instance
     if _instance is None:
-        _instance = SkillManager()
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
+        repo_user_dir = project_root / "skills" / "user"
+        user_dir = repo_user_dir if repo_user_dir.exists() else None
+        _instance = SkillManager(user_dir=user_dir)
     return _instance

@@ -149,6 +149,8 @@ export function initializeMarketplace() {
     // Initialize modals
     initializeForkModal();
     initializePublishModal();
+    initializeSkillPublishModal();
+    initializeExtensionPublishModal();
     initializeRateModal();
     initializeAgentPackRateModal();
 
@@ -622,46 +624,59 @@ function createMyExtensionCard(ext) {
 
         <!-- Actions -->
         <div class="mt-2 flex gap-2 flex-wrap">
-            <button class="my-ext-publish-btn card-btn card-btn--success">
-                Publish
-            </button>
+            ${ext.is_marketplace_listed
+                ? `<button class="my-ext-unpublish-btn card-btn card-btn--danger">Unpublish</button>`
+                : `<button class="my-ext-publish-btn card-btn card-btn--success">Publish</button>`
+            }
             <button class="my-ext-export-btn card-btn card-btn--secondary">
                 Export
             </button>
         </div>
     `;
 
+    // Wire unpublish button
+    const unpublishBtn = card.querySelector('.my-ext-unpublish-btn');
+    if (unpublishBtn) {
+        unpublishBtn.addEventListener('click', () => {
+            const extName = ext.display_name || ext.name || ext.extension_id;
+            if (!window.showConfirmation) { showNotification('error', 'Confirmation system not available'); return; }
+            window.showConfirmation(
+                'Unpublish Extension',
+                `Remove "${extName}" from the marketplace? Existing installs are not affected.`,
+                async () => {
+                    try {
+                        unpublishBtn.disabled = true;
+                        unpublishBtn.textContent = 'Removing...';
+                        const token = window.authClient?.getToken();
+                        const resp = await fetch(`/api/v1/marketplace/extensions/${ext.marketplace_id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                        });
+                        const data = await resp.json();
+                        if (resp.ok) {
+                            showNotification('success', 'Extension removed from marketplace');
+                            loadMarketplaceContent();
+                            if (window.loadExtensions) window.loadExtensions();
+                        } else {
+                            showNotification('error', data.error || 'Unpublish failed');
+                            unpublishBtn.disabled = false;
+                            unpublishBtn.textContent = 'Unpublish';
+                        }
+                    } catch (err) {
+                        showNotification('error', 'Unpublish failed: ' + err.message);
+                        unpublishBtn.disabled = false;
+                        unpublishBtn.textContent = 'Unpublish';
+                    }
+                }
+            );
+        });
+    }
+
     // Wire publish button
     const publishBtn = card.querySelector('.my-ext-publish-btn');
     if (publishBtn) {
-        publishBtn.addEventListener('click', async () => {
-            try {
-                publishBtn.disabled = true;
-                publishBtn.textContent = 'Publishing...';
-                const token = await window.authClient.getToken();
-                const resp = await fetch(`/api/v1/extensions/${ext.extension_id}/publish`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ visibility: 'public' }),
-                });
-                const data = await resp.json();
-                if (resp.ok) {
-                    showNotification('success', data.message || 'Published to marketplace');
-                    publishBtn.textContent = 'Published';
-                    publishBtn.disabled = true;
-                } else {
-                    showNotification('error', data.error || 'Publish failed');
-                    publishBtn.textContent = 'Publish';
-                    publishBtn.disabled = false;
-                }
-            } catch (err) {
-                showNotification('error', 'Publish failed: ' + err.message);
-                publishBtn.textContent = 'Publish';
-                publishBtn.disabled = false;
-            }
+        publishBtn.addEventListener('click', () => {
+            if (window.openExtensionPublishModal) window.openExtensionPublishModal(ext);
         });
     }
 
@@ -1676,6 +1691,7 @@ function createSkillMarketplaceCard(skill) {
                         if (resp.ok) {
                             showNotification('success', 'Skill unpublished');
                             loadMarketplaceSkills();
+                            if (window.loadSkills) window.loadSkills();
                         } else {
                             const data = await resp.json();
                             showNotification('error', data.error || 'Unpublish failed');
@@ -1752,9 +1768,10 @@ function createMySkillCard(skill) {
 
         <!-- Actions -->
         <div class="mt-2 flex gap-2 flex-wrap">
-            <button class="my-skill-publish-btn card-btn card-btn--success">
-                Publish
-            </button>
+            ${skill.is_marketplace_listed
+                ? `<button class="my-skill-unpublish-btn card-btn card-btn--danger">Unpublish</button>`
+                : `<button class="my-skill-publish-btn card-btn card-btn--success">Publish</button>`
+            }
             <button class="my-skill-export-btn card-btn card-btn--secondary">
                 Export
             </button>
@@ -1764,34 +1781,44 @@ function createMySkillCard(skill) {
     // Wire publish button
     const publishBtn = card.querySelector('.my-skill-publish-btn');
     if (publishBtn) {
-        publishBtn.addEventListener('click', async () => {
-            try {
-                publishBtn.disabled = true;
-                publishBtn.textContent = 'Publishing...';
-                const token = await window.authClient.getToken();
-                const resp = await fetch(`/api/v1/skills/${skill.skill_id}/publish`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ visibility: 'public' }),
-                });
-                const data = await resp.json();
-                if (resp.ok) {
-                    showNotification('success', data.message || 'Published to marketplace');
-                    publishBtn.textContent = 'Published';
-                    publishBtn.disabled = true;
-                } else {
-                    showNotification('error', data.error || 'Publish failed');
-                    publishBtn.textContent = 'Publish';
-                    publishBtn.disabled = false;
+        publishBtn.addEventListener('click', () => {
+            if (window.openSkillPublishModal) window.openSkillPublishModal(skill);
+        });
+    }
+
+    // Wire unpublish button
+    const unpublishBtn = card.querySelector('.my-skill-unpublish-btn');
+    if (unpublishBtn) {
+        unpublishBtn.addEventListener('click', () => {
+            window.showConfirmation(
+                'Unpublish Skill',
+                `<p>Remove <strong>"${escapeHtml(skill.name || skill.skill_id)}"</strong> from the marketplace?</p>`,
+                async () => {
+                    unpublishBtn.disabled = true;
+                    unpublishBtn.textContent = 'Removing...';
+                    try {
+                        const token = window.authClient?.getToken();
+                        const res = await fetch(`/api/v1/marketplace/skills/${skill.marketplace_id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${token}` },
+                        });
+                        const data = await res.json();
+                        if (res.ok) {
+                            showNotification('success', data.message || 'Skill unpublished');
+                            loadMarketplaceContent();
+                            if (window.loadSkills) window.loadSkills();
+                        } else {
+                            showNotification('error', data.error || 'Unpublish failed');
+                            unpublishBtn.disabled = false;
+                            unpublishBtn.textContent = 'Unpublish';
+                        }
+                    } catch (err) {
+                        showNotification('error', 'Unpublish failed: ' + err.message);
+                        unpublishBtn.disabled = false;
+                        unpublishBtn.textContent = 'Unpublish';
+                    }
                 }
-            } catch (err) {
-                showNotification('error', 'Publish failed: ' + err.message);
-                publishBtn.textContent = 'Publish';
-                publishBtn.disabled = false;
-            }
+            );
         });
     }
 
@@ -3666,11 +3693,359 @@ function openKgRateModal(kg) {
 }
 
 
+// ---------------------------------------------------------------------------
+// Skill Publish Modal
+// ---------------------------------------------------------------------------
+
+function initializeSkillPublishModal() {
+    const modal = document.getElementById('publish-skill-modal-overlay');
+    const closeBtn = document.getElementById('publish-skill-modal-close');
+    const cancelBtn = document.getElementById('publish-skill-cancel');
+    const form = document.getElementById('publish-skill-form');
+
+    if (closeBtn) closeBtn.addEventListener('click', closeSkillPublishModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeSkillPublishModal);
+    if (modal) modal.addEventListener('click', e => { if (e.target === modal) closeSkillPublishModal(); });
+
+    if (form) {
+        form.addEventListener('submit', async e => {
+            e.preventDefault();
+            await handleSkillPublish();
+        });
+    }
+
+    const visibilitySelect = document.getElementById('publish-skill-visibility');
+    if (visibilitySelect) {
+        visibilitySelect.addEventListener('change', () => {
+            const section = document.getElementById('publish-skill-users-section');
+            if (!section) return;
+            if (visibilitySelect.value === 'targeted') {
+                section.classList.remove('hidden');
+                _loadSkillPublishShareableUsers('');
+            } else {
+                section.classList.add('hidden');
+            }
+            _updateSkillPublishButtonText();
+        });
+    }
+
+    const searchInput = document.getElementById('publish-skill-users-search');
+    if (searchInput) {
+        let debounce = null;
+        searchInput.addEventListener('input', () => {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => _loadSkillPublishShareableUsers(searchInput.value), 300);
+        });
+    }
+}
+
+export function openSkillPublishModal(skill) {
+    const modal = document.getElementById('publish-skill-modal-overlay');
+    const modalContent = document.getElementById('publish-skill-modal-content');
+    if (!modal || !modalContent) return;
+
+    document.getElementById('publish-skill-id').value = skill.skill_id;
+    const nameEl = document.getElementById('publish-skill-name');
+    const descEl = document.getElementById('publish-skill-description');
+    if (nameEl) nameEl.textContent = skill.name || skill.skill_id;
+    if (descEl) descEl.textContent = skill.description || 'No description';
+
+    const visibilitySelect = document.getElementById('publish-skill-visibility');
+    if (visibilitySelect) visibilitySelect.value = '';
+    const usersSection = document.getElementById('publish-skill-users-section');
+    if (usersSection) usersSection.classList.add('hidden');
+    _updateSkillPublishButtonText();
+
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        modal.classList.add('opacity-100');
+        modalContent.classList.remove('scale-95', 'opacity-0');
+        modalContent.classList.add('scale-100', 'opacity-100');
+    }, 10);
+}
+
+function closeSkillPublishModal() {
+    const modal = document.getElementById('publish-skill-modal-overlay');
+    const modalContent = document.getElementById('publish-skill-modal-content');
+    const form = document.getElementById('publish-skill-form');
+    if (!modal || !modalContent) return;
+    modal.classList.remove('opacity-100');
+    modalContent.classList.remove('scale-100', 'opacity-100');
+    modalContent.classList.add('scale-95', 'opacity-0');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        if (form) form.reset();
+    }, 300);
+}
+
+function _updateSkillPublishButtonText() {
+    const submitBtn = document.getElementById('publish-skill-submit');
+    const visibility = document.getElementById('publish-skill-visibility')?.value;
+    if (!submitBtn) return;
+    submitBtn.textContent = visibility === 'targeted' ? 'Publish (Targeted)' : 'Publish Skill';
+}
+
+async function _loadSkillPublishShareableUsers(search) {
+    const listEl = document.getElementById('publish-skill-users-list');
+    const countEl = document.getElementById('publish-skill-users-count');
+    if (!listEl) return;
+    const token = window.authClient?.getToken();
+    if (!token) return;
+    try {
+        const url = `/api/v1/marketplace/shareable-users${search ? `?search=${encodeURIComponent(search)}` : ''}`;
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'success' || !data.users.length) {
+            listEl.innerHTML = '<p class="text-sm text-gray-500 text-center py-2">No eligible users found</p>';
+            return;
+        }
+        const prevSelected = new Set();
+        listEl.querySelectorAll('input[type=checkbox]:checked').forEach(cb => prevSelected.add(cb.value));
+        listEl.innerHTML = data.users.map(u => {
+            const isChecked = prevSelected.has(u.id);
+            return `<label class="flex items-center gap-2 p-1.5 rounded hover:bg-white/5 cursor-pointer">
+                <input type="checkbox" value="${u.id}" class="publish-skill-user-cb accent-indigo-500" ${isChecked ? 'checked' : ''}>
+                <span class="text-sm text-white">${escapeHtml(u.display_name)}</span>
+                <span class="text-xs text-gray-500">${escapeHtml(u.username)}</span>
+                ${u.email ? `<span class="text-xs text-gray-600 ml-auto">${escapeHtml(u.email)}</span>` : ''}
+            </label>`;
+        }).join('');
+        const updateCount = () => {
+            const checked = listEl.querySelectorAll('.publish-skill-user-cb:checked').length;
+            if (countEl) countEl.textContent = `${checked} user${checked !== 1 ? 's' : ''} selected`;
+        };
+        listEl.querySelectorAll('.publish-skill-user-cb').forEach(cb => cb.addEventListener('change', updateCount));
+        updateCount();
+    } catch {
+        listEl.innerHTML = '<p class="text-sm text-red-400 text-center py-2">Failed to load users</p>';
+    }
+}
+
+async function handleSkillPublish() {
+    const skillId = document.getElementById('publish-skill-id')?.value;
+    const visibility = document.getElementById('publish-skill-visibility')?.value;
+    const submitBtn = document.getElementById('publish-skill-submit');
+
+    if (!skillId || !visibility) {
+        showNotification('error', 'Please select a visibility option');
+        return;
+    }
+    const token = window.authClient?.getToken();
+    if (!token) { showNotification('error', 'Authentication required'); return; }
+
+    const body = { visibility };
+    if (visibility === 'targeted') {
+        const selectedUserIds = [...document.querySelectorAll('.publish-skill-user-cb:checked')].map(cb => cb.value);
+        if (selectedUserIds.length === 0) {
+            showNotification('error', 'Please select at least one user');
+            return;
+        }
+        body.user_ids = selectedUserIds;
+    }
+
+    const originalText = submitBtn?.textContent || 'Publish Skill';
+    if (submitBtn) { submitBtn.textContent = 'Publishing...'; submitBtn.disabled = true; }
+
+    try {
+        const res = await fetch(`/api/v1/skills/${skillId}/publish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'Publish failed');
+        }
+        showNotification('success', visibility === 'targeted' ? 'Skill published to targeted users' : 'Skill published to marketplace');
+        closeSkillPublishModal();
+        loadMarketplaceContent();
+        if (window.loadSkills) window.loadSkills();
+    } catch (err) {
+        showNotification('error', 'Failed to publish: ' + err.message);
+        if (submitBtn) { submitBtn.textContent = originalText; submitBtn.disabled = false; }
+    }
+}
+
 // Export refresh function for external use
 export function refreshMarketplace() {
     currentPage = 1;
     loadMarketplaceContent();
 }
 
+// ---------------------------------------------------------------------------
+// Extension Publish Modal
+// ---------------------------------------------------------------------------
+
+function initializeExtensionPublishModal() {
+    const modal = document.getElementById('publish-extension-modal-overlay');
+    const closeBtn = document.getElementById('publish-extension-modal-close');
+    const cancelBtn = document.getElementById('publish-extension-cancel');
+    const form = document.getElementById('publish-extension-form');
+
+    if (closeBtn) closeBtn.addEventListener('click', closeExtensionPublishModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeExtensionPublishModal);
+    if (modal) modal.addEventListener('click', e => { if (e.target === modal) closeExtensionPublishModal(); });
+
+    if (form) {
+        form.addEventListener('submit', async e => {
+            e.preventDefault();
+            await handleExtensionPublish();
+        });
+    }
+
+    const visibilitySelect = document.getElementById('publish-extension-visibility');
+    if (visibilitySelect) {
+        visibilitySelect.addEventListener('change', () => {
+            const section = document.getElementById('publish-extension-users-section');
+            if (!section) return;
+            if (visibilitySelect.value === 'targeted') {
+                section.classList.remove('hidden');
+                _loadExtensionPublishShareableUsers('');
+            } else {
+                section.classList.add('hidden');
+            }
+            _updateExtensionPublishButtonText();
+        });
+    }
+
+    const searchInput = document.getElementById('publish-extension-users-search');
+    if (searchInput) {
+        let debounce = null;
+        searchInput.addEventListener('input', () => {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => _loadExtensionPublishShareableUsers(searchInput.value), 300);
+        });
+    }
+}
+
+export function openExtensionPublishModal(ext) {
+    const modal = document.getElementById('publish-extension-modal-overlay');
+    const modalContent = document.getElementById('publish-extension-modal-content');
+    if (!modal || !modalContent) return;
+
+    document.getElementById('publish-extension-id').value = ext.extension_id;
+    const nameEl = document.getElementById('publish-extension-name');
+    const descEl = document.getElementById('publish-extension-description');
+    if (nameEl) nameEl.textContent = ext.display_name || ext.name || ext.extension_id;
+    if (descEl) descEl.textContent = ext.description || 'No description';
+
+    const visibilitySelect = document.getElementById('publish-extension-visibility');
+    if (visibilitySelect) visibilitySelect.value = '';
+    const usersSection = document.getElementById('publish-extension-users-section');
+    if (usersSection) usersSection.classList.add('hidden');
+    _updateExtensionPublishButtonText();
+
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        modal.classList.add('opacity-100');
+        modalContent.classList.remove('scale-95', 'opacity-0');
+        modalContent.classList.add('scale-100', 'opacity-100');
+    }, 10);
+}
+
+function closeExtensionPublishModal() {
+    const modal = document.getElementById('publish-extension-modal-overlay');
+    const modalContent = document.getElementById('publish-extension-modal-content');
+    const form = document.getElementById('publish-extension-form');
+    if (!modal || !modalContent) return;
+    modal.classList.remove('opacity-100');
+    modalContent.classList.remove('scale-100', 'opacity-100');
+    modalContent.classList.add('scale-95', 'opacity-0');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        if (form) form.reset();
+    }, 300);
+}
+
+function _updateExtensionPublishButtonText() {
+    const submitBtn = document.getElementById('publish-extension-submit');
+    const visibility = document.getElementById('publish-extension-visibility')?.value;
+    if (!submitBtn) return;
+    submitBtn.textContent = visibility === 'targeted' ? 'Publish (Targeted)' : 'Publish Extension';
+}
+
+async function _loadExtensionPublishShareableUsers(search) {
+    const listEl = document.getElementById('publish-extension-users-list');
+    const countEl = document.getElementById('publish-extension-users-count');
+    if (!listEl) return;
+    const token = window.authClient?.getToken();
+    if (!token) return;
+    try {
+        const url = `/api/v1/marketplace/shareable-users${search ? `?search=${encodeURIComponent(search)}` : ''}`;
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'success' || !data.users.length) {
+            listEl.innerHTML = '<p class="text-sm text-gray-500 text-center py-2">No eligible users found</p>';
+            return;
+        }
+        const prevSelected = new Set();
+        listEl.querySelectorAll('input[type=checkbox]:checked').forEach(cb => prevSelected.add(cb.value));
+        listEl.innerHTML = data.users.map(u => {
+            const isChecked = prevSelected.has(u.id);
+            return `<label class="flex items-center gap-2 p-1.5 rounded hover:bg-white/5 cursor-pointer">
+                <input type="checkbox" value="${u.id}" class="publish-ext-user-cb accent-indigo-500" ${isChecked ? 'checked' : ''}>
+                <span class="text-sm text-white">${escapeHtml(u.display_name)}</span>
+                <span class="text-xs text-gray-500">${escapeHtml(u.username)}</span>
+                ${u.email ? `<span class="text-xs text-gray-600 ml-auto">${escapeHtml(u.email)}</span>` : ''}
+            </label>`;
+        }).join('');
+        const updateCount = () => {
+            const checked = listEl.querySelectorAll('.publish-ext-user-cb:checked').length;
+            if (countEl) countEl.textContent = `${checked} user${checked !== 1 ? 's' : ''} selected`;
+        };
+        listEl.querySelectorAll('.publish-ext-user-cb').forEach(cb => cb.addEventListener('change', updateCount));
+        updateCount();
+    } catch {
+        listEl.innerHTML = '<p class="text-sm text-red-400 text-center py-2">Failed to load users</p>';
+    }
+}
+
+async function handleExtensionPublish() {
+    const extensionId = document.getElementById('publish-extension-id')?.value;
+    const visibility = document.getElementById('publish-extension-visibility')?.value;
+    const submitBtn = document.getElementById('publish-extension-submit');
+
+    if (!extensionId || !visibility) {
+        showNotification('error', 'Please select a visibility option');
+        return;
+    }
+    const token = window.authClient?.getToken();
+    if (!token) { showNotification('error', 'Authentication required'); return; }
+
+    const body = { visibility };
+    if (visibility === 'targeted') {
+        const selectedUserIds = [...document.querySelectorAll('.publish-ext-user-cb:checked')].map(cb => cb.value);
+        if (selectedUserIds.length === 0) {
+            showNotification('error', 'Please select at least one user');
+            return;
+        }
+        body.user_ids = selectedUserIds;
+    }
+
+    const originalText = submitBtn?.textContent || 'Publish Extension';
+    if (submitBtn) { submitBtn.textContent = 'Publishing...'; submitBtn.disabled = true; }
+
+    try {
+        const res = await fetch(`/api/v1/extensions/${extensionId}/publish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'Publish failed');
+        }
+        showNotification('success', visibility === 'targeted' ? 'Extension published to targeted users' : 'Extension published to marketplace');
+        closeExtensionPublishModal();
+        loadMarketplaceContent();
+        if (window.loadExtensions) window.loadExtensions();
+    } catch (err) {
+        showNotification('error', 'Failed to publish: ' + err.message);
+        if (submitBtn) { submitBtn.textContent = originalText; submitBtn.disabled = false; }
+    }
+}
+
 // Make refreshMarketplace globally accessible
 window.refreshMarketplace = refreshMarketplace;
+window.openSkillPublishModal = openSkillPublishModal;
+window.openExtensionPublishModal = openExtensionPublishModal;

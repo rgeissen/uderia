@@ -11701,6 +11701,28 @@ async def list_extensions():
         if not settings.get('user_extensions_enabled', True):
             extensions = [e for e in extensions if e.get('is_builtin')]
 
+        # Annotate with marketplace publish status for current user
+        import sqlite3 as _sqlite3
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        try:
+            conn = _sqlite3.connect(str(db_path))
+            conn.row_factory = _sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT extension_id, id, visibility FROM marketplace_extensions WHERE publisher_user_id = ?",
+                (user_uuid,),
+            )
+            published = {row["extension_id"]: {"marketplace_id": row["id"], "visibility": row["visibility"]}
+                         for row in cursor.fetchall()}
+            conn.close()
+        except Exception:
+            published = {}
+
+        for ext in extensions:
+            pub = published.get(ext["extension_id"])
+            ext["is_marketplace_listed"] = pub is not None
+            ext["marketplace_id"] = pub["marketplace_id"] if pub else None
+
         return jsonify({
             "extensions": extensions,
             "_settings": {
@@ -12597,12 +12619,13 @@ async def browse_marketplace_extensions():
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
 
-        # Visibility filter: public + targeted for current user
+        # Visibility filter: public + targeted for current user, excluding own published extensions
         where_clauses = [
             "(e.visibility = 'public' OR (e.visibility = 'targeted' AND e.id IN "
-            "(SELECT resource_id FROM marketplace_sharing_grants WHERE resource_type = 'extension' AND grantee_user_id = ?)))"
+            "(SELECT resource_id FROM marketplace_sharing_grants WHERE resource_type = 'extension' AND grantee_user_id = ?)))",
+            "e.publisher_user_id != ?",
         ]
-        params = [user_uuid]
+        params = [user_uuid, user_uuid]
 
         if category != "all":
             where_clauses.append("e.category = ?")

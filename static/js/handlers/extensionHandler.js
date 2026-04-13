@@ -641,6 +641,13 @@ function createExtensionGridCard(ext, activations, activationCount) {
         cat.textContent = ext.category;
         row1.appendChild(cat);
     }
+    if (ext.is_marketplace_listed) {
+        const publishedBadge = document.createElement('span');
+        publishedBadge.className = 'text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap';
+        publishedBadge.style.cssText = 'background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.25);';
+        publishedBadge.textContent = 'Published';
+        row1.appendChild(publishedBadge);
+    }
     compact.appendChild(row1);
 
     // Row 2: description (2-line clamp)
@@ -707,6 +714,57 @@ function createExtensionGridCard(ext, activations, activationCount) {
         }
     });
     footer.appendChild(activateBtn);
+
+    // Publish / Unpublish compact button (user-created, marketplace enabled)
+    if (ext.is_user && _extensionSettings.marketplace_enabled !== false) {
+        if (ext.is_marketplace_listed) {
+            const unpublishCompactBtn = document.createElement('button');
+            unpublishCompactBtn.className = 'ext-red-btn inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium rounded-md transition-all duration-200';
+            unpublishCompactBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>Unpublish`;
+            unpublishCompactBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const extName = ext.display_name || ext.extension_id;
+                if (!window.showConfirmation) { _notify('error', 'Confirmation system not available'); return; }
+                window.showConfirmation(
+                    'Unpublish Extension',
+                    `Remove "${extName}" from the marketplace? Existing installs are not affected.`,
+                    async () => {
+                        try {
+                            unpublishCompactBtn.disabled = true;
+                            unpublishCompactBtn.textContent = '...';
+                            const token = localStorage.getItem('tda_auth_token');
+                            const resp = await fetch(`/api/v1/marketplace/extensions/${ext.marketplace_id}`, {
+                                method: 'DELETE',
+                                headers: { 'Authorization': `Bearer ${token}` },
+                            });
+                            const data = await resp.json();
+                            if (resp.ok) {
+                                _notify('success', 'Extension removed from marketplace');
+                                await _refreshExtensionData();
+                            } else {
+                                _notify('error', data.error || 'Unpublish failed');
+                                unpublishCompactBtn.disabled = false;
+                                unpublishCompactBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>Unpublish`;
+                            }
+                        } catch (err) {
+                            _notify('error', 'Unpublish failed: ' + err.message);
+                            unpublishCompactBtn.disabled = false;
+                        }
+                    }
+                );
+            });
+            footer.appendChild(unpublishCompactBtn);
+        } else {
+            const publishCompactBtn = document.createElement('button');
+            publishCompactBtn.className = 'ext-amber-btn inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium rounded-md transition-all duration-200';
+            publishCompactBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>Publish`;
+            publishCompactBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (window.openExtensionPublishModal) window.openExtensionPublishModal(ext);
+            });
+            footer.appendChild(publishCompactBtn);
+        }
+    }
 
     // Delete icon button (user-created, no active activations)
     if (ext.is_user && !ext.is_builtin && activationCount === 0) {
@@ -894,40 +952,59 @@ function _buildCardDetailPanel(ext, activations) {
     });
     toolbar.appendChild(dupBtn);
 
-    // Publish (user-created, marketplace enabled)
+    // Publish / Unpublish (user-created, marketplace enabled)
     if (ext.is_user && _extensionSettings.marketplace_enabled !== false) {
-        const publishBtn = _toolbarBtn(
-            `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>`,
-            'Publish', 'ext-amber-btn'
-        );
-        const _pubIcon = publishBtn.innerHTML;
-        publishBtn.addEventListener('click', async () => {
-            try {
-                publishBtn.disabled = true;
-                publishBtn.textContent = '...';
-                const token = localStorage.getItem('tda_auth_token');
-                const resp = await fetch(`/api/v1/extensions/${ext.extension_id}/publish`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ visibility: 'public' }),
-                });
-                const data = await resp.json();
-                if (resp.ok) {
-                    _notify('success', data.message || 'Published to marketplace');
-                    publishBtn.textContent = 'Published';
-                    publishBtn.disabled = true;
-                } else {
-                    _notify('error', data.error || 'Publish failed');
-                    publishBtn.disabled = false;
-                    publishBtn.innerHTML = _pubIcon;
-                }
-            } catch (err) {
-                _notify('error', 'Publish failed: ' + err.message);
-                publishBtn.disabled = false;
-                publishBtn.innerHTML = _pubIcon;
-            }
-        });
-        toolbar.appendChild(publishBtn);
+        if (ext.is_marketplace_listed) {
+            // Unpublish button
+            const unpublishBtn = _toolbarBtn(
+                `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>`,
+                'Unpublish', 'ext-red-btn'
+            );
+            const _unpubIcon = unpublishBtn.innerHTML;
+            unpublishBtn.addEventListener('click', () => {
+                const extName = ext.display_name || ext.extension_id;
+                if (!window.showConfirmation) { _notify('error', 'Confirmation system not available'); return; }
+                window.showConfirmation(
+                    'Unpublish Extension',
+                    `Remove "${extName}" from the marketplace? Existing installs are not affected.`,
+                    async () => {
+                        try {
+                            unpublishBtn.disabled = true;
+                            unpublishBtn.textContent = '...';
+                            const token = localStorage.getItem('tda_auth_token');
+                            const resp = await fetch(`/api/v1/marketplace/extensions/${ext.marketplace_id}`, {
+                                method: 'DELETE',
+                                headers: { 'Authorization': `Bearer ${token}` },
+                            });
+                            const data = await resp.json();
+                            if (resp.ok) {
+                                _notify('success', 'Extension removed from marketplace');
+                                loadExtensions();
+                            } else {
+                                _notify('error', data.error || 'Unpublish failed');
+                                unpublishBtn.disabled = false;
+                                unpublishBtn.innerHTML = _unpubIcon;
+                            }
+                        } catch (err) {
+                            _notify('error', 'Unpublish failed: ' + err.message);
+                            unpublishBtn.disabled = false;
+                            unpublishBtn.innerHTML = _unpubIcon;
+                        }
+                    }
+                );
+            });
+            toolbar.appendChild(unpublishBtn);
+        } else {
+            // Publish button → opens modal
+            const publishBtn = _toolbarBtn(
+                `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>`,
+                'Publish', 'ext-amber-btn'
+            );
+            publishBtn.addEventListener('click', () => {
+                if (window.openExtensionPublishModal) window.openExtensionPublishModal(ext);
+            });
+            toolbar.appendChild(publishBtn);
+        }
     }
 
     // Delete (user-created only) — right-aligned, danger style
@@ -1507,6 +1584,8 @@ export async function loadExtensions() {
         `;
     }
 }
+
+window.loadExtensions = loadExtensions;
 
 // ── Render Grid (apply filters + sort + build cards) ─────────────────────────
 

@@ -1,0 +1,19 @@
+{
+  "name": "teradata-coordinator",
+  "version": "1.0.0",
+  "description": "Routing rules and expert delegation instructions for the TDEXP Teradata Expert Coordinator. Defines when to invoke TDSQL, TDDIC, TDADM, and TDEXE.",
+  "author": "User",
+  "tags": [
+    "teradata",
+    "coordinator",
+    "genie",
+    "routing"
+  ],
+  "keywords": [],
+  "use_cases": [],
+  "main_file": "teradata-coordinator.md",
+  "last_updated": "2026-04-10",
+  "uderia": {
+    "injection_target": "system_prompt"
+  }
+}
