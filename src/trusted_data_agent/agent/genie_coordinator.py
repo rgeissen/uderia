@@ -849,8 +849,10 @@ After gathering information from profiles, provide a synthesized answer that:
                     elif role in ("assistant", "model"):
                         messages.append(AIMessage(content=content))
 
-            # Add the current query
-            messages.append(HumanMessage(content=query))
+            # Add the current query, prepending user_context skill block if present
+            uc_block = self.skill_result.get_user_context_block() if self.skill_result else ""
+            human_content = f"{uc_block}\n\n{query}" if uc_block else query
+            messages.append(HumanMessage(content=human_content))
 
             # Reset tracking for this execution
             self.llm_call_count = 0
