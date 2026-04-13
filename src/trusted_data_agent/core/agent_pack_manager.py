@@ -28,6 +28,26 @@ VALID_PROFILE_TYPES = {"rag_focused", "tool_enabled", "llm_only", "genie"}
 VALID_ROLES = {"coordinator", "expert", "standalone"}
 
 
+def _build_skill_zip(skill_id: str, manifest: dict, content: str) -> bytes:
+    """Build an in-memory .skill zip containing skill.json + markdown + SKILL.md."""
+    clean_manifest = {k: v for k, v in manifest.items() if not k.startswith("_")}
+    clean_manifest.pop("export_format_version", None)
+    clean_manifest.pop("exported_at", None)
+
+    description_safe = clean_manifest.get("description", "").replace("\n", " ")
+    skill_md = (
+        f"---\nname: {skill_id}\ndescription: {description_safe}\n"
+        f"user-invokable: true\n---\n\n{content}"
+    )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("skill.json", json.dumps(clean_manifest, indent=2, ensure_ascii=False))
+        zf.writestr(f"{skill_id}.md", content)
+        zf.writestr("SKILL.md", skill_md)
+    return buf.getvalue()
+
+
 class AgentPackManager:
     """Manages agent pack install, export, create, uninstall, and listing."""
 
@@ -41,7 +61,7 @@ class AgentPackManager:
         version = manifest.get("format_version")
         if version == "1.0":
             return self._validate_manifest_v10(manifest)
-        elif version in ("1.1", "1.2"):
+        elif version in ("1.1", "1.2", "1.3"):
             return self._validate_manifest_v11(manifest)
         else:
             return [f"Unsupported format_version: {version}"]
@@ -620,6 +640,30 @@ class AgentPackManager:
                 }
                 app_logger.info(f"  Imported collection '{ref}' -> id={new_coll_id} ({result['document_count']} docs)")
 
+            # Step 5b: Install bundled skills (v1.3+ packs)
+            pack_skills = manifest.get("skills", [])
+            if pack_skills:
+                app_logger.info(f"Installing {len(pack_skills)} skill(s) from agent pack...")
+                for skill_ref in pack_skills:
+                    skill_id = skill_ref.get("id")
+                    skill_file = skill_ref.get("file")
+                    if not skill_id or not skill_file:
+                        continue
+                    skill_zip_path = temp_path / skill_file
+                    if not skill_zip_path.exists():
+                        app_logger.warning(f"  Skill file not found in pack: {skill_file}")
+                        continue
+                    try:
+                        self._install_skill_from_zip_bytes(skill_id, skill_zip_path.read_bytes())
+                    except Exception as e:
+                        app_logger.warning(f"  Failed to install skill '{skill_id}': {e}")
+                # Reload so profiles can reference the newly installed skills
+                try:
+                    from trusted_data_agent.skills.manager import get_skill_manager
+                    get_skill_manager().reload()
+                except Exception as e:
+                    app_logger.warning(f"  Failed to reload skill manager after pack import: {e}")
+
             # Step 6: Create profiles — non-genie first, then genie (so child IDs are available)
             app_logger.info(f"Creating {len(profiles)} profiles...")
 
@@ -978,7 +1022,33 @@ class AgentPackManager:
                 if synthesis_prompt:
                     prof_entry["synthesisPromptOverride"] = synthesis_prompt
 
+                # Include skillsConfig so auto-enabled skills are preserved
+                skills_config = profile.get("skillsConfig")
+                if skills_config:
+                    prof_entry["skillsConfig"] = skills_config
+
                 manifest_profiles.append(prof_entry)
+
+            # Collect user skills that are auto-enabled (active=True) in any profile's skillsConfig
+            skills_to_bundle = {}  # skill_id → {manifest, content}
+            try:
+                from trusted_data_agent.skills.manager import get_skill_manager
+                skill_manager = get_skill_manager()
+                for profile in selected_profiles:
+                    for skill_entry in profile.get("skillsConfig", {}).get("skills", []):
+                        if not skill_entry.get("active", False):
+                            continue
+                        skill_id = skill_entry.get("id")
+                        if not skill_id or skill_id in skills_to_bundle:
+                            continue
+                        s_manifest = skill_manager.get_skill_manifest(skill_id)
+                        if s_manifest and s_manifest.get("_is_user", False):
+                            s_content = skill_manager.get_skill_full_content(skill_id)
+                            if s_content:
+                                skills_to_bundle[skill_id] = {"manifest": s_manifest, "content": s_content}
+                                app_logger.info(f"  Will bundle user skill '{skill_id}' (auto-enabled)")
+            except Exception as e:
+                app_logger.warning(f"Could not collect skills for agent pack export: {e}")
 
             # Gather unique vector store configs referenced by pack collections
             manifest_vs_configs = []
@@ -1013,8 +1083,25 @@ class AgentPackManager:
                 genie_prof = next((p for p in selected_profiles if p.get("profile_type") == "genie"), None)
                 pack_name = genie_prof.get("name", "Exported Agent Pack") if genie_prof else "Exported Agent Pack"
 
-            # Build manifest (v1.2 if vector store configs present, otherwise v1.1)
-            manifest_version = "1.2" if manifest_vs_configs else "1.1"
+            # Build skill refs list
+            skill_refs = [
+                {
+                    "id": sid,
+                    "file": f"skills/{sid}.skill",
+                    "name": data["manifest"].get("name", sid),
+                    "description": data["manifest"].get("description", ""),
+                }
+                for sid, data in skills_to_bundle.items()
+            ]
+
+            # Determine manifest version: 1.3 if skills, 1.2 if VS configs, else 1.1
+            if skill_refs:
+                manifest_version = "1.3"
+            elif manifest_vs_configs:
+                manifest_version = "1.2"
+            else:
+                manifest_version = "1.1"
+
             manifest = {
                 "format_version": manifest_version,
                 "name": pack_name,
@@ -1028,6 +1115,8 @@ class AgentPackManager:
             }
             if manifest_vs_configs:
                 manifest["vector_store_configurations"] = manifest_vs_configs
+            if skill_refs:
+                manifest["skills"] = skill_refs
 
             # Write manifest
             manifest_file = temp_path / "manifest.json"
@@ -1044,6 +1133,9 @@ class AgentPackManager:
                 for coll_file in collections_dir.rglob("*.zip"):
                     arcname = f"collections/{coll_file.name}"
                     zf.write(coll_file, arcname)
+                for skill_id, skill_data in skills_to_bundle.items():
+                    skill_zip_bytes = _build_skill_zip(skill_id, skill_data["manifest"], skill_data["content"])
+                    zf.writestr(f"skills/{skill_id}.skill", skill_zip_bytes)
 
             app_logger.info(f"Exported agent pack to {agentpack_path} ({agentpack_path.stat().st_size / 1024 / 1024:.2f} MB)")
             return agentpack_path
@@ -1525,6 +1617,40 @@ class AgentPackManager:
                     remap.get(ct, ct) for ct in prof["child_tags"]
                 ]
 
+    def _install_skill_from_zip_bytes(self, skill_id: str, zip_bytes: bytes) -> None:
+        """Install a skill from in-memory zip bytes into the user skills directory."""
+        from trusted_data_agent.skills.manager import get_skill_manager
+        buf = io.BytesIO(zip_bytes)
+        with zipfile.ZipFile(buf, "r") as zf:
+            names = zf.namelist()
+            manifest_data = {}
+            if "skill.json" in names:
+                manifest_data = json.loads(zf.read("skill.json").decode("utf-8"))
+
+            # Prefer <skill_id>.md, fall back to any .md, then SKILL.md
+            md_file = f"{skill_id}.md"
+            if md_file not in names:
+                candidates = [n for n in names if n.endswith(".md") and n != "SKILL.md"]
+                md_file = candidates[0] if candidates else ("SKILL.md" if "SKILL.md" in names else None)
+
+            if md_file is None:
+                app_logger.warning(f"  No markdown content found in skill zip for '{skill_id}', skipping")
+                return
+
+            raw = zf.read(md_file).decode("utf-8")
+
+            # Strip YAML frontmatter if reading from SKILL.md
+            if md_file == "SKILL.md" and raw.startswith("---"):
+                end = raw.find("---", 3)
+                raw = raw[end + 3:].lstrip("\n") if end > 0 else raw
+
+            manifest_data.pop("export_format_version", None)
+            manifest_data.pop("exported_at", None)
+
+        skill_manager = get_skill_manager()
+        skill_manager.save_skill(skill_id, raw, manifest_data)
+        app_logger.info(f"  Installed skill '{skill_id}' from agent pack")
+
     def _build_profile(
         self,
         prof: dict,
@@ -1616,6 +1742,11 @@ class AgentPackManager:
                 profile_data["mcpServerId"] = mcp_server_id
             if prof.get("useMcpTools"):
                 profile_data["useMcpTools"] = True
+
+        # Restore skillsConfig (auto-enabled skill assignments)
+        skills_config = prof.get("skillsConfig")
+        if skills_config:
+            profile_data["skillsConfig"] = skills_config
 
         return profile_data
 
