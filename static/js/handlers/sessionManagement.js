@@ -1132,8 +1132,9 @@ export async function handleDeleteSessionClick(deleteButton) {
                 const deletedChildren = result?.deleted_children || [];
                 const wasActiveSession = state.currentSessionId === sessionId || deletedChildren.includes(state.currentSessionId);
 
-                // Refresh the session list to show archived state
-                // This replaces the old approach of just removing from DOM
+                // Refresh the session list to show archived state.
+                // refreshSessionsList() already handles switching away from the deleted session
+                // internally, so no additional wasActiveSession handling is needed here.
                 try {
                     const { refreshSessionsList } = await import('./configManagement.js');
                     await refreshSessionsList();
@@ -1142,27 +1143,8 @@ export async function handleDeleteSessionClick(deleteButton) {
                     console.error('[Session Delete] Failed to refresh sessions list:', refreshError);
                     // Fallback: remove from DOM if refresh fails
                     UI.removeSessionAndDescendantsFromList(sessionId, deletedChildren);
-                }
-
-                // Check if the currently active session was deleted (parent or child)
-                if (wasActiveSession) {
-                    try {
-                        const sessionsResult = await API.loadSessions(0, 0); // Load all sessions (limit=0)
-                        const remainingSessions = sessionsResult.sessions || [];
-                        // Filter out archived sessions
-                        const activeSessions = remainingSessions ? remainingSessions.filter(s => !s.archived) : [];
-
-                        if (activeSessions && activeSessions.length > 0) {
-                            // The API returns sessions sorted by most recent first.
-                            const nextSessionId = activeSessions[0].id;
-                            await handleLoadSession(nextSessionId);
-                        } else {
-                            await handleStartNewSession();
-                        }
-                    } catch (error) {
-                        console.error('Error handling session switch after deletion:', error);
-                        UI.addMessage('assistant', `Could not switch to another session. Please select one manually or start a new one. ${error.message}`);
-                        // As a fallback, create a new session if the session loading fails
+                    // Fallback: handle session switch manually if refresh failed
+                    if (wasActiveSession) {
                         await handleStartNewSession();
                     }
                 }

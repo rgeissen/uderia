@@ -73,7 +73,7 @@ TDEXE : profile-1775746606192-0tl5jhrt4   (llm_only, retired)
 ## Coordinator Skill (teradata-coordinator)
 
 The `teradata-coordinator` skill is enabled on TDEXP and injected into its system prompt. It lives at:
-- Platform skill: `~/.tda/skills/teradata-coordinator/`
+- Platform skill: `skills/user/teradata-coordinator/` (project root)
 - Registered in: `user_skills` table (user_uuid 472d2c9e-..., skill_id = teradata-coordinator)
 
 **Routing rules injected:**
@@ -103,7 +103,7 @@ Tables: Products, SaleDetails, ServiceTickets, Sales, Customers, StockQuantity (
 
 **To improve routing accuracy:** Edit descriptions in `tda_auth.db → user_preferences.preferences_json` for the relevant profile.
 
-**To update coordinator instructions:** Edit `~/.tda/skills/teradata-coordinator/teradata-coordinator.md`, then reload via `POST /v1/skills/reload`.
+**To update coordinator instructions:** Edit `skills/user/teradata-coordinator/teradata-coordinator.md` (project root), then reload via `POST /v1/skills/reload`.
 
 **To add a new expert:** Create profile, add to TDEXP's `genieConfig.slaveProfiles`, update coordinator skill with new routing rule.
 

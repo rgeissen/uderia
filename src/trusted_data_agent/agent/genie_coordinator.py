@@ -58,6 +58,19 @@ _provenance_chains: Dict[str, Any] = {}
 # instead of using the plain-text final_answer_text summary.
 _slave_html_responses: Dict[str, str] = {}
 
+# Module-level per-slave-session execution locks (keyed by slave session_id)
+# Prevents concurrent executions on the same slave session, which causes turn_number
+# corruption in chat_object (two tasks read the same workflow_history length, both
+# get current_turn_number=N, then their assistant messages collide at turn N+1).
+_slave_session_locks: Dict[str, asyncio.Lock] = {}
+
+
+def _get_slave_session_lock(session_id: str) -> asyncio.Lock:
+    """Get or create a per-slave-session lock to serialize concurrent invocations."""
+    if session_id not in _slave_session_locks:
+        _slave_session_locks[session_id] = asyncio.Lock()
+    return _slave_session_locks[session_id]
+
 
 class SlaveSessionTool(BaseTool):
     """
@@ -164,7 +177,15 @@ class SlaveSessionTool(BaseTool):
                 "session_id": self.parent_session_id
             })
 
-            result = await self._execute_and_poll(session_id, query)
+            # Serialize executions on the same slave session to prevent turn_number
+            # corruption. LangGraph may dispatch parallel tool calls to the same
+            # slave when the coordinator LLM outputs multiple calls in one response.
+            # Concurrent writes cause both tasks to read the same workflow_history
+            # length, assign identical current_turn_number, and produce orphaned
+            # assistant messages with the wrong turn_number.
+            slave_lock = _get_slave_session_lock(session_id)
+            async with slave_lock:
+                result = await self._execute_and_poll(session_id, query)
 
             # Emit completion event with full result for UI display
             duration_ms = int((time.time() - start_time) * 1000)
@@ -1232,3 +1253,4 @@ After gathering information from profiles, provide a synthesized answer that:
     def clear_session_cache(self):
         """Clear the session cache (useful for testing)."""
         _slave_session_cache = {}
+        _slave_session_locks = {}
