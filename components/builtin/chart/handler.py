@@ -314,6 +314,43 @@ def _apply_data_filters(data: list, arguments: Dict[str, Any]) -> list:
     return data
 
 
+def _build_treemap_hierarchy(data: list, x_field: str | None, y_field: str | None) -> dict:
+    """Convert flat records to G2Plot Treemap hierarchical structure.
+
+    Groups by x_field at level 1, by y_field at level 2 (if provided).
+    Uses row count as the leaf node value.
+    """
+    from collections import defaultdict
+
+    if not data or not x_field:
+        return {"name": "root", "children": []}
+
+    if y_field:
+        groups: dict = defaultdict(lambda: defaultdict(int))
+        for row in data:
+            x_val = str(row.get(x_field, "Unknown"))
+            y_val = str(row.get(y_field, "Unknown"))
+            groups[x_val][y_val] += 1
+        children = [
+            {
+                "name": x_val,
+                "children": [
+                    {"name": y_val, "value": count}
+                    for y_val, count in sorted(y_counts.items())
+                ],
+            }
+            for x_val, y_counts in sorted(groups.items())
+        ]
+    else:
+        counts: dict = defaultdict(int)
+        for row in data:
+            x_val = str(row.get(x_field, "Unknown"))
+            counts[x_val] += 1
+        children = [{"name": k, "value": v} for k, v in sorted(counts.items())]
+
+    return {"name": "root", "children": children}
+
+
 def _build_g2plot_spec(args: dict, data: list) -> dict:
     """
     Build a G2Plot specification from LLM arguments and chart data.
@@ -370,8 +407,8 @@ def _build_g2plot_spec(args: dict, data: list) -> dict:
 
     options.update(processed_mapping)
 
-    # Pie and heatmap use colorField instead of seriesField
-    if chart_type in ("pie", "heatmap") and "seriesField" in options:
+    # Pie, heatmap, and treemap use colorField instead of seriesField
+    if chart_type in ("pie", "heatmap", "treemap") and "seriesField" in options:
         options["colorField"] = options.pop("seriesField")
 
     # Ensure numeric fields are actually numbers
@@ -403,6 +440,14 @@ def _build_g2plot_spec(args: dict, data: list) -> dict:
             final_data.append(new_row)
 
     options["data"] = final_data
+
+    # Treemap requires hierarchical {name, children} data — G2Plot ignores
+    # xField/yField on Treemap, so extract them, build the hierarchy, and
+    # replace the flat records.
+    if chart_type == "treemap" and isinstance(options.get("data"), list):
+        x_field = options.pop("xField", None)
+        y_field = options.pop("yField", None)
+        options["data"] = _build_treemap_hierarchy(options["data"], x_field, y_field)
 
     # ------------------------------------------------------------------
     # Heatmap: force categorical axes so G2Plot renders discrete cells.

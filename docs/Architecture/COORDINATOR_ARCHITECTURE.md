@@ -826,7 +826,9 @@ When only **one expert** is consulted and the coordinator has **no prior convers
 
 | Condition | Synthesis? | Reason |
 |-----------|------------|--------|
-| Single expert + no history | ❌ Pass through | Expert answer is already complete prose; no multi-source combining needed |
+| Single `tool_enabled` expert + no history | ❌ Pass through | Expert answer is already complete prose; `tool_enabled` experts run their own internal synthesis — coordinator receives `final_answer_text`, not raw data |
+| Single `rag_focused` or `llm_only` expert + no uncalled `tool_enabled` executor + no history | ❌ Pass through | Knowledge expert answered a standalone question; no execution follow-up needed |
+| Single `rag_focused` or `llm_only` expert + uncalled `tool_enabled` executor exists + no history | ✅ Yes | Expert answered step 1 of a mandatory pipeline (e.g. TDDIC → TDEXO); synthesis LLM must decide whether to invoke executor |
 | Multiple experts (any mode) | ✅ Yes | Results from different domains must be combined |
 | Single expert + history present (Full Context, turn 2+) | ✅ Yes | Coordinator weaves cross-turn context |
 
@@ -845,6 +847,7 @@ elif (
     and event_name not in self.component_tool_names  # it's a slave tool
     and not conversation_history             # no cross-turn context to weave
     and self.invoked_profiles               # expert tag captured
+    and not _has_uncalled_executor          # no mandatory pipeline step pending
 ):
     # Break before synthesis LLM fires
     output = tool_output
@@ -852,6 +855,8 @@ elif (
 ```
 
 The condition `llm_call_count == 1` prevents the optimisation from firing when the coordinator re-dispatches to the same expert a second time (which increments `llm_call_count` to 2).
+
+The condition `not _has_uncalled_executor` detects whether a `tool_enabled` slave profile exists in the coordinator's slave list that was **not** called in this turn. When a `rag_focused` or `llm_only` expert answers a question (e.g. TDDIC explaining which DBC view to use), but a `tool_enabled` executor (e.g. TDEXO) is available and uncalled, the pass-through is suppressed — the synthesis LLM must fire to decide whether to invoke the executor for the mandatory execution step.
 
 ### Rich HTML Pass-Through
 
@@ -871,6 +876,8 @@ _passed_through_html = _slave_html_responses.pop(html_key, None)
 ### All Profile Types Qualify
 
 `tool_enabled`, `llm_only`, `rag_focused`, and nested `genie` experts all qualify. `tool_enabled` experts run their own internal Fusion Optimizer synthesis — the coordinator receives a finished answer, not raw data — so there is no multi-source combining to perform.
+
+**Exception — `rag_focused`/`llm_only` with uncalled `tool_enabled` executor:** When a knowledge expert (`rag_focused` or `llm_only`) answers a question but a `tool_enabled` executor exists in the slave list and was not called, pass-through is **suppressed**. This preserves mandatory two-step pipelines where the knowledge expert provides context for step 1 (e.g. "which DBC view to query") and the executor must fire for step 2 (e.g. actually querying that view). Without this guard, the coordinator would pass through the knowledge-only answer and the execution step would never happen.
 
 ---
 

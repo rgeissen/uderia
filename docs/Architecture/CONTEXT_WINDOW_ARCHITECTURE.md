@@ -1163,11 +1163,23 @@ class ContextModule(ABC):
 | `tool_definitions` | 85 | 22% | Yes (full → names-only) | No | tool_enabled, genie |
 | `conversation_history` | 80 | 22% | Yes (sliding window) | Yes | All |
 | `rag_context` | 75 | 15% | Yes (fewer examples) | Yes | tool_enabled |
-| `knowledge_context` | 70 | 10% | Yes (fewer docs) | Yes | tool_enabled, llm_only, rag_focused |
+| `knowledge_context` | 70 | 10% | Yes (fewer docs) | Yes | tool_enabled, llm_only, rag_focused — two-tier circuit breaker (see below) |
 | `plan_hydration` | 65 | 8% | Yes (summary) | Yes | tool_enabled |
 | `document_context` | 60 | 5% | Yes (truncation) | Yes | tool_enabled, llm_only, rag_focused |
 | `component_instructions` | 55 | 4% | Yes (intensity) | No | All |
 | `workflow_history` | 50 | 4% | Yes (fewer turns) | Yes | tool_enabled |
+
+**`knowledge_context` — Two-Tier Circuit Breaker:**
+
+The `knowledge_context` module distinguishes three cases when `retrieve_examples()` returns no documents:
+
+| Case | Condition | Action |
+|------|-----------|--------|
+| **Broken collection** | Collection has 0 indexed chunks (upload failed or ChromaDB empty) | Inject hard `KNOWLEDGE BASE UNAVAILABLE` warning — LLM is instructed to tell the user to re-upload, not to answer from training data |
+| **No relevant match (`rag_focused`)** | Collection has content but query didn't score above `min_score` | Inject `NO DOCUMENTATION FOUND` warning — LLM must decline to answer rather than silently fall back to model memory |
+| **No relevant match (other profiles)** | Collection has content, query didn't match | Return empty content silently — knowledge is supplementary for `tool_enabled`/`llm_only` profiles |
+
+This prevents the silent-hallucination failure mode where a `rag_focused` expert (e.g. a data-dictionary specialist) receives no knowledge context and answers from model training data instead — producing fabricated column names, wrong schema details, and downstream SQL failures. The broken-collection detection uses `await retriever.get_collection_count(collection_id)` to check ChromaDB chunk counts directly.
 
 **Module Lifecycle:**
 

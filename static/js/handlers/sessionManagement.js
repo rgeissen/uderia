@@ -288,6 +288,7 @@ function _captureExecutionState() {
         currentTurnNumber: state.currentTurnNumber,
         currentProvider: state.currentProvider,
         currentModel: state.currentModel,
+        profileId: state.currentSessionProfileId,
         pendingSubtaskPlanningEvents: [...state.pendingSubtaskPlanningEvents],
         pendingKnowledgeRetrievalEvent: state.pendingKnowledgeRetrievalEvent
             ? { ...state.pendingKnowledgeRetrievalEvent } : null,
@@ -396,6 +397,7 @@ function _restoreExecutionState(s) {
     state.currentTaskId = s.currentTaskId;
     state.currentProvider = s.currentProvider;
     state.currentModel = s.currentModel;
+    if (s.profileId) state.currentSessionProfileId = s.profileId;
     state.currentTurnNumber = s.currentTurnNumber || null;
     state.pendingSubtaskPlanningEvents = s.pendingSubtaskPlanningEvents || [];
     state.pendingKnowledgeRetrievalEvent = s.pendingKnowledgeRetrievalEvent || null;
@@ -648,6 +650,7 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
     if (cached && (state.activeStreamSessions.has(sessionId) || state.activeRestSessions.has(sessionId))) {
         console.log(`[handleLoadSession] Restoring cached UI for active session ${sessionId}`);
         state.currentSessionId = sessionId;
+        state.currentSessionProfileId = cached.executionState?.profileId || state.currentSessionProfileId;
         state.sessionLoaded = true;
         localStorage.setItem('currentSessionId', sessionId);
 
@@ -936,8 +939,34 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         // Store dual-model info in state for use throughout the session
         state.currentDualModelInfo = dualModelInfo;
         console.log('[Session Load] Stored in state.currentDualModelInfo:', state.currentDualModelInfo);
+
+        // Resolve CURRENT provider/model from configState so the Live Status header always
+        // reflects the profile's current LLM config — not a stale value written to the
+        // session file during a previous execution.  This ensures a profile LLM change is
+        // visible immediately without a page refresh.
+        let displayProvider = data.provider;
+        let displayModel    = data.model;
+
+        if (data.profile_id && window.configState?.profiles && window.configState?.llmConfigurations) {
+            const currentProfile = window.configState.profiles.find(p => p.id === data.profile_id);
+            if (currentProfile?.llmConfigurationId) {
+                const currentLlm = window.configState.llmConfigurations.find(
+                    c => c.id === currentProfile.llmConfigurationId
+                );
+                if (currentLlm?.provider && currentLlm?.model) {
+                    displayProvider = currentLlm.provider;
+                    displayModel    = currentLlm.model;
+                }
+            }
+        }
+
+        // Sync state so downstream code uses the fresh values
+        state.currentProvider         = displayProvider || state.currentProvider;
+        state.currentModel            = displayModel    || state.currentModel;
+        state.currentSessionProfileId = data.profile_id || null;
+
         // This will reset the status display to the globally configured model, including dual-model info
-        UI.updateStatusPromptName(data.provider, data.model, false, dualModelInfo);
+        UI.updateStatusPromptName(displayProvider, displayModel, false, dualModelInfo);
         // --- MODIFICATION END ---
 
         // Initialize upload capabilities for the loaded session's provider
@@ -1255,3 +1284,28 @@ export function initializeArchivedSessionsFilter() {
     // This will be called after sessions are loaded
     window.updateArchivedSessionsFilter = updateSessionVisibility;
 }
+
+// ---------------------------------------------------------------------------
+// Reactive model display: update Live Status header immediately when the
+// current session's profile LLM configuration is changed in the admin panel.
+// configState.updateProfile() dispatches 'profile-modified' after every save.
+// ---------------------------------------------------------------------------
+document.addEventListener('profile-modified', (e) => {
+    const { profileId } = e.detail || {};
+    if (!profileId || !state.currentSessionId) return;
+    if (profileId !== state.currentSessionProfileId) return;
+
+    if (!window.configState?.profiles || !window.configState?.llmConfigurations) return;
+    const updatedProfile = window.configState.profiles.find(p => p.id === profileId);
+    if (!updatedProfile?.llmConfigurationId) return;
+
+    const updatedLlm = window.configState.llmConfigurations.find(
+        c => c.id === updatedProfile.llmConfigurationId
+    );
+    if (!updatedLlm?.provider || !updatedLlm?.model) return;
+
+    state.currentProvider = updatedLlm.provider;
+    state.currentModel    = updatedLlm.model;
+    UI.updateStatusPromptName(updatedLlm.provider, updatedLlm.model, false, state.currentDualModelInfo);
+    console.log(`[profile-modified] Live Status model updated → ${updatedLlm.provider}/${updatedLlm.model}`);
+});

@@ -111,6 +111,66 @@ class KnowledgeContextModule(ContextModule):
             )
 
             if not docs:
+                # Distinguish: collection empty (broken state) vs. no relevant match (normal)
+                empty_collections = []
+                for coll_id in collection_ids:
+                    try:
+                        count = await retriever.get_collection_count(int(coll_id))
+                        if count == 0:
+                            empty_collections.append(str(coll_id))
+                    except Exception:
+                        pass  # Unknown state — don't block
+
+                if empty_collections:
+                    warning = (
+                        "--- KNOWLEDGE BASE UNAVAILABLE ---\n"
+                        f"WARNING: The knowledge repository (collection ID(s): {', '.join(empty_collections)}) "
+                        "has no indexed content. The document upload may have failed or the knowledge base "
+                        "has not been populated yet.\n"
+                        "CRITICAL INSTRUCTION: Do NOT answer this question from your training data or "
+                        "model memory. Instead, explicitly tell the user that the knowledge repository "
+                        "is empty and must be re-populated before you can answer accurately."
+                    )
+                    tokens = estimate_tokens(warning)
+                    return Contribution(
+                        content=warning,
+                        tokens_used=tokens,
+                        metadata={
+                            "docs_retrieved": 0,
+                            "reason": "collection_empty",
+                            "empty_collections": empty_collections,
+                        },
+                        condensable=False,
+                    )
+
+                # For rag_focused profiles the knowledge repository is the ONLY authoritative
+                # source. If RAG returned nothing, the LLM must NOT silently fall back to
+                # training-data memory — that produces hallucinated column names, fabricated
+                # citations, and wrong schema information.
+                # For tool_enabled / llm_only profiles the knowledge repo is supplementary,
+                # so the silent empty-return is fine.
+                if ctx.profile_type == "rag_focused":
+                    no_match_warning = (
+                        "--- NO DOCUMENTATION FOUND ---\n"
+                        "WARNING: The knowledge repository was searched but returned no "
+                        "relevant documentation for this query.\n"
+                        "CRITICAL INSTRUCTION: You must NOT answer this question from your "
+                        "training data or model memory. Your role as a knowledge expert is "
+                        "to answer ONLY from the retrieved documentation above. Since no "
+                        "documentation was retrieved, you must respond with: "
+                        "'I cannot find this specific information in the knowledge "
+                        "repository. Please consult the official documentation directly or "
+                        "ask the database executor to inspect the live schema.'"
+                    )
+                    tokens = estimate_tokens(no_match_warning)
+                    return Contribution(
+                        content=no_match_warning,
+                        tokens_used=tokens,
+                        metadata={"docs_retrieved": 0, "reason": "no_matches_rag_focused"},
+                        condensable=False,
+                    )
+
+                # Normal case for non-rag_focused profiles: no relevant matches — fine
                 return Contribution(
                     content="",
                     tokens_used=0,

@@ -13,6 +13,7 @@ export const state = {
     currentDualModelInfo: null, // Dual-model configuration for status display
     currentStatusId: 0,
     currentSessionId: null,
+    currentSessionProfileId: null, // profile_id of the currently loaded session (for profile-modified reactivity)
     currentTaskId: null, // Add this line
     currentTurnNumber: null, // Turn number for current execution (from execution_start event)
     resourceData: { tools: {}, prompts: {}, resources: {}, charts: {}, knowledgeGraphs: null },

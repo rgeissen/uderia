@@ -958,11 +958,31 @@ After gathering information from profiles, provide a synthesized answer that:
                             None
                         )
                         invoked_type = invoked_profile.get("profile_type", "") if invoked_profile else ""
-                        # All profile types qualify: tool_enabled experts already run their
+                        # Pass-through is safe when tool_enabled experts already run their
                         # own synthesis internally — the coordinator receives final_answer_text,
                         # not raw data. Synthesis only earns its cost when multiple experts
                         # need combining or conversation history is present.
-                        if tool_output:
+                        #
+                        # Exception: if a knowledge-only expert (rag_focused / llm_only) was
+                        # called but an executor expert (tool_enabled) also exists in the
+                        # profile, do NOT pass through. Mandatory pipelines like
+                        # TDDIC → TDEXO require the synthesis LLM to fire so it can decide
+                        # whether to invoke the executor as the next step.
+                        _has_uncalled_executor = (
+                            invoked_type in ("rag_focused", "llm_only")
+                            and any(
+                                p.get("profile_type") == "tool_enabled"
+                                for p in self.slave_profiles
+                                if p.get("tag") != invoked_tag
+                            )
+                        )
+                        if _has_uncalled_executor:
+                            logger.info(
+                                f"[Genie] Pass-through skipped: knowledge expert @{invoked_tag} "
+                                f"({invoked_type}) answered but tool_enabled executor exists — "
+                                "synthesis LLM will evaluate whether to invoke executor"
+                            )
+                        elif tool_output:
                             output = tool_output
                             # Retrieve the slave's full HTML response (stored by _execute_and_poll).
                             # Used by the caller to display rich content (tables, charts, etc.)

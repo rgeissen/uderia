@@ -647,6 +647,21 @@ Values are sorted numerically when possible (e.g., `["6", "7", "10", "14"]`), fa
 
 **Defense-in-depth guard:** `_build_g2plot_spec()` skips any mapping entry where the column name is `None` or non-string, logging a warning. This should never trigger (the pipeline guarantees clean input) but prevents cascading crashes if future code paths bypass the pipeline.
 
+**Treemap-specific handling:** G2Plot's `Treemap` chart has a fundamentally different API from Bar/Line/Pie charts. Two transformations are applied automatically inside `_build_g2plot_spec()`:
+
+1. **`seriesField` → `colorField` conversion:** The mapping pipeline emits `seriesField` for grouping, but Treemap uses `colorField`. This conversion already applied to `pie` and `heatmap`; Treemap was added to the same condition: `if chart_type in ("pie", "heatmap", "treemap") and "seriesField" in options`.
+
+2. **Flat-to-hierarchical data transformation:** G2Plot Treemap requires `{ name: "root", children: [{name, value}, ...] }` hierarchical data — flat record arrays always render blank. The helper `_build_treemap_hierarchy(data, x_field, y_field)` converts flat rows by grouping `x_field` at level 1, `y_field` at level 2 (if present), using **row count** as the leaf value. After transformation, `xField` and `yField` are removed from options (Treemap ignores them) and `data` is replaced with the hierarchy:
+
+```python
+if chart_type == "treemap" and isinstance(options.get("data"), list):
+    x_field = options.pop("xField", None)
+    y_field = options.pop("yField", None)
+    options["data"] = _build_treemap_hierarchy(options["data"], x_field, y_field)
+```
+
+This means LLMs can generate Treemap specs using the same `xField`/`yField`/`seriesField` conventions as other charts — the handler silently converts them to the correct hierarchical form.
+
 ### Chart Renderer
 
 **File:** `components/builtin/chart/renderer.js` (41 lines)
