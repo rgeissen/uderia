@@ -41,6 +41,8 @@ venv.bak/
 
 # ChromaDB Cache (exclude - will be rebuilt)
 .chromadb_rag_cache/
+chroma_db/
+tda_chroma_db/
 
 # Logs
 logs/
