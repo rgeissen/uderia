@@ -761,21 +761,45 @@ const CANVAS_STYLES = `
 }
 .canvas-split-body {
     flex: 1;
-    overflow: auto;
+    overflow: hidden;
     padding: 0;
+    display: flex;
+    flex-direction: column;
 }
-/* When canvas is in split panel, remove inline card styling */
+/* When canvas is in split panel, remove inline card styling and enable flex layout */
 .canvas-split-body .canvas-container {
     border: none;
     border-radius: 0;
     margin: 0;
     background: transparent;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
 }
+/* Pin tab bar + toolbar at natural height */
+.canvas-split-body .canvas-header {
+    flex: 0 0 auto;
+}
+/* Canvas body fills remaining height inside the container */
 .canvas-split-body .canvas-body {
+    flex: 1;
+    min-height: 0;
     max-height: none;
+    overflow: auto;
 }
 .canvas-split-body .cm-editor {
     max-height: none;
+}
+/* Console panel: proportional height, screen-flexible, no hard cap.
+   Dual selector covers both DOM insertion points (sibling of .canvas-container
+   inside .canvas-split-body, or direct child of #canvas-split-panel). */
+.canvas-split-body .canvas-console-panel,
+#canvas-split-panel > .canvas-console-panel {
+    flex: 0 1 clamp(150px, 40%, 45vh);
+    max-height: none;
+    overflow: auto;
 }
 /* Version history dropdown */
 .canvas-version-wrapper {
