@@ -346,6 +346,8 @@ After:  Phase 2 (loop): Get columns for each table
 
 **Action:** If knowledge context was retrieved during planning, calls LLM to synthesize answer and injects it into `arguments.answer_from_context`. If no knowledge context, injects generic fallback message.
 
+> **Note (knowledge_context circuit breaker):** The `{knowledge_context}` variable is populated by `KnowledgeContextModule` before Pass 7 runs. Two new warning cases can appear here: (1) **empty collection** — injects "KNOWLEDGE BASE UNAVAILABLE" text instructing the LLM to tell the user to re-upload; (2) **`rag_focused` no-match** — injects "NO DOCUMENTATION FOUND" warning preventing silent fallback to model memory. When either warning is present, Pass 7 synthesizes from the warning text rather than from empty content, producing a more informative user-facing message than the generic fallback.
+
 **LLM call:** Yes (when knowledge context available).
 
 **Trace signature:** "Synthesizing Knowledge Answer" event.
