@@ -759,6 +759,7 @@ const CANVAS_STYLES = `
     background: var(--hover-bg-strong, rgba(255,255,255,0.1));
     color: var(--text-primary, #e2e8f0);
 }
+/* Split panel body: flex column that fills the aside */
 .canvas-split-body {
     flex: 1;
     overflow: hidden;
@@ -766,38 +767,54 @@ const CANVAS_STYLES = `
     display: flex;
     flex-direction: column;
 }
-/* When canvas is in split panel, remove inline card styling and enable flex layout */
-.canvas-split-body .canvas-container {
-    border: none;
-    border-radius: 0;
-    margin: 0;
-    background: transparent;
-    flex: 1;
+/* ── THE KEY FIX ──────────────────────────────────────────────────────────────
+   renderTarget is a direct child of .canvas-split-body.  Without flex
+   properties it defaults to content-height, leaving the panel mostly empty.
+   flex:2 makes it take 40% when the console panel is its sibling (flex:3).
+   Alone (no console yet) it fills 100% since there is no competing sibling.   */
+.canvas-split-render-target {
+    flex: 2;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
 }
-/* Pin tab bar + toolbar at natural height */
-.canvas-split-body .canvas-header {
+/* Canvas container: sole child of render-target, fills it completely.
+   Display/overflow rules remove the inline-card chrome.                        */
+.canvas-split-render-target .canvas-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: none;
+    border-radius: 0;
+    margin: 0;
+    background: transparent;
+}
+/* Tab bar + toolbar: natural height, never squashed */
+.canvas-split-render-target .canvas-header {
     flex: 0 0 auto;
 }
-/* Canvas body fills remaining height inside the container */
-.canvas-split-body .canvas-body {
+/* Canvas body (holds CodeMirror): fills container below header */
+.canvas-split-render-target .canvas-body {
     flex: 1;
     min-height: 0;
     max-height: none;
     overflow: auto;
 }
-.canvas-split-body .cm-editor {
+/* CodeMirror: no max-height cap so it fills its parent */
+.canvas-split-render-target .cm-editor {
     max-height: none;
 }
-/* Console panel: proportional height, screen-flexible, no hard cap.
-   Dual selector covers both DOM insertion points (sibling of .canvas-container
-   inside .canvas-split-body, or direct child of #canvas-split-panel). */
-.canvas-split-body .canvas-console-panel,
-#canvas-split-panel > .canvas-console-panel {
-    flex: 0 1 clamp(150px, 40%, 45vh);
+/* Console / result panel: direct child of .canvas-split-body (sibling of
+   .canvas-split-render-target), NOT nested inside it — so the selector must
+   target .canvas-split-body directly.
+   flex:3 gives it 3/5 = 60% when the editor (flex:2) is its sibling.
+   max-height:none overrides the global 300px cap.                             */
+.canvas-split-body > .canvas-console-panel {
+    flex: 3;
+    min-height: 120px;
     max-height: none;
     overflow: auto;
 }
@@ -3502,6 +3519,7 @@ async function popOutCanvas(state) {
     // Create a render target inside the split panel
     const renderTarget = document.createElement('div');
     renderTarget.id = `canvas-split-render-${Date.now()}`;
+    renderTarget.classList.add('canvas-split-render-target');
     contentArea.appendChild(renderTarget);
 
     // Show the panel with animation
