@@ -371,11 +371,12 @@ When only one expert is consulted and the coordinator has no prior conversation 
 
 | Condition | Synthesis? | Reason |
 |---|---|---|
-| Single expert (any type) + no history | ❌ Pass through | Expert answer is already complete prose — `tool_enabled` experts run their own internal synthesis; coordinator receives `final_answer_text`, not raw data |
+| Single `tool_enabled` expert + no history | ❌ Pass through | Expert answer is already complete prose — `tool_enabled` experts run their own internal synthesis; coordinator receives `final_answer_text`, not raw data |
+| Single `rag_focused`/`llm_only` expert + uncalled `tool_enabled` executor exists + no history | ✅ Yes | Knowledge expert answered step 1 of a mandatory pipeline (e.g. TDDIC → TDEXO); synthesis LLM must decide whether to invoke executor |
 | Multiple experts (any mode) | ✅ Yes | Results from different domains must be combined |
 | Single expert + history present (Full Context, turn 2+) | ✅ Yes | Coordinator weaves cross-turn context |
 
-Implementation: `src/trusted_data_agent/agent/genie_coordinator.py` — early break inside `on_tool_end` handler. Condition: `_routing_tool_call_count == 1 and not conversation_history`.
+Implementation: `src/trusted_data_agent/agent/genie_coordinator.py` — early break inside `on_tool_end` handler. Condition: `_routing_tool_call_count == 1 and not conversation_history and not _has_uncalled_executor`.
 
 Session data tracks:
 - `profile_id` - Current active profile

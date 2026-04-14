@@ -408,6 +408,26 @@ class CollectionDatabase:
             'ratings_breakdown': breakdown
         }
     
+    def scan_broken_knowledge_documents(self) -> list:
+        """Return knowledge_documents records that appear broken (file_size=0 or content_hash='').
+
+        These indicate uploads that were registered in the DB but never successfully indexed
+        in the vector store, typically from an interrupted or failed upload.
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT kd.id, kd.collection_id, kd.filename, kd.file_size, kd.content_hash,
+                   kd.created_at, c.collection_name
+            FROM knowledge_documents kd
+            JOIN collections c ON c.id = kd.collection_id
+            WHERE kd.file_size = 0 OR kd.content_hash = ''
+            ORDER BY kd.collection_id, kd.created_at
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
     def get_bulk_collection_ratings(self, collection_ids: List[int]) -> Dict[int, Dict[str, Any]]:
         """
         Get rating statistics for multiple collections in a single query.

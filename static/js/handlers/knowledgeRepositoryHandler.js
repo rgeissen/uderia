@@ -1548,7 +1548,13 @@ function createKnowledgeRepositoryCard(repo) {
             <div class="text-xs text-gray-500 mb-3 flex items-center gap-3">
                 <span><span class="text-white font-medium">${docCount}</span> documents</span>
                 <span>•</span>
-                <span><span class="text-white font-medium">${chunkCount}</span> chunks</span>
+                ${chunkCount === 0 && docCount > 0
+                    ? `<span class="text-red-400 font-medium flex items-center gap-1" title="Knowledge base appears empty — re-upload documents">
+                           <svg class="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.345 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+                           0 chunks — re-upload needed
+                       </span>`
+                    : `<span><span class="text-white font-medium">${chunkCount}</span> chunks</span>`
+                }
             </div>
             
             <div class="flex gap-2 flex-wrap">

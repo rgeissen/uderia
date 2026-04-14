@@ -42,6 +42,40 @@ knowledge_api_bp = Blueprint('knowledge_api', __name__)
 app_logger = logging.getLogger('tda')
 
 
+async def _verify_chunks_indexed(backend, collection_name: str, filename: str, collection_id: int) -> int:
+    """Verify that at least one chunk was stored after an upload.
+
+    Returns the chunk count. Raises ValueError if count is 0 (upload appeared
+    successful but nothing was indexed). Returns -1 if verification is skipped
+    or the count cannot be determined — callers should log but not block.
+
+    Server-side chunking backends (Teradata EVS) are all-or-nothing: if
+    add_document_files() returned without exception and the VS is in READY
+    state, data is guaranteed present. Calling count() on a REST-only
+    initialized Teradata backend returns 0 (no SQL connection) even when
+    chunks exist, so we skip verification for those backends.
+    """
+    from trusted_data_agent.vectorstore.capabilities import VectorStoreCapability
+    if hasattr(backend, 'has_capability') and backend.has_capability(VectorStoreCapability.SERVER_SIDE_CHUNKING):
+        # EVS atomicity guarantees: no exception from add_document_files() = data present
+        return -1
+    try:
+        count = await backend.count(collection_name)
+    except Exception as e:
+        app_logger.warning(
+            f"[UPLOAD] Could not verify chunk count for '{filename}' "
+            f"(collection {collection_id}): {e}"
+        )
+        return -1
+    if count == 0:
+        raise ValueError(
+            f"Document '{filename}' was processed but no chunks were stored in "
+            f"collection {collection_id}. The upload may have failed silently — "
+            "please try again or check server logs."
+        )
+    return count
+
+
 @knowledge_api_bp.route("/v1/knowledge/preview-chunking", methods=["POST"])
 @require_auth
 async def preview_document_chunking(current_user: dict):
@@ -341,6 +375,16 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                         progress_callback=_on_ingest_progress,
                     )
 
+                    # Verify chunks were actually stored before writing DB record
+                    try:
+                        await _verify_chunks_indexed(backend, collection_name, filename, collection_id)
+                    except ValueError as verify_err:
+                        app_logger.error(
+                            f"[UPLOAD] Server-side ingest of '{filename}' completed but "
+                            f"no chunks stored: {verify_err}"
+                        )
+                        return  # Skip DB write — don't register a document with 0 chunks
+
                     # ── Persist document metadata (fast SQLite write) ────
                     try:
                         from trusted_data_agent.core.collection_db import CollectionDatabase
@@ -613,6 +657,13 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
             os.unlink(temp_file.name)
 
             if result['status'] == 'success':
+                # Verify chunks were actually stored before writing DB record
+                try:
+                    await _verify_chunks_indexed(backend, collection_name, filename, collection_id)
+                except ValueError as verify_err:
+                    yield format_sse({"type": "error", "message": str(verify_err)}, "error")
+                    return
+
                 # Store metadata in database (same as original)
                 from trusted_data_agent.core.collection_db import CollectionDatabase
                 db = CollectionDatabase()
@@ -808,6 +859,9 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
                     f"repository {collection_id} (server-side chunking)"
                 )
 
+                # Verify chunks were actually stored before writing DB record
+                await _verify_chunks_indexed(backend, collection_name, file.filename, collection_id)
+
                 # Store document metadata in knowledge_documents table
                 from trusted_data_agent.core.collection_db import CollectionDatabase
                 db = CollectionDatabase()
@@ -918,6 +972,9 @@ async def upload_knowledge_document(current_user: dict, collection_id: int):
 
             if result['status'] == 'success':
                 app_logger.info(f"Successfully uploaded document '{file.filename}' to Knowledge repository {collection_id}")
+
+                # Verify chunks were actually stored before writing DB record
+                await _verify_chunks_indexed(backend, collection_name, file.filename, collection_id)
 
                 # Store document metadata in database
                 from trusted_data_agent.core.collection_db import CollectionDatabase

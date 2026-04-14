@@ -297,6 +297,26 @@ def create_app():
                 APP_STATE['rag_retriever_instance'] = retriever_instance
                 app_logger.info("Knowledge retrieval system ready.")
 
+                # Integrity scan: warn about knowledge documents registered but never indexed
+                try:
+                    from trusted_data_agent.core.collection_db import get_collection_db
+                    broken = get_collection_db().scan_broken_knowledge_documents()
+                    if broken:
+                        for rec in broken:
+                            app_logger.warning(
+                                f"[INTEGRITY] Knowledge document '{rec['filename']}' "
+                                f"(doc_id={rec['id']}, collection_id={rec['collection_id']}, "
+                                f"collection='{rec['collection_name']}') has file_size={rec['file_size']} "
+                                f"and content_hash='{rec['content_hash']}' — may not be indexed. "
+                                "Consider re-uploading via the Knowledge Repository UI."
+                            )
+                        app_logger.warning(
+                            f"[INTEGRITY] {len(broken)} broken knowledge document record(s) found. "
+                            "These collections may return empty results causing LLM hallucinations."
+                        )
+                except Exception as scan_err:
+                    app_logger.debug(f"Knowledge integrity scan skipped: {scan_err}")
+
             except Exception as e:
                 app_logger.error(f"Failed to initialize RAG at startup: {e}", exc_info=True)
                 app_logger.warning("RAG retriever will be lazy-initialized on first use.")
