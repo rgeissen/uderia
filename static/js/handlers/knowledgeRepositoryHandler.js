@@ -196,10 +196,10 @@ function _searchModeBadge(searchMode) {
 }
 
 /** Returns true when hybrid search is actually active for this repo.
- *  - Teradata: search_mode === 'hybrid' AND td_bm25_enabled === true in backend_config
+ *  - Teradata: td_bm25_enabled === true in backend_config (authoritative — search_mode may
+ *    still be 'semantic' on collections where BM25 was enabled after creation)
  *  - Qdrant / others: search_mode === 'hybrid' is sufficient */
 function _isHybridSearchActive(repo) {
-    if (!repo.search_mode || repo.search_mode !== 'hybrid') return false;
     if (repo.backend_type === 'teradata') {
         try {
             const cfg = typeof repo.backend_config === 'string'
@@ -208,7 +208,7 @@ function _isHybridSearchActive(repo) {
             return cfg.td_bm25_enabled === true;
         } catch { return false; }
     }
-    return true; // Qdrant and others: configured mode is enough
+    return repo.search_mode === 'hybrid'; // Qdrant and others: configured mode is enough
 }
 
 /**
