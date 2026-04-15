@@ -195,6 +195,22 @@ function _searchModeBadge(searchMode) {
     return ` <span style="display:inline-flex;align-items:center;padding:1px 5px;font-size:10px;font-weight:600;border-radius:3px;background:${c.bg};color:${c.color};border:1px solid ${c.border};">${c.label}</span>`;
 }
 
+/** Returns true when hybrid search is actually active for this repo.
+ *  - Teradata: search_mode === 'hybrid' AND td_bm25_enabled === true in backend_config
+ *  - Qdrant / others: search_mode === 'hybrid' is sufficient */
+function _isHybridSearchActive(repo) {
+    if (!repo.search_mode || repo.search_mode !== 'hybrid') return false;
+    if (repo.backend_type === 'teradata') {
+        try {
+            const cfg = typeof repo.backend_config === 'string'
+                ? JSON.parse(repo.backend_config || '{}')
+                : (repo.backend_config || {});
+            return cfg.td_bm25_enabled === true;
+        } catch { return false; }
+    }
+    return true; // Qdrant and others: configured mode is enough
+}
+
 /**
  * Populate the vector store dropdown from centralized configurations.
  * Falls back to a default ChromaDB option if the API call fails.
@@ -1723,6 +1739,13 @@ function createKnowledgeRepositoryCard(repo) {
                         <span class="px-2 py-0.5 text-xs rounded-full ${repo.enabled ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'} flex-shrink-0">
                             ${repo.enabled ? 'Active' : 'Inactive'}
                         </span>
+                        ${_isHybridSearchActive(repo) ? `
+                        <span class="px-2 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-400 flex items-center gap-1 flex-shrink-0">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                            Hybrid Search
+                        </span>` : ''}
                         ${repo.is_owned !== false ? `
                         <span class="px-2 py-0.5 text-xs rounded-full bg-blue-500/20 text-blue-400 flex items-center gap-1 flex-shrink-0">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
