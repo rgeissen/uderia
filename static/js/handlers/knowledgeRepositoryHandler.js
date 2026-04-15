@@ -1770,7 +1770,7 @@ function createKnowledgeRepositoryCard(repo) {
             </div>
             
             <p class="text-xs text-gray-500 mb-2">
-                ${_knowledgeBackendBadge(repo.backend_type)}${_searchModeBadge(repo.search_mode)} ${repo.collection_name}${repo.chunking_strategy ? ` | ${repo.chunking_strategy} chunking` : ''}
+                ${_knowledgeBackendBadge(repo.backend_type)}${_isHybridSearchActive(repo) ? '' : _searchModeBadge(repo.search_mode)} ${repo.collection_name}${repo.chunking_strategy ? ` | ${repo.chunking_strategy} chunking` : ''}
             </p>
 
             <p class="text-xs text-gray-400 mb-2">
