@@ -2825,6 +2825,14 @@ async def create_rag_collection():
                     "message": f"Vector store backend '{backend_type}' is not available for your tier"
                 }), 403
 
+        # Persist Teradata BM25 scoring config into backend_config for hybrid collections
+        # (must happen while backend_config is still a dict, before JSON serialization)
+        if backend_type == "teradata" and data.get("search_mode") == "hybrid":
+            if isinstance(backend_config, dict):
+                backend_config["td_scoring_method"] = data.get("td_scoring_method", "rrf")
+                backend_config["td_sparse_weight"] = float(data.get("td_sparse_weight", 0.3))
+                backend_config["td_bm25_enabled"] = False  # BM25 must be explicitly enabled after creation
+
         if isinstance(backend_config, dict):
             import json as _json
             backend_config = _json.dumps(backend_config)

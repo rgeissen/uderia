@@ -365,7 +365,7 @@ def _normalize_query_result(self, raw) -> QueryResult:
 
 **File:** [vectorstore/teradata_backend.py](../../src/trusted_data_agent/vectorstore/teradata_backend.py)
 
-Enterprise backend. Uses the `teradatagenai` Python SDK (`VectorStore` class) for ANN search and `teradataml` for staging-table SQL operations. Embedding is performed server-side via Amazon Bedrock or Azure OpenAI. Supports two ingestion paths: **client-side chunking** (staging table) and **server-side chunking** (SDK handles everything).
+Enterprise backend. Uses the `teradatagenai` Python SDK (`Collection` V2 API) for ANN search and collection management, and `teradataml` for staging-table SQL operations. Embedding is performed server-side via Amazon Bedrock or Azure OpenAI — or via **IAM pass-through** on VantageCloud Lake (no credentials needed; server uses its own IAM). Supports two ingestion paths: **client-side chunking** (staging table) and **server-side chunking** (SDK handles everything).
 
 #### Two Ingestion Paths
 
@@ -401,8 +401,11 @@ Server-side chunked collections use SDK-managed tables with a different naming c
 |---|---|---|
 | Index table | `vectorstore_{collection_name}_index` | Embedding vectors + references |
 | Chunks table | `chunks_table_{uuid}` | Content column (name varies by SDK version — detected dynamically), `TD_ID`, `TD_FILENAME` |
+| Extraction table | `UDERIA_EXTR_{collection_name}` | Intermediate extraction table (platform-managed, dropped after ingestion) |
 
 The chunks table name is a random UUID, discoverable from the index table's `TableName` column via `_resolve_chunks_table()`.
+
+**Content column detection order** (tried left-to-right in `query()` and `get()`): `CONTENT` → `TD_FILESPLITS` → `FILE_SPLITS` → `REV_TEXT` → `TEXT` → `CHUNKS`. VantageCloud Lake returns `TD_FILESPLITS` for `FILE_CONTENT_BASED` (server-side) collections.
 
 #### Capabilities (11 declared)
 `CREATE_COLLECTION` · `DELETE_COLLECTION` · `ADD_DOCUMENTS` · `DELETE_DOCUMENTS` · `SIMILARITY_SEARCH` · `GET_BY_ID` · `GET_ALL` · `COUNT` · `UPSERT` · `SERVER_SIDE_EMBEDDING` · `SERVER_SIDE_CHUNKING`
@@ -480,14 +483,33 @@ delete(ids)
 
 #### Server-Side Chunking Flow
 
+Uses the **Collection V2 API** (`teradatagenai.Collection`, `ContentBasedIndex`, `BasicIngestor`):
+
 ```
 add_document_files(file_paths, chunking_config)
-    ↓ VectorStore(collection_name)
-    ↓ vs.create(document_files=file_paths, chunk_size=500, optimized_chunking=True, ...)
-    ↓ poll vs.status() until COMPLETED (timeout 900s — PDF processing can take 5-10+ min)
+    ↓ Detect file extension → _files_type (pdf, csv, json, …)
+    ↓ _extr_table = "UDERIA_EXTR_" + collection_name  (explicit, lake server can't auto-generate)
+    ↓ ExtractionSchema(table_name=_extr_table)
+    ↓ LocalConfig(files=file_paths, files_type=_files_type)
+    ↓ BasicIngestor(chunk_size=…, header_height=…, footer_height=…)
+         (always BasicIngestor — NVIngestor requires NVIDIA NIM, not available on lake server)
+    ↓ ContentBasedIndex(search_params=SearchParams(…), extraction_schema=…)
+    ↓ Collection.from_documents(
+           name=collection_name,
+           content_based_index=content_index,
+           ingestor=ingestor,
+           local_config=local_config,
+       )
+    ↓ poll collection.status() until COMPLETED (timeout 900s — PDF processing can take 5-10+ min)
     ↓ SDK creates chunks_table_{uuid} + vectorstore_{name}_index
-    ↓ cache VS instance + register collection
+    ↓ cache collection instance + register collection
 ```
+
+**IAM pass-through (VantageCloud Lake):** When no AWS/Azure credentials are configured, `_build_teradata_ai()` returns `None` and the backend falls back to `embeddings_model="string"`. This signals the lake server to use its own IAM role for embedding — no credentials need to be stored in the platform.
+
+**Lake server requirements** (not needed on non-lake environments):
+- `ExtractionSchema(table_name=…)` — lake server does not auto-generate extraction table names; must be explicit
+- `LocalConfig(files_type=…)` — lake server requires `files_parameters.files_type` in the ingest request body; omitting it causes a 500 error
 
 #### Transparent Browse/Inspect for Both Paths
 
@@ -503,8 +525,9 @@ get(collection_name, limit, offset)
     ↓ query staging table (CHUNK_ID, CONTENT, METADATA_JSON)
     ↓ if staging has data → return staging rows
     ↓ else → _resolve_chunks_table() → SELECT * FROM chunks_table
-    ↓ dynamic column detection: tries FILE_SPLITS, CHUNKS, CONTENT, REV_TEXT, TEXT (priority order)
+    ↓ dynamic column detection: tries CONTENT, TD_FILESPLITS, FILE_SPLITS, REV_TEXT, TEXT, CHUNKS (priority order)
     ↓ column mapping: TD_ID→id, {detected_content_col}→content, TD_FILENAME→metadata.filename
+    (TD_FILESPLITS is the column name returned by VantageCloud Lake for FILE_CONTENT_BASED collections)
 ```
 
 #### Connection Resilience
@@ -571,6 +594,8 @@ distance = 1.0 - similarity_score
 | Deletion performance | O(n_deleted) — requires temp table creation, `delete_datasets`, and staging SQL |
 | Server-side: delete by ID | Not available — no staging table for server-side collections |
 | Server-side: add more docs | Not yet supported — would need `vs.add_datasets()` with file path |
+| Native BM25 (hybrid search) | **Only supported for server-side chunking** (`FILE_CONTENT_BASED` collections). Calling `enable_bm25()` on a client-side (`CONTENT_BASED`) collection triggers an AMP segmentation violation on the lake server. The UI guards against this: the "Enable BM25" button is hidden for client-side collections, replaced with an explanatory note. |
+| Backend config cache | The Teradata backend singleton (`_config`) is initialized once and cached. After `enable_bm25()` changes `td_bm25_enabled`, the search route refreshes `backend._config` from the DB before each query to pick up the latest state. |
 
 #### Provider-Specific: Teradata Credential Management
 
@@ -938,12 +963,22 @@ POST /api/v1/knowledge/collections/{id}/documents (streaming)
          ▼
 backend.add_document_files(collection_name, [temp_file], chunking_config)
          │
+    detect file extension → files_type
+    build ExtractionSchema(table_name="UDERIA_EXTR_<name>")
+    build LocalConfig(files=[temp_file], files_type=files_type)
+    build BasicIngestor(chunk_size=…)
+         │
          ▼
-VectorStore.create(document_files=[file], chunk_size=500, optimized_chunking=True, ...)
+Collection.from_documents(
+    name=collection_name,
+    content_based_index=ContentBasedIndex(…, extraction_schema=…),
+    ingestor=ingestor,
+    local_config=local_config,
+)
          │
-    SDK handles: text extraction → chunking → embedding (Bedrock) → storage
+    SDK handles: text extraction → chunking → embedding (Bedrock/IAM pass-through) → storage
          │
-    poll vs.status() until COMPLETED (up to 15 min)
+    poll collection.status() until COMPLETED (up to 15 min)
          │
     SDK creates: chunks_table_{uuid} + vectorstore_{name}_index
          │

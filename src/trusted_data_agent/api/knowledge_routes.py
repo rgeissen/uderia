@@ -1311,6 +1311,17 @@ async def search_knowledge_repository(current_user: dict, collection_id: int):
         _search_mode = SearchMode(coll_meta.get("search_mode", "semantic")) if coll_meta else SearchMode.SEMANTIC
         _kw_weight = float(coll_meta.get("hybrid_keyword_weight", 0.3)) if coll_meta else 0.3
 
+        # For Teradata backends the factory caches one instance per connection.
+        # BM25 / scoring params are stored in backend_config per-collection and
+        # may change after creation (e.g. enable_bm25). Refresh _config from the
+        # latest DB value so the query path sees current td_bm25_enabled etc.
+        if coll_meta and coll_meta.get("backend_type") == "teradata":
+            import json as _json
+            _raw = coll_meta.get("backend_config") or "{}"
+            _fresh = _json.loads(_raw) if isinstance(_raw, str) else _raw
+            if hasattr(backend, "_config"):
+                backend._config.update(_fresh)
+
         query_result = await backend.query(
             coll_name, query_text=query, n_results=k, where=where_filter,
             embedding_provider=emb_provider,
@@ -1675,3 +1686,128 @@ async def test_knowledge_backend_connection(current_user: dict):
         return jsonify({"status": "error", "message": f"Connection failed: {e}"}), 400
     finally:
         await test_backend.shutdown()
+
+
+# ── Teradata BM25 / hybrid search management ─────────────────────────────────
+
+async def _get_teradata_collection(collection_id: int, current_user: dict):
+    """Load and auth-check a Teradata knowledge collection.
+
+    Returns ``(coll_row, backend_config_dict)`` or raises ``ValueError`` with
+    an HTTP-friendly message if the collection is not found, not Teradata, or
+    not owned by the caller.
+    """
+    db = get_collection_db()
+    coll = db.get_collection_by_id(collection_id)
+    if not coll:
+        raise ValueError(f"Collection {collection_id} not found")
+
+    if coll.get("owner_user_id") != current_user.id:
+        raise PermissionError("Access denied")
+
+    if coll.get("backend_type") != "teradata":
+        raise ValueError("Native BM25 is only available for Teradata collections")
+
+    backend_config_raw = coll.get("backend_config") or "{}"
+    if isinstance(backend_config_raw, str):
+        try:
+            backend_config = json.loads(backend_config_raw)
+        except json.JSONDecodeError:
+            backend_config = {}
+    else:
+        backend_config = backend_config_raw
+
+    return coll, backend_config
+
+
+@knowledge_api_bp.route("/v1/knowledge/repositories/<int:collection_id>/hybrid/enable", methods=["POST"])
+@require_auth
+async def enable_teradata_bm25(current_user: dict, collection_id: int):
+    """Trigger server-side BM25 model build on a Teradata collection.
+
+    Body (all fields optional):
+        {
+            "scoring_method": "rrf",          # "rrf" | "weighted_sum" | "weighted_rrf"
+            "sparse_weight":  0.3             # float 0.0–1.0
+        }
+
+    On success, persists ``td_bm25_enabled=true``, ``td_scoring_method``, and
+    ``td_sparse_weight`` into ``backend_config`` in the database.
+    """
+    try:
+        coll, backend_config = await _get_teradata_collection(collection_id, current_user)
+    except PermissionError as e:
+        return jsonify({"status": "error", "message": str(e)}), 403
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+    data = await request.get_json() or {}
+    scoring_method = data.get("scoring_method", backend_config.get("td_scoring_method", "rrf"))
+    sparse_weight = float(data.get("sparse_weight", backend_config.get("td_sparse_weight", 0.3)))
+
+    collection_name = coll["collection_name"]
+
+    try:
+        from trusted_data_agent.vectorstore.factory import get_backend_for_collection
+        backend = await get_backend_for_collection(coll, user_uuid=coll.get("owner_user_id"))
+
+        app_logger.info(
+            f"[BM25] Building BM25 model for collection '{collection_name}' "
+            f"(scoring={scoring_method}, sparse_weight={sparse_weight})"
+        )
+        await backend.enable_bm25(
+            collection_name,
+            scoring_method=scoring_method,
+            sparse_weight=sparse_weight,
+        )
+
+        # Persist BM25 state into backend_config
+        backend_config["td_bm25_enabled"] = True
+        backend_config["td_scoring_method"] = scoring_method
+        backend_config["td_sparse_weight"] = sparse_weight
+
+        db = get_collection_db()
+        db.update_collection(collection_id, {"backend_config": json.dumps(backend_config)})
+
+        app_logger.info(f"[BM25] BM25 enabled for collection '{collection_name}'")
+        return jsonify({
+            "status": "enabled",
+            "collection_id": collection_id,
+            "scoring_method": scoring_method,
+            "sparse_weight": sparse_weight,
+        }), 200
+
+    except AttributeError:
+        return jsonify({
+            "status": "error",
+            "message": "enable_bm25() is not supported by this backend",
+        }), 400
+    except Exception as e:
+        app_logger.error(f"[BM25] enable_bm25 failed for collection {collection_id}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@knowledge_api_bp.route("/v1/knowledge/repositories/<int:collection_id>/hybrid/status", methods=["GET"])
+@require_auth
+async def get_teradata_bm25_status(current_user: dict, collection_id: int):
+    """Return the current BM25 / hybrid-search configuration for a collection.
+
+    Response:
+        {
+            "bm25_enabled":    false,
+            "scoring_method":  "rrf",
+            "sparse_weight":   0.3
+        }
+    """
+    try:
+        _coll, backend_config = await _get_teradata_collection(collection_id, current_user)
+    except PermissionError as e:
+        return jsonify({"status": "error", "message": str(e)}), 403
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+    return jsonify({
+        "bm25_enabled": bool(backend_config.get("td_bm25_enabled", False)),
+        "scoring_method": backend_config.get("td_scoring_method", "rrf"),
+        "sparse_weight": float(backend_config.get("td_sparse_weight", 0.3)),
+    }), 200

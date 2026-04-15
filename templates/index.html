@@ -7702,35 +7702,12 @@
                                 Server-Side Chunking Options
                             </h4>
 
-                            <!-- Chunking Mode Toggle -->
-                            <div>
-                                <label class="block text-xs text-gray-400 mb-1">Chunking Mode</label>
-                                <div class="flex gap-2">
-                                    <label class="flex items-center gap-2 p-2 bg-gray-700 rounded-lg border border-gray-600 cursor-pointer hover:border-orange-400 transition-colors flex-1">
-                                        <input type="radio" name="server_side_mode" value="optimized" checked
-                                               class="text-orange-500 focus:ring-orange-500">
-                                        <div>
-                                            <div class="text-sm text-white font-medium">Optimized</div>
-                                            <div class="text-xs text-gray-400">Structure-aware dynamic chunking (many small, precise chunks)</div>
-                                        </div>
-                                    </label>
-                                    <label class="flex items-center gap-2 p-2 bg-gray-700 rounded-lg border border-gray-600 cursor-pointer hover:border-orange-400 transition-colors flex-1">
-                                        <input type="radio" name="server_side_mode" value="fixed_size"
-                                               class="text-orange-500 focus:ring-orange-500">
-                                        <div>
-                                            <div class="text-sm text-white font-medium">Fixed Size</div>
-                                            <div class="text-xs text-gray-400">Split by fixed character count (fewer, larger chunks)</div>
-                                        </div>
-                                    </label>
-                                </div>
-                            </div>
-
-                            <!-- Chunk Size (only for Fixed Size) -->
-                            <div id="knowledge-repo-ss-chunk-size-row" class="hidden">
+                            <!-- Chunk Size -->
+                            <div id="knowledge-repo-ss-chunk-size-row">
                                 <label for="knowledge-repo-ss-chunk-size" class="block text-xs text-gray-400 mb-1">Chunk Size (characters)</label>
                                 <input type="number" id="knowledge-repo-ss-chunk-size" value="2000" min="100" max="10000"
                                        class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
-                                <p class="mt-0.5 text-xs text-gray-500">Number of characters per chunk (only used with Fixed Size mode)</p>
+                                <p class="mt-0.5 text-xs text-gray-500">Number of characters per chunk</p>
                             </div>
 
                             <!-- Header / Footer Trim (in points) -->
@@ -7747,6 +7724,18 @@
                                            class="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-teradata-orange outline-none text-white text-sm">
                                     <p class="mt-0.5 text-xs text-gray-500">Points to trim from bottom of each PDF page (recommended: 55)</p>
                                 </div>
+                            </div>
+
+                            <!-- Enable Native BM25 after ingestion -->
+                            <div class="pt-1 border-t border-gray-600/50">
+                                <label class="flex items-start gap-2 cursor-pointer">
+                                    <input type="checkbox" id="knowledge-repo-enable-bm25"
+                                           class="mt-0.5 w-3.5 h-3.5 rounded border-gray-500 bg-gray-700 text-teradata-orange focus:ring-teradata-orange focus:ring-1 flex-shrink-0">
+                                    <div>
+                                        <span class="text-xs text-gray-300 font-medium">Enable Native BM25 (Hybrid Search) after ingestion</span>
+                                        <p class="text-xs text-gray-500 mt-0.5">Builds a sparse BM25 index after upload. Enables native keyword + vector hybrid scoring on this collection.</p>
+                                    </div>
+                                </label>
                             </div>
                         </div>
 
@@ -7812,6 +7801,30 @@
                             <div class="flex justify-between text-xs text-gray-500 mt-1">
                                 <span>Pure Semantic</span>
                                 <span>Pure Keyword</span>
+                            </div>
+                        </div>
+
+                        <!-- Teradata BM25 Scoring Method (visible only for Teradata + hybrid mode) -->
+                        <div id="knowledge-repo-scoring-method-row" class="hidden p-3 bg-gray-700/30 rounded-lg border border-gray-600">
+                            <label for="knowledge-repo-scoring-method" class="block text-sm text-gray-300 mb-2">BM25 Scoring Method</label>
+                            <select id="knowledge-repo-scoring-method" name="td_scoring_method"
+                                    class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500">
+                                <option value="rrf">Reciprocal Rank Fusion (RRF) — recommended</option>
+                                <option value="weighted_sum">Weighted Sum</option>
+                                <option value="weighted_rrf">Weighted RRF</option>
+                            </select>
+                            <div class="mt-3">
+                                <div class="flex items-center justify-between mb-1">
+                                    <label for="knowledge-repo-sparse-weight" class="text-sm text-gray-300">BM25 Weight</label>
+                                    <span id="knowledge-repo-sparse-weight-value" class="text-sm font-mono text-purple-300">0.30</span>
+                                </div>
+                                <input type="range" id="knowledge-repo-sparse-weight" name="td_sparse_weight"
+                                       min="0" max="1" step="0.05" value="0.3"
+                                       class="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-purple-500">
+                                <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>Pure Semantic</span>
+                                    <span>Pure BM25</span>
+                                </div>
                             </div>
                         </div>
                     </div>

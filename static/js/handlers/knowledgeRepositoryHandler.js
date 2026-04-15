@@ -63,12 +63,19 @@ export function initializeKnowledgeRepositoryHandlers() {
         });
     }
 
-    // Search mode radio buttons — show/hide keyword weight slider
+    // Search mode radio buttons — show/hide keyword weight slider and Teradata scoring method
     const searchModeRadios = document.querySelectorAll('input[name="search_mode"]');
     const keywordWeightRow = document.getElementById('knowledge-repo-keyword-weight-row');
+    const scoringMethodRow = document.getElementById('knowledge-repo-scoring-method-row');
     searchModeRadios.forEach(radio => {
         radio.addEventListener('change', () => {
             if (keywordWeightRow) keywordWeightRow.classList.toggle('hidden', radio.value !== 'hybrid');
+            // Show Teradata scoring method only when hybrid is selected on a Teradata backend
+            if (scoringMethodRow) {
+                const vsSelect = document.getElementById('knowledge-repo-vector-store');
+                const backendType = vsSelect?.selectedOptions[0]?.dataset.backendType || 'chromadb';
+                scoringMethodRow.classList.toggle('hidden', !(radio.value === 'hybrid' && backendType === 'teradata'));
+            }
         });
     });
 
@@ -81,6 +88,15 @@ export function initializeKnowledgeRepositoryHandlers() {
         });
     }
 
+    // Sparse weight slider — live value display (Teradata BM25)
+    const sparseWeightSlider = document.getElementById('knowledge-repo-sparse-weight');
+    const sparseWeightValue = document.getElementById('knowledge-repo-sparse-weight-value');
+    if (sparseWeightSlider && sparseWeightValue) {
+        sparseWeightSlider.addEventListener('input', () => {
+            sparseWeightValue.textContent = parseFloat(sparseWeightSlider.value).toFixed(2);
+        });
+    }
+
     // Chunking strategy change handler with auto-preview
     const chunkingSelect = document.getElementById('knowledge-repo-chunking');
     if (chunkingSelect) {
@@ -90,14 +106,7 @@ export function initializeKnowledgeRepositoryHandlers() {
         });
     }
     
-    // Server-side mode radio buttons — toggle chunk-size row visibility
-    const ssModeRadios = document.querySelectorAll('input[name="server_side_mode"]');
-    const ssChunkSizeRow = document.getElementById('knowledge-repo-ss-chunk-size-row');
-    ssModeRadios.forEach(radio => {
-        radio.addEventListener('change', () => {
-            if (ssChunkSizeRow) ssChunkSizeRow.classList.toggle('hidden', radio.value !== 'fixed_size');
-        });
-    });
+    // server_side_mode radios removed — BasicIngestor is always used (NVIngestor requires NVIDIA NIM)
 
     // Chunk parameter change handlers with auto-preview
     const chunkSizeInput = document.getElementById('knowledge-repo-chunk-size');
@@ -331,10 +340,22 @@ async function _updateSearchModeForBackend(backendType) {
             if (semanticRadio) semanticRadio.checked = true;
             const kwRow = document.getElementById('knowledge-repo-keyword-weight-row');
             if (kwRow) kwRow.classList.add('hidden');
+            const scoringRow = document.getElementById('knowledge-repo-scoring-method-row');
+            if (scoringRow) scoringRow.classList.add('hidden');
+        } else {
+            // Show scoring method row only when Teradata + current mode is hybrid
+            const scoringRow = document.getElementById('knowledge-repo-scoring-method-row');
+            if (scoringRow) {
+                const checkedRadio = section.querySelector('input[name="search_mode"]:checked');
+                const isHybrid = checkedRadio?.value === 'hybrid';
+                scoringRow.classList.toggle('hidden', !(backendType === 'teradata' && isHybrid));
+            }
         }
     } catch (err) {
         console.warn('[Knowledge] Failed to fetch vectorstore capabilities:', err);
         section.classList.add('hidden');
+        const scoringRow = document.getElementById('knowledge-repo-scoring-method-row');
+        if (scoringRow) scoringRow.classList.add('hidden');
     }
 }
 
@@ -448,6 +469,10 @@ function openKnowledgeRepositoryModal() {
         delete submitBtn.dataset.collectionId;
         delete submitBtn.dataset.collectionName;
     }
+
+    // Reset BM25 checkbox
+    const bm25Checkbox = document.getElementById('knowledge-repo-enable-bm25');
+    if (bm25Checkbox) bm25Checkbox.checked = false;
 
     // Reset selected files
     selectedFiles = [];
@@ -865,10 +890,15 @@ async function handleKnowledgeRepositorySubmit(e) {
                 hybrid_keyword_weight: keywordWeight,
             };
 
+            // Add Teradata native BM25 scoring config when hybrid mode is selected
+            if (backendType === 'teradata' && searchMode === 'hybrid') {
+                createBody.td_scoring_method = document.getElementById('knowledge-repo-scoring-method')?.value || 'rrf';
+                createBody.td_sparse_weight = parseFloat(document.getElementById('knowledge-repo-sparse-weight')?.value || '0.3');
+            }
+
             // Add server-side chunking params when applicable (Teradata EVS)
             if (chunkingStrategy === 'server_side') {
-                const isOptimized = document.querySelector('input[name="server_side_mode"]:checked')?.value === 'optimized';
-                createBody.optimized_chunking = isOptimized;
+                createBody.optimized_chunking = false; // NVIngestor not available; always BasicIngestor
                 createBody.ss_chunk_size = parseInt(document.getElementById('knowledge-repo-ss-chunk-size')?.value || '2000');
                 createBody.header_height = parseInt(document.getElementById('knowledge-repo-header-height')?.value || '0');
                 createBody.footer_height = parseInt(document.getElementById('knowledge-repo-footer-height')?.value || '0');
@@ -926,9 +956,8 @@ async function handleKnowledgeRepositorySubmit(e) {
                 formData.append('embedding_model', embeddingModel);
 
                 if (chunkingStrategy === 'server_side') {
-                    // Server-side chunking params (Teradata EVS)
-                    const isOptimized = document.querySelector('input[name="server_side_mode"]:checked')?.value === 'optimized';
-                    formData.append('optimized_chunking', isOptimized ? 'true' : 'false');
+                    // Server-side chunking params (Teradata EVS) — BasicIngestor always used
+                    formData.append('optimized_chunking', 'false');
                     formData.append('chunk_size', document.getElementById('knowledge-repo-ss-chunk-size')?.value || '2000');
                     formData.append('header_height', document.getElementById('knowledge-repo-header-height')?.value || '0');
                     formData.append('footer_height', document.getElementById('knowledge-repo-footer-height')?.value || '0');
@@ -977,11 +1006,27 @@ async function handleKnowledgeRepositorySubmit(e) {
                                 if (dataMatch) {
                                     try {
                                         const data = JSON.parse(dataMatch[1]);
-                                        
+
                                         // Update progress based on event type
-                                        if (data.type === 'progress' && data.percentage) {
-                                            const fileProgress = 30 + (i / selectedFiles.length) * 70;
-                                            const overallProgress = fileProgress + (data.percentage / 100) * (70 / selectedFiles.length);
+                                        if (data.type === 'progress') {
+                                            // For server-side uploads the SDK only emits 5% (start) and 100%
+                                            // (end) — so use elapsed time from the message to give a smooth
+                                            // time-based estimate (30 → 95%) instead of sticking at 5%.
+                                            let pct = data.percentage || 5;
+                                            if (pct < 100 && data.message) {
+                                                const minSec = data.message.match(/(\d+)m\s+(\d+)s elapsed/);
+                                                const secOnly = data.message.match(/\b(\d+)s elapsed/);
+                                                let elapsedSec = 0;
+                                                if (minSec) elapsedSec = parseInt(minSec[1]) * 60 + parseInt(minSec[2]);
+                                                else if (secOnly) elapsedSec = parseInt(secOnly[1]);
+                                                if (elapsedSec > 0) {
+                                                    // Logarithmic curve: 0s→10%, 60s→45%, 180s→65%, 600s→85%
+                                                    pct = Math.min(92, Math.round(10 + 82 * elapsedSec / (elapsedSec + 120)));
+                                                }
+                                            }
+                                            const slotStart = 30 + (i / selectedFiles.length) * 65;
+                                            const slotWidth = 65 / selectedFiles.length;
+                                            const overallProgress = slotStart + (pct / 100) * slotWidth;
                                             if (progressBar) progressBar.style.width = `${overallProgress}%`;
                                             if (progressText && data.message) {
                                                 progressText.textContent = `${file.name}: ${data.message}`;
@@ -1012,8 +1057,39 @@ async function handleKnowledgeRepositorySubmit(e) {
             if (progressBar) progressBar.style.width = '100%';
         }
         
+        if (progressBar) progressBar.style.width = '95%';
+
+        // Post-upload: enable native BM25 if requested (server-side Teradata only)
+        const enableBm25Checkbox = document.getElementById('knowledge-repo-enable-bm25');
+        const vsSelect2 = document.getElementById('knowledge-repo-vector-store');
+        const backendType2 = vsSelect2?.selectedOptions[0]?.dataset.backendType || 'chromadb';
+        const chunkingStrategy2 = document.getElementById('knowledge-repo-chunking')?.value || '';
+        if (enableBm25Checkbox?.checked && backendType2 === 'teradata' && chunkingStrategy2 === 'server_side') {
+            if (progressText) progressText.textContent = 'Building BM25 index...';
+            try {
+                const scoringMethod = document.getElementById('knowledge-repo-scoring-method')?.value || 'rrf';
+                const sparseWeight = parseFloat(document.getElementById('knowledge-repo-sparse-weight')?.value || '0.3');
+                const bm25Resp = await fetch(`/api/v1/knowledge/repositories/${collectionId}/hybrid/enable`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ scoring_method: scoringMethod, sparse_weight: sparseWeight }),
+                });
+                if (bm25Resp.ok) {
+                    console.log('[Knowledge] BM25 enabled for collection', collectionId);
+                } else {
+                    const bm25Err = await bm25Resp.json();
+                    console.warn('[Knowledge] BM25 enable failed:', bm25Err.message);
+                    showAppBanner(`BM25 index failed: ${bm25Err.message}`, 'warning');
+                }
+            } catch (bm25Error) {
+                console.warn('[Knowledge] BM25 enable error:', bm25Error);
+            }
+        }
+
+        if (progressBar) progressBar.style.width = '100%';
+
         // Success
-        const successMessage = uploadMode 
+        const successMessage = uploadMode
             ? `Documents uploaded to "${existingCollectionName}" successfully!`
             : `Knowledge repository created successfully!`;
         if (progressText) progressText.textContent = successMessage;
@@ -1137,6 +1213,8 @@ export async function loadKnowledgeRepositories() {
 
 // Expose globally for bulk-toggle re-render in agentPackGrouping.js
 window.loadKnowledgeRepositories = loadKnowledgeRepositories;
+// Expose for onclick handlers in dynamically-generated inspection modal HTML
+window.enableTeradataBm25 = enableTeradataBm25;
 
 /**
  * Attach event listeners to Knowledge repository card buttons
@@ -1330,6 +1408,7 @@ function openKnowledgeInspectionModal(repo) {
     document.getElementById('knowledge-inspection-description').textContent = repo.description || 'Knowledge repository';
     
     const body = document.getElementById('knowledge-inspection-body');
+    const repoId = repo.id || repo.collection_id;
     body.innerHTML = `
         <div class="space-y-6">
             <!-- Configuration Section -->
@@ -1402,6 +1481,29 @@ function openKnowledgeInspectionModal(repo) {
                     </div>
                 </div>
             </div>
+
+            ${repo.backend_type === 'teradata' && repo.search_mode === 'hybrid' ? `
+            <!-- Native BM25 Status Card (Teradata hybrid collections only) -->
+            <div id="bm25-status-card-${repoId}" class="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        <div>
+                            <div class="text-sm text-gray-400">Native BM25 (Hybrid Search)</div>
+                            <div id="bm25-status-text-${repoId}" class="text-white font-medium">Loading...</div>
+                        </div>
+                    </div>
+                    <button id="bm25-enable-btn-${repoId}"
+                            class="hidden px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs rounded-lg transition-colors"
+                            onclick="enableTeradataBm25(${repoId})">
+                        Enable Native BM25
+                    </button>
+                </div>
+                <div id="bm25-progress-${repoId}" class="hidden mt-3 text-sm text-orange-300 animate-pulse"></div>
+            </div>
+            ` : ''}
         </div>
     `;
     
@@ -1414,8 +1516,12 @@ function openKnowledgeInspectionModal(repo) {
     });
     
     // Fetch actual document count from API
-    const repoId = repo.id || repo.collection_id;
     fetchKnowledgeDocumentCount(repoId);
+
+    // Fetch BM25 status for Teradata hybrid collections
+    if (repo.backend_type === 'teradata' && repo.search_mode === 'hybrid') {
+        fetchTeradataBm25Status(repoId, repo.chunking_strategy);
+    }
 }
 
 /**
@@ -1448,6 +1554,111 @@ async function fetchKnowledgeDocumentCount(collectionId) {
             countEl.textContent = 'Error';
             countEl.classList.add('text-red-400');
         }
+    }
+}
+
+/**
+ * Fetch native BM25 status for a Teradata hybrid collection (inspection modal).
+ * @param {number} collectionId
+ * @param {string} chunkingStrategy - 'server_side' or client-side strategy
+ */
+async function fetchTeradataBm25Status(collectionId, chunkingStrategy) {
+    const statusText = document.getElementById(`bm25-status-text-${collectionId}`);
+    const enableBtn = document.getElementById(`bm25-enable-btn-${collectionId}`);
+    const progressEl = document.getElementById(`bm25-progress-${collectionId}`);
+    if (!statusText) return;
+
+    // Native BM25 is not available for client-side chunked collections — the Teradata
+    // lake server AMP crashes when building BM25 on CONTENT_BASED collections.
+    if (chunkingStrategy !== 'server_side') {
+        statusText.textContent = 'Native BM25 not available — requires server-side chunking';
+        statusText.className = 'text-gray-400 font-medium';
+        if (enableBtn) enableBtn.classList.add('hidden');
+        if (progressEl) {
+            progressEl.classList.remove('hidden', 'animate-pulse');
+            progressEl.className = 'mt-3 text-xs text-gray-500 italic';
+            progressEl.textContent = 'Teradata currently doesn\'t support BM25 indexing for client-side chunking at this point in time. Re-create this repository with server-side chunking to use native BM25.';
+        }
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const response = await fetch(`/api/v1/knowledge/repositories/${collectionId}/hybrid/status`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            statusText.textContent = 'Status unavailable';
+            return;
+        }
+
+        const data = await response.json();
+
+        if (data.bm25_enabled) {
+            const method = (data.scoring_method || 'rrf').toUpperCase();
+            const weight = typeof data.sparse_weight === 'number' ? data.sparse_weight.toFixed(2) : '0.30';
+            statusText.textContent = `Native Teradata BM25 — active | Scoring: ${method} | BM25 weight: ${weight}`;
+            statusText.className = 'text-green-400 font-medium';
+            if (enableBtn) enableBtn.classList.add('hidden');
+        } else {
+            statusText.textContent = 'Python-side RRF (Native BM25 not enabled)';
+            statusText.className = 'text-gray-300 font-medium';
+            if (enableBtn) enableBtn.classList.remove('hidden');
+        }
+    } catch (err) {
+        console.warn('[Knowledge] Failed to fetch BM25 status:', err);
+        if (statusText) statusText.textContent = 'Status unavailable';
+    }
+}
+
+/**
+ * Enable native Teradata BM25 for a hybrid collection (called from inspection modal button).
+ */
+async function enableTeradataBm25(collectionId) {
+    const enableBtn = document.getElementById(`bm25-enable-btn-${collectionId}`);
+    const statusText = document.getElementById(`bm25-status-text-${collectionId}`);
+    const progressEl = document.getElementById(`bm25-progress-${collectionId}`);
+    if (!enableBtn) return;
+
+    enableBtn.disabled = true;
+    enableBtn.textContent = 'Building...';
+    if (progressEl) {
+        progressEl.classList.remove('hidden');
+        progressEl.textContent = 'Building BM25 model... this may take several minutes';
+    }
+    if (statusText) statusText.textContent = 'Building BM25 model...';
+
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const response = await fetch(`/api/v1/knowledge/repositories/${collectionId}/hybrid/enable`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ scoring_method: 'rrf', sparse_weight: 0.3 })
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || `HTTP ${response.status}`);
+        }
+
+        if (progressEl) progressEl.classList.add('hidden');
+        // server_side is guaranteed here — BM25 enable is only reachable for server-side collections
+        await fetchTeradataBm25Status(collectionId, 'server_side');
+
+    } catch (err) {
+        console.error('[Knowledge] BM25 enable failed:', err);
+        if (progressEl) {
+            progressEl.classList.remove('hidden');
+            progressEl.textContent = `Failed: ${err.message}`;
+            progressEl.classList.remove('animate-pulse');
+        }
+        if (statusText) statusText.textContent = 'Python-side RRF (Enable failed)';
+        enableBtn.disabled = false;
+        enableBtn.textContent = 'Enable Native BM25';
     }
 }
 
@@ -1549,10 +1760,17 @@ function createKnowledgeRepositoryCard(repo) {
                 <span><span class="text-white font-medium">${docCount}</span> documents</span>
                 <span>•</span>
                 ${chunkCount === 0 && docCount > 0
-                    ? `<span class="text-red-400 font-medium flex items-center gap-1" title="Knowledge base appears empty — re-upload documents">
-                           <svg class="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.345 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
-                           0 chunks — re-upload needed
-                       </span>`
+                    ? (repo.chunking_strategy === 'server_side' && repo.backend_type === 'teradata'
+                        // Server-side Teradata: chunks live in EVS-managed tables; count is updated
+                        // asynchronously by the deferred task. Don't show "re-upload needed".
+                        ? `<span class="text-gray-400 flex items-center gap-1" title="Chunks are stored in Teradata EVS. Count updates within ~90s of ingestion.">
+                               <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"></path></svg>
+                               chunks in EVS
+                           </span>`
+                        : `<span class="text-red-400 font-medium flex items-center gap-1" title="Knowledge base appears empty — re-upload documents">
+                               <svg class="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.345 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+                               0 chunks — re-upload needed
+                           </span>`)
                     : `<span><span class="text-white font-medium">${chunkCount}</span> chunks</span>`
                 }
             </div>
@@ -1939,17 +2157,7 @@ export function openUploadDocumentsModal(collectionId, collectionName, repoData)
     if (ssParams) {
         ssParams.classList.toggle('hidden', chunkingStrategy !== 'server_side');
         if (chunkingStrategy === 'server_side') {
-            // Pre-fill from collection config but keep EDITABLE (per-upload override)
-            const optimizedRadio = document.querySelector('input[name="server_side_mode"][value="optimized"]');
-            const fixedRadio = document.querySelector('input[name="server_side_mode"][value="fixed_size"]');
-            if (repoData?.optimized_chunking !== undefined) {
-                const isOpt = repoData.optimized_chunking === 1 || repoData.optimized_chunking === true;
-                if (optimizedRadio) optimizedRadio.checked = isOpt;
-                if (fixedRadio) fixedRadio.checked = !isOpt;
-                // Show/hide chunk size row based on mode
-                const ssChunkSizeRow = document.getElementById('knowledge-repo-ss-chunk-size-row');
-                if (ssChunkSizeRow) ssChunkSizeRow.classList.toggle('hidden', isOpt);
-            }
+            // Pre-fill chunk size / trim values from collection config
             const ssChunkInput = document.getElementById('knowledge-repo-ss-chunk-size');
             if (ssChunkInput && repoData?.ss_chunk_size) ssChunkInput.value = repoData.ss_chunk_size;
             const headerInput = document.getElementById('knowledge-repo-header-height');

@@ -1,7 +1,7 @@
 # Teradata Vector Store Investigation & Resolution
 
 **Investigation Date:** March 8-9, 2026
-**Status:** Root cause identified and fixed
+**Status:** Root cause identified and fixed (additional lake-server fixes applied April 2026 — see *Post-Investigation Fixes* below)
 **Environment:** VantageCloud Lake CSA (ClearScape Analytics)
 
 ---
@@ -587,6 +587,50 @@ def validate_document_encoding(file_content):
     # Warn user if non-ASCII characters found and using client-side chunking
     pass
 ```
+
+---
+
+---
+
+## Post-Investigation Fixes (April 2026)
+
+After migrating to the **Collection V2 API** (`teradatagenai.Collection`, `ContentBasedIndex`, `BasicIngestor`) and validating on the EVS demo server (`34.232.150.25`), three additional lake-server bugs were fixed:
+
+### Fix A — Explicit `ExtractionSchema` required
+
+**Error:** `TDML_2412: 'NoneType' object has no attribute 'table_name'`
+
+The lake server cannot auto-generate the extraction table name. The platform now always provides an explicit name:
+```python
+_extr_table = ("UDERIA_EXTR_" + collection_name)[:30].rstrip("_")
+_extraction_schema = ExtractionSchema(table_name=_extr_table)
+```
+
+### Fix B — `LocalConfig(files_type=…)` required
+
+**Error:** `'NoneType' object has no attribute 'files_type'`
+
+The lake server requires `files_parameters.files_type` in the ingest request body. The platform now detects the file extension and passes it:
+```python
+_files_type = _ext if _ext in {"pdf", "csv", "json", "jsonl", "parquet", ...} else "pdf"
+local_config = LocalConfig(files=file_paths, files_type=_files_type)
+```
+
+### Fix C — Always use `BasicIngestor` (not `NVIngestor`)
+
+`NVIngestor` sets `"ingestor": "nv_ingest"` in the request, which requires NVIDIA NIM infrastructure. VantageCloud Lake only supports `"ingestor": "basic"`. The platform hardcodes `BasicIngestor` and the `optimized_chunking` radio has been removed from the UI.
+
+### Fix D — `TD_FILESPLITS` content column
+
+For `FILE_CONTENT_BASED` (server-side) collections on VantageCloud Lake, the content column is named `TD_FILESPLITS` (not `CONTENT` or `FILE_SPLITS`). Added to the dynamic detection list in `query()`.
+
+### Fix E — Backend config cache for BM25
+
+The Teradata backend singleton caches `_config` at init time. After `enable_bm25()` sets `td_bm25_enabled=True` in the DB, the search route now refreshes `backend._config` before each query so the BM25 scoring mode is picked up without a server restart.
+
+### BM25 Limitation: Server-Side Chunking Only
+
+Native BM25 hybrid search works **only** with server-side chunked (`FILE_CONTENT_BASED`) collections. Calling `enable_bm25()` on a client-side (`CONTENT_BASED`) collection causes an AMP segmentation violation on the lake server. The UI prevents this: the BM25 "Enable" button is hidden for client-side collections and replaced with an explanatory note.
 
 ---
 

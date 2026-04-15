@@ -424,8 +424,14 @@ Files: `src/trusted_data_agent/agent/rag_retriever.py`, `repository_constructor.
 - **Qdrant Cloud**: Managed cloud vector DB, client-side embedding via SentenceTransformer, 12 capabilities. Uses `AsyncQdrantClient` with optional gRPC. Compound document IDs (e.g. `uuid_chunk_0_hash`) are hashed to deterministic UUID5 values; originals stored in `_uderia_id` payload field for round-trip fidelity.
 
 **Two ingestion paths for Teradata:**
-- **Client-side chunking**: Platform chunks locally → staging table → VectorStore (full doc management)
-- **Server-side chunking**: Raw files passed to `VectorStore.create(document_files=[...])` — SDK handles everything
+- **Client-side chunking**: Platform chunks locally → staging table → Collection (full doc management)
+- **Server-side chunking**: Raw files passed to `Collection.from_documents(...)` (Collection V2 API) — SDK handles chunking + embedding. VantageCloud Lake requires three explicit parameters: `ExtractionSchema(table_name=…)` (lake can't auto-generate it), `LocalConfig(files_type=…)` (lake needs file type in the request body), and always `BasicIngestor` (NVIngestor requires NVIDIA NIM not present on lake).
+
+**BM25 (hybrid search):** Only works with server-side chunking (`FILE_CONTENT_BASED` collections). Calling `enable_bm25()` on a client-side (`CONTENT_BASED`) collection triggers an AMP segmentation violation on VantageCloud Lake. The UI guards this: the Enable button is hidden for client-side collections and an explanatory note is shown instead.
+
+**IAM pass-through (VantageCloud Lake):** When no Bedrock/Azure credentials are configured, `_build_teradata_ai()` returns `None` and the backend passes `embeddings_model="string"` to let the lake server use its own IAM role for embedding — no credentials need to be stored in the platform.
+
+**Backend config refresh:** The Teradata backend singleton caches `_config` at init time. After `enable_bm25()` updates `td_bm25_enabled` in the DB, the search route refreshes `backend._config` from the DB before each query so hybrid scoring takes effect without a server restart.
 
 **Connection resilience**: All SQL operations use `_execute_sql()` wrapper with comprehensive stale-connection detection via `_is_connection_lost()` (catches `AttributeError`/NoneType, `OperationalError`/pool handle, socket/connection errors). Reconnect serialized via `_reconnect_all()` with `asyncio.Lock` + monotonic timestamp to prevent thundering herd. Same pattern protects `query()`'s `similarity_search()`. See architecture doc for details.
 
