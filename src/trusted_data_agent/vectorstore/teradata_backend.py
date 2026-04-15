@@ -1537,9 +1537,23 @@ class TeradataVectorBackend(VectorStoreBackend):
         staging = await self._staging_count(collection_name)
         if staging:
             return staging
-        # Fallback: server-side chunked collections use vectorstoreV_ table
+        # Fallback: V1 VectorStore — chunks_table_{uuid} named in index table
         vs_count = await self._vs_table_count(collection_name)
-        return vs_count or 0
+        if vs_count is not None:
+            return vs_count
+        # Fallback: V2 Collection (FILE_CONTENT_BASED) — no vectorstore_* tables;
+        # data lives in the extraction schema table (UDERIA_EXTR_*) we created.
+        try:
+            _extr = ("UDERIA_EXTR_" + collection_name)[:30].rstrip("_")
+            result = await self._execute_sql(
+                f"SELECT COUNT(*) AS CNT FROM {self._qualified(_extr)}"
+            )
+            rows = self._result_to_rows(result)
+            if rows:
+                return int(rows[0]["CNT"])
+        except Exception:
+            pass
+        return 0
 
     # ── Document writes ───────────────────────────────────────────────────────
 
@@ -2411,10 +2425,80 @@ class TeradataVectorBackend(VectorStoreBackend):
                 docs.append(VectorDocument(id=doc_id, content=content, metadata=meta))
             return GetResult(documents=docs, total_count=len(docs))
 
-        # ── Fallback: server-side chunked collection (chunks_table_{uuid}) ──
+        # ── Fallback: server-side chunked collection ──────────────────────────
         chunks_qualified = await self._resolve_chunks_table(collection_name)
+
         if not chunks_qualified:
-            return GetResult(documents=[], total_count=0)
+            # V2 Collection (FILE_CONTENT_BASED): no vectorstore_* tables exist.
+            # Data lives in the extraction schema table (UDERIA_EXTR_*) we created.
+            # Only TD_FILENAME and TD_FILESPLITS columns exist — no TD_ID.
+            _extr = ("UDERIA_EXTR_" + collection_name)[:30].rstrip("_")
+            extr_qualified = self._qualified(_extr)
+            try:
+                if ids is not None:
+                    # IDs are in format "filename#row_number" (set during browse).
+                    # Parse the RN suffix so we can select the exact row via
+                    # ROW_NUMBER() rather than matching on TD_FILENAME (which is
+                    # the same for every chunk in a single-file collection).
+                    rns = []
+                    for cid in ids:
+                        if "#" in cid:
+                            try:
+                                rns.append(int(cid.rsplit("#", 1)[1]))
+                            except ValueError:
+                                pass
+                    if rns:
+                        rn_list = ", ".join(str(r) for r in rns)
+                        sql = (
+                            f"SELECT TD_FILENAME, TD_FILESPLITS, RN FROM ("
+                            f"  SELECT TD_FILENAME, TD_FILESPLITS,"
+                            f"         ROW_NUMBER() OVER (ORDER BY TD_FILENAME) AS RN"
+                            f"  FROM {extr_qualified}"
+                            f") T WHERE RN IN ({rn_list})"
+                        )
+                    else:
+                        # Fallback: no #rn suffix — match by filename
+                        filenames = [cid.replace("'", "''") for cid in ids]
+                        in_clause = ", ".join(f"'{fn}'" for fn in filenames)
+                        sql = (
+                            f"SELECT TD_FILENAME, TD_FILESPLITS, 0 AS RN "
+                            f"FROM {extr_qualified} "
+                            f"WHERE TD_FILENAME IN ({in_clause})"
+                        )
+                else:
+                    row_start = offset + 1
+                    row_end = (offset + limit) if limit else 2_000_000_000
+                    sql = (
+                        f"SELECT TD_FILENAME, TD_FILESPLITS, RN FROM ("
+                        f"  SELECT TD_FILENAME, TD_FILESPLITS,"
+                        f"         ROW_NUMBER() OVER (ORDER BY TD_FILENAME) AS RN"
+                        f"  FROM {extr_qualified}"
+                        f") T WHERE RN BETWEEN {row_start} AND {row_end}"
+                    )
+                result = await self._execute_sql(sql)
+                v2_rows = self._result_to_rows(result)
+            except Exception as exc:
+                logger.warning(
+                    "V2 extraction table query failed for '%s': %s",
+                    collection_name, exc,
+                )
+                return GetResult(documents=[], total_count=0)
+
+            docs = []
+            for row in v2_rows:
+                fn = str(row.get("TD_FILENAME", row.get("td_filename", "")))
+                rn = int(row.get("RN", row.get("rn", 0)))
+                content = (
+                    str(row.get("TD_FILESPLITS", row.get("td_filesplits", "")))
+                    if include_documents else ""
+                )
+                meta = {
+                    "source_filename": fn,
+                    "document_id": fn,
+                    "chunk_index": rn,
+                } if include_metadata else {}
+                docs.append(VectorDocument(id=f"{fn}#{rn}", content=content, metadata=meta))
+            return GetResult(documents=docs, total_count=len(docs))
 
         # Use SELECT * because the EVS SDK may name the content column
         # differently depending on version/parameters (file_splits, chunks,
