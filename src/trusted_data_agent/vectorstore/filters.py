@@ -4,7 +4,7 @@ Backend-agnostic metadata filter AST.
 Callers build filters using FieldFilter / AndFilter / OrFilter. Each backend
 translates the AST to its native query format:
   - ChromaDB: nested dict  {"$and": [{"field": {"$eq": v}}, ...]}
-  - Teradata:  SQL WHERE clause (implemented in teradata_backend.py)
+  - Teradata:  SQL WHERE clause via ``to_teradata_sql_where()``
   - Qdrant:    Filter / FieldCondition objects (qdrant_client.models)
 
 The ``from_chromadb_where()`` bridge lets existing ChromaDB-format dicts be
@@ -175,6 +175,90 @@ def to_qdrant_filter(f: MetadataFilter):
         if isinstance(node, OrFilter):
             should = [_translate(child) for child in node.conditions]
             return Filter(should=should)
+
+        raise TypeError(f"Unknown filter type: {type(node)}")
+
+    return _translate(f)
+
+
+# ── Teradata SQL translator ───────────────────────────────────────────────────
+
+def to_teradata_sql_where(f: MetadataFilter, json_column: str = "METADATA_JSON") -> Optional[str]:
+    """Translate a MetadataFilter tree into a Teradata SQL WHERE fragment.
+
+    The fragment targets *json_column* (a CLOB storing JSON) using
+    ``JSON_VALUE`` for field extraction.  Returns ``None`` when *f* is ``None``.
+
+    Example output for ``eq("category", "manual")``::
+
+        JSON_VALUE(METADATA_JSON, '$.category') = 'manual'
+
+    The returned string is suitable for embedding directly in a WHERE clause::
+
+        sql = f"SELECT CHUNK_ID FROM staging WHERE {to_teradata_sql_where(where)}"
+    """
+    if f is None:
+        return None
+
+    def _quote_str(v: Any) -> str:
+        """Single-quote a string value, escaping embedded single quotes."""
+        return "'" + str(v).replace("'", "''") + "'"
+
+    def _json_val(field: str) -> str:
+        return f"JSON_VALUE({json_column}, '$.{field}')"
+
+    def _cast_numeric(field: str) -> str:
+        return f"CAST(JSON_VALUE({json_column}, '$.{field}') AS FLOAT)"
+
+    def _translate(node: MetadataFilter) -> str:
+        if isinstance(node, FieldFilter):
+            field, op, val = node.field, node.op, node.value
+            is_numeric = isinstance(val, (int, float)) and not isinstance(val, bool)
+
+            if op == FilterOp.EQ:
+                if is_numeric:
+                    return f"{_cast_numeric(field)} = {val}"
+                return f"{_json_val(field)} = {_quote_str(val)}"
+
+            if op == FilterOp.NE:
+                if is_numeric:
+                    return f"{_cast_numeric(field)} <> {val}"
+                return f"{_json_val(field)} <> {_quote_str(val)}"
+
+            if op == FilterOp.GT:
+                return f"{_cast_numeric(field)} > {val}"
+            if op == FilterOp.GTE:
+                return f"{_cast_numeric(field)} >= {val}"
+            if op == FilterOp.LT:
+                return f"{_cast_numeric(field)} < {val}"
+            if op == FilterOp.LTE:
+                return f"{_cast_numeric(field)} <= {val}"
+
+            if op == FilterOp.IN:
+                items = ", ".join(
+                    str(v) if isinstance(v, (int, float)) and not isinstance(v, bool)
+                    else _quote_str(v)
+                    for v in val
+                )
+                return f"{_json_val(field)} IN ({items})"
+
+            if op == FilterOp.NOT_IN:
+                items = ", ".join(
+                    str(v) if isinstance(v, (int, float)) and not isinstance(v, bool)
+                    else _quote_str(v)
+                    for v in val
+                )
+                return f"{_json_val(field)} NOT IN ({items})"
+
+            raise ValueError(f"Unsupported FilterOp for Teradata SQL: {op}")
+
+        if isinstance(node, AndFilter):
+            parts = [f"({_translate(c)})" for c in node.conditions]
+            return " AND ".join(parts)
+
+        if isinstance(node, OrFilter):
+            parts = [f"({_translate(c)})" for c in node.conditions]
+            return " OR ".join(parts)
 
         raise TypeError(f"Unknown filter type: {type(node)}")
 

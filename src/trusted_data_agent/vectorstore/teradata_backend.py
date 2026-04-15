@@ -1,7 +1,7 @@
 """
 Teradata Enterprise Vector Store backend.
 
-Uses the real ``teradatagenai`` Python SDK (``VectorStore``) for ANN search and
+Uses the ``teradatagenai`` Python SDK (``Collection`` V2 API) for ANN search and
 ``teradataml`` for staging-table SQL operations that enable document-level ID
 control required by the abstraction interface.
 
@@ -47,6 +47,7 @@ import asyncio
 import functools
 import json
 import logging
+import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -56,7 +57,7 @@ from uuid import uuid4
 from .base import VectorStoreBackend
 from .capabilities import VectorStoreCapability
 from .embedding_providers import EmbeddingProvider
-from .filters import MetadataFilter
+from .filters import MetadataFilter, to_teradata_sql_where
 from .types import (
     CollectionConfig,
     CollectionInfo,
@@ -86,6 +87,9 @@ _STATUS_PROGRESS: Dict[str, int] = {
     "READY": 100,
     "COMPLETED": 100,
     "SUCCESS": 100,
+    # Collection V2 terminal states
+    "CREATED": 100,
+    "UPDATED": 100,
 }
 
 # Matches embedded percentages like "CREATING (PROCESSING DOCUMENTS 42.5 %)"
@@ -166,9 +170,10 @@ def _teradata_phase_label(status: str) -> str:
 class TeradataVectorBackend(VectorStoreBackend):
     """Teradata Enterprise Vector Store backend.
 
-    Uses ``teradatagenai.VectorStore`` for server-side embedding and ANN search,
-    and ``teradataml`` for staging-table SQL that enables document-level ID
-    operations (delete by ID, get by ID, count).
+    Uses ``teradatagenai.Collection`` (V2 API) for server-side embedding and
+    ANN search (with optional native BM25 hybrid search), and ``teradataml``
+    for staging-table SQL that enables document-level ID operations (delete by
+    ID, get by ID, count).
 
     Both ``teradatagenai`` and ``teradataml`` are optional dependencies —
     ``initialize()`` raises ``RuntimeError`` with install hints if either is absent.
@@ -251,14 +256,16 @@ class TeradataVectorBackend(VectorStoreBackend):
             VectorStoreCapability.CREATE_COLLECTION,
             VectorStoreCapability.DELETE_COLLECTION,
             VectorStoreCapability.ADD_DOCUMENTS,
-            VectorStoreCapability.DELETE_DOCUMENTS,      # via staging table + delete_datasets
+            VectorStoreCapability.DELETE_DOCUMENTS,       # via staging table + delete_datasets
             VectorStoreCapability.SIMILARITY_SEARCH,
-            VectorStoreCapability.GET_BY_ID,             # via staging table SQL
-            VectorStoreCapability.COUNT,                 # via staging table COUNT(*)
-            VectorStoreCapability.UPSERT,                # via Teradata UPI key-column semantics
-            VectorStoreCapability.GET_ALL,               # get() with no ids/where returns all docs
+            VectorStoreCapability.GET_BY_ID,              # via staging table SQL
+            VectorStoreCapability.COUNT,                  # via staging table COUNT(*)
+            VectorStoreCapability.UPSERT,                 # via Teradata UPI key-column semantics
+            VectorStoreCapability.GET_ALL,                # get() with no ids/where returns all docs
             VectorStoreCapability.SERVER_SIDE_EMBEDDING,
-            VectorStoreCapability.SERVER_SIDE_CHUNKING,  # document_files ingestion
+            VectorStoreCapability.SERVER_SIDE_CHUNKING,   # document_files ingestion
+            VectorStoreCapability.GET_BY_METADATA_FILTER, # JSON_VALUE pre-filter on staging table
+            VectorStoreCapability.HYBRID_SEARCH,           # Python-side RRF (dense + lexical legs)
         }
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -428,12 +435,6 @@ class TeradataVectorBackend(VectorStoreBackend):
             ) from exc
 
     async def shutdown(self) -> None:
-        # Disconnect SDK sessions before clearing state
-        try:
-            from teradatagenai import VSManager  # type: ignore[import]
-            await self._run_in_td_thread(VSManager.disconnect)
-        except Exception as exc:
-            logger.debug(f"VSManager.disconnect() during shutdown: {exc}")
         self._td_executor.shutdown(wait=False)
         # Clean up temp PEM dir if we created one
         if self._pem_tempfile:
@@ -612,28 +613,34 @@ class TeradataVectorBackend(VectorStoreBackend):
             return [dict(zip(cols, row)) for row in result.fetchall()]
         return []
 
-    async def _create_vs(self, collection_name: str) -> Any:
-        """Create a VectorStore instance on the dedicated teradataml thread with retry.
+    async def _create_collection(self, collection_name: str) -> Any:
+        """Create a Collection (V2) instance on the dedicated teradataml thread with retry.
 
-        The SDK constructor calls ``VSManager.health()`` which hits the REST API.
+        The SDK constructor checks whether the collection exists and issues a
+        warning if not — that warning is expected when we are about to create it.
         Must run on ``_td_executor`` to share the auth context established by
         ``set_auth_token()``.  Retries on transient CloudFront gateway errors.
         """
-        from teradatagenai import VectorStore  # type: ignore[import]
+        import warnings
+        from teradatagenai import Collection  # type: ignore[import]
 
         max_retries = 3
         t = self._VS_STATUS_CALL_TIMEOUT
         for attempt in range(1, max_retries + 1):
             try:
-                logger.info(f"[TD-SDK] VectorStore('{collection_name}')")
-                vs = await asyncio.wait_for(
-                    self._run_in_td_thread(VectorStore, collection_name),
+                logger.info(f"[TD-SDK] Collection('{collection_name}')")
+                def _make():
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        return Collection(name=collection_name)
+                col = await asyncio.wait_for(
+                    self._run_in_td_thread(_make),
                     timeout=t,
                 )
-                return vs
+                return col
             except asyncio.TimeoutError:
                 logger.warning(
-                    f"VectorStore('{collection_name}') attempt {attempt}/{max_retries} "
+                    f"Collection('{collection_name}') attempt {attempt}/{max_retries} "
                     f"timed out after {t}s — thread may be stuck"
                 )
                 if attempt < max_retries:
@@ -642,7 +649,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                     await asyncio.sleep(attempt * 3)
                 else:
                     raise RuntimeError(
-                        f"VectorStore('{collection_name}') constructor timed out "
+                        f"Collection('{collection_name}') constructor timed out "
                         f"after {max_retries} attempts ({t}s each)"
                     )
             except Exception as e:
@@ -654,7 +661,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                 if is_transient and attempt < max_retries:
                     wait = attempt * 3
                     logger.warning(
-                        f"VectorStore('{collection_name}') attempt {attempt}/{max_retries} "
+                        f"Collection('{collection_name}') attempt {attempt}/{max_retries} "
                         f"failed (transient): {e} — retrying in {wait}s"
                     )
                     await asyncio.sleep(wait)
@@ -662,15 +669,15 @@ class TeradataVectorBackend(VectorStoreBackend):
                     raise
 
     async def _get_store(self, collection_name: str) -> Any:
-        """Return cached VectorStore, attaching to an existing store if not yet cached."""
+        """Return cached Collection (V2), attaching to an existing collection if not yet cached."""
         if collection_name not in self._stores:
             try:
-                vs = await self._create_vs(collection_name)
-                self._stores[collection_name] = vs
+                col = await self._create_collection(collection_name)
+                self._stores[collection_name] = col
                 self._collections.add(collection_name)
             except Exception as exc:
                 raise RuntimeError(
-                    f"Failed to attach to existing Teradata VS '{collection_name}': {exc}"
+                    f"Failed to attach to existing Teradata Collection '{collection_name}': {exc}"
                 ) from exc
         return self._stores[collection_name]
 
@@ -707,7 +714,7 @@ class TeradataVectorBackend(VectorStoreBackend):
            on a slow REST response.  Linear backoff, emit heartbeats.
         2. **Thread replacement** (timeout 3): Replace stuck thread, call
            ``_reconnect_all(rest_only=True)`` to establish auth context,
-           then ``_create_vs()`` with built-in retry.  Saves old ``vs``
+           then ``_create_collection()`` with built-in retry.  Saves old ``vs``
            and restores it if recovery fails.
         3. **Backoff** (timeout 4+): Exponential backoff with periodic
            probes.  Stops hammering an overloaded Teradata server.
@@ -754,22 +761,41 @@ class TeradataVectorBackend(VectorStoreBackend):
                         elapsed_seconds=elapsed,
                     ))
 
-                if any(kw in status_str for kw in ("COMPLETED", "READY", "SUCCESS")):
+                if any(kw in status_str for kw in (
+                    "COMPLETED", "READY", "SUCCESS",
+                    # Collection V2 terminal states
+                    "CREATED", "UPDATED",
+                )):
                     self._vs_operation_active = False
                     return vs
                 if any(kw in status_str for kw in ("FAILED", "ERROR", "ABORTED")):
                     self._vs_operation_active = False
-                    # Try to capture detailed failure reason from get_details()
+                    # Try to capture detailed failure reason.
+                    # Prefer col.status() (DataFrame) which contains error_message;
+                    # fall back to get_details() (dict) for VectorStore V1 compatibility.
                     fail_detail = ""
                     try:
-                        details = await self._run_in_td_thread(
-                            lambda: vs.get_details(return_type="json")
-                        )
-                        if details and isinstance(details, dict):
-                            fail_detail = f" | details: {details}"
-                            logger.error(f"VS '{operation}' failure details: {details}")
+                        status_df_raw = await self._run_in_td_thread(vs.status)
+                        if status_df_raw is not None:
+                            pdf = await self._run_in_td_thread(status_df_raw.to_pandas)
+                            if not pdf.empty:
+                                fail_detail = f" | details: {pdf.to_dict(orient='records')[0]}"
+                                if "error_message" in pdf.columns:
+                                    err_msg = pdf["error_message"].iloc[0]
+                                    if err_msg and str(err_msg).strip():
+                                        fail_detail = f" | error: {err_msg}"
+                                logger.error(f"VS '{operation}' failure details: {pdf.to_dict(orient='records')[0]}")
                     except Exception:
-                        pass
+                        # Fallback: get_details() dict (VectorStore V1)
+                        try:
+                            details = await self._run_in_td_thread(
+                                lambda: vs.get_details(return_type="json")
+                            )
+                            if details and isinstance(details, dict):
+                                fail_detail = f" | details: {details}"
+                                logger.error(f"VS '{operation}' failure details: {details}")
+                        except Exception:
+                            pass
                     raise RuntimeError(
                         f"Teradata VS operation '{operation}' failed with status: {status_str}{fail_detail}"
                     )
@@ -833,9 +859,9 @@ class TeradataVectorBackend(VectorStoreBackend):
                             self._reconnect_all(rest_only=True),
                             timeout=self._VS_STATUS_CALL_TIMEOUT,
                         )
-                        # Use _create_vs() which has built-in 3x retry + 504
+                        # Use _create_collection() which has built-in 3x retry + 504
                         # detection, instead of raw VectorStore() constructor
-                        vs = await self._create_vs(collection_name)
+                        vs = await self._create_collection(collection_name)
                         logger.info(
                             f"VS '{operation}': thread replaced + context "
                             f"restored, polling resumed"
@@ -901,7 +927,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                             self._reconnect_all(rest_only=True),
                             timeout=self._VS_STATUS_CALL_TIMEOUT,
                         )
-                        vs = await self._create_vs(collection_name)
+                        vs = await self._create_collection(collection_name)
                         logger.info(
                             f"VS '{operation}': VS instance rebuilt with "
                             f"fresh context, polling resumed"
@@ -983,11 +1009,12 @@ class TeradataVectorBackend(VectorStoreBackend):
                 timeout=t,
             )
             if details and isinstance(details, dict):
-                vs_status = details.get("vs_status")
+                # Collection V2 uses "collection_status"; VectorStore V1 uses "vs_status"
+                vs_status = details.get("vs_status") or details.get("collection_status")
                 if vs_status is not None:
                     return str(vs_status).upper()
                 # Log full response when vs_status is missing to diagnose UNKNOWN
-                logger.warning(f"[TD-SDK] get_details() returned dict without 'vs_status': keys={list(details.keys())}, values={details}")
+                logger.warning(f"[TD-SDK] get_details() returned dict without status key: keys={list(details.keys())}, values={details}")
             elif details is not None:
                 logger.warning(f"[TD-SDK] get_details() returned unexpected type {type(details).__name__}: {details}")
         except asyncio.TimeoutError:
@@ -998,7 +1025,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                 raise RuntimeError(f"VS operation failed (unrecoverable): {exc}") from exc
             pass  # fall through to status()
 
-        # Fallback: status() — works once the VS is past the initial phase
+        # Fallback: status() — works once the VS/Collection is past the initial phase
         try:
             logger.info("[TD-SDK] vs.status()")
             status = await asyncio.wait_for(
@@ -1011,8 +1038,14 @@ class TeradataVectorBackend(VectorStoreBackend):
                     self._run_in_td_thread(status.to_pandas),
                     timeout=t,
                 )
-                if not pdf.empty and "status" in pdf.columns:
-                    return str(pdf["status"].iloc[0]).upper()
+                if not pdf.empty:
+                    # Collection V2 uses "collection_status"; VectorStore V1 uses "status"
+                    status_col = next(
+                        (c for c in ("collection_status", "status") if c in pdf.columns),
+                        None,
+                    )
+                    if status_col:
+                        return str(pdf[status_col].iloc[0]).upper()
                 # Log full DataFrame when status column missing
                 logger.warning(f"[TD-SDK] status() DataFrame: empty={pdf.empty}, columns={list(pdf.columns) if not pdf.empty else []}, values={pdf.to_dict() if not pdf.empty else 'empty'}")
                 return str(status).upper()
@@ -1054,6 +1087,86 @@ class TeradataVectorBackend(VectorStoreBackend):
         """
         msg = str(exc)
         return any(pattern.lower() in msg.lower() for pattern in cls._FATAL_ERROR_PATTERNS)
+
+    def _build_teradata_ai(self):
+        """Build a TeradataAI embedding model instance from the backend config.
+
+        Derives ``api_type`` from the model name unless ``embedding_api_type`` is
+        explicitly set in ``backend_config``.  Credentials are resolved in order:
+
+        1. ``authorization`` field  → Teradata authorization object name (preferred)
+        2. Explicit credential fields in ``backend_config`` (``aws_access_key`` etc.)
+
+        Returns ``None`` when no credentials are configured and no authorization object
+        is set.  Call sites should fall back to passing the model name as a plain string
+        (``embeddings_model=self._embedding_model``) in that case — VantageCloud Lake
+        servers use server-side IAM and do not require explicit credentials.
+        """
+        from teradatagenai import TeradataAI  # type: ignore[import]
+
+        model_name = self._embedding_model or ""
+
+        # Derive api_type from model name if not explicitly configured
+        api_type = self._config.get("embedding_api_type")
+        if not api_type:
+            if model_name.startswith("amazon."):
+                api_type = "aws"
+            elif model_name in ("text-embedding-ada-002", "text-embedding-3-small", "text-embedding-3-large"):
+                api_type = "azure"
+            else:
+                api_type = "aws"  # sensible default for Teradata (Bedrock)
+
+        kwargs: dict = {}
+        authorization = self._config.get("authorization")
+        if authorization:
+            kwargs["authorization"] = authorization
+        else:
+            if api_type == "aws":
+                if self._config.get("aws_access_key"):
+                    kwargs["access_key"] = self._config["aws_access_key"]
+                if self._config.get("aws_secret_key"):
+                    kwargs["secret_key"] = self._config["aws_secret_key"]
+                if self._config.get("aws_region"):
+                    kwargs["region"] = self._config["aws_region"]
+            elif api_type == "azure":
+                if self._config.get("azure_api_key"):
+                    kwargs["api_key"] = self._config["azure_api_key"]
+                if self._config.get("azure_endpoint"):
+                    kwargs["api_base"] = self._config["azure_endpoint"]
+                if self._config.get("azure_api_version"):
+                    kwargs["api_version"] = self._config["azure_api_version"]
+
+        # If no credentials at all and no authorization object, return None.
+        # Lake servers use server-side IAM; callers should use embeddings_model=string.
+        has_credentials = bool(kwargs)
+        if not has_credentials:
+            logger.info(
+                f"[TD-SDK] No embedding credentials configured — will use "
+                f"embeddings_model='{model_name}' (lake server IAM pass-through)"
+            )
+            return None
+
+        logger.debug(f"[TD-SDK] TeradataAI(api_type={api_type!r}, model_name={model_name!r}, "
+                     f"authorization={authorization!r})")
+        return TeradataAI(api_type, model_name=model_name, **kwargs)
+
+    def _make_hnsw(self):
+        """Create an HNSW indexing algorithm object from the configured search_algorithm.
+
+        Maps V1 search_algorithm strings to Collection V2 HNSW metric values.
+        Default metric is COSINE for unknown/V1-specific algorithm names.
+        """
+        from teradatagenai import HNSW  # type: ignore[import]
+
+        alg = (self._search_algorithm or "").upper()
+        if alg in ("COSINE",):
+            return HNSW(metric="COSINE")
+        if alg in ("EUCLIDEAN",):
+            return HNSW(metric="EUCLIDEAN")
+        if alg in ("DOT_PRODUCT", "DOTPRODUCT"):
+            return HNSW(metric="DOTPRODUCT")
+        # Default for V1 values like "VECTORDISTANCE" or any unrecognised value
+        return HNSW()
 
     async def _ensure_staging_table(self, collection_name: str) -> str:
         """Create the staging table if it does not exist. Returns the table name."""
@@ -1147,6 +1260,133 @@ class TeradataVectorBackend(VectorStoreBackend):
             pass
         return {}
 
+    async def _fetch_filtered_chunk_ids(
+        self, collection_name: str, where: MetadataFilter
+    ) -> Optional[set]:
+        """Return the set of CHUNK_IDs in the staging table that match *where*.
+
+        Returns ``None`` when the staging table does not exist (server-side
+        chunked collection), so the caller can skip the filter gracefully.
+        Returns an empty set when the table exists but no rows match.
+        """
+        # Pass table alias to avoid Teradata Error 3706 where the bare column name
+        # METADATA_JSON is parsed as a data type by JSON_VALUE on Teradata 20.x.
+        sql_fragment = to_teradata_sql_where(where, json_column="t.METADATA_JSON")
+        if not sql_fragment:
+            return None
+
+        qualified = self._qualified(self._staging_table(collection_name))
+        try:
+            result = await self._execute_sql(
+                f"SELECT t.CHUNK_ID FROM {qualified} t WHERE {sql_fragment}"
+            )
+            rows = self._result_to_rows(result)
+            return {
+                str(r.get("CHUNK_ID", r.get("chunk_id", "")))
+                for r in rows
+                if r.get("CHUNK_ID", r.get("chunk_id"))
+            }
+        except Exception as exc:
+            exc_str = str(exc)
+            if "3807" in exc_str or "does not exist" in exc_str.lower():
+                return None  # server-side chunked — no staging table
+            logger.warning(
+                "Teradata metadata filter query failed — returning unfiltered: %s", exc
+            )
+            return None
+
+    async def _lexical_search(
+        self,
+        collection_name: str,
+        query_text: str,
+        n_results: int,
+        allowed_ids: Optional[set] = None,
+    ) -> List[Dict[str, Any]]:
+        """Lexical search against staging table CONTENT using tokenised LIKE matching.
+
+        Returns a list of ``{"id": str, "score": float}`` dicts ordered by
+        descending lexical score.  Score is the fraction of query tokens found
+        in the document (0.0–1.0).
+
+        *allowed_ids* — when provided, restrict results to this set (combines
+        metadata pre-filter + lexical search in a single SQL pass).
+        """
+        # Tokenise: keep words longer than 2 chars, lowercase
+        _STOP = {"the", "and", "for", "are", "was", "but", "its", "with",
+                 "has", "have", "this", "that", "from", "not", "you", "all"}
+        tokens = [
+            t.lower() for t in re.findall(r"[A-Za-z0-9]+", query_text)
+            if len(t) > 2 and t.lower() not in _STOP
+        ]
+        if not tokens:
+            return []
+
+        qualified = self._qualified(self._staging_table(collection_name))
+
+        # Build LIKE conditions for each token.
+        # CONTENT is a CLOB — LOWER() is not supported on CLOB in Teradata.
+        # Cast to VARCHAR for case-folding; 64000 is the max VARCHAR length.
+        like_parts = " OR ".join(
+            f"LOWER(CAST(CONTENT AS VARCHAR(64000))) LIKE '%{t.replace(chr(39), chr(39)*2)}%'"
+            for t in tokens
+        )
+
+        # Restrict to allowed_ids if provided (for combined metadata + lexical)
+        id_filter = ""
+        if allowed_ids is not None:
+            if not allowed_ids:
+                return []  # Metadata filter already excluded everything
+            safe_ids = [cid.replace("'", "''") for cid in allowed_ids]
+            in_clause = ", ".join(f"'{cid}'" for cid in safe_ids[:500])
+            id_filter = f" AND CHUNK_ID IN ({in_clause})"
+
+        sql = (
+            f"SELECT CHUNK_ID, CONTENT FROM {qualified}"
+            f" WHERE ({like_parts}){id_filter}"
+        )
+
+        try:
+            result = await self._execute_sql(sql)
+            rows = self._result_to_rows(result)
+        except Exception as exc:
+            exc_str = str(exc)
+            if "3807" in exc_str or "does not exist" in exc_str.lower():
+                return []  # Server-side collection — no staging table
+            logger.warning("Teradata lexical search failed: %s", exc)
+            return []
+
+        # Score each row by fraction of tokens present in content
+        scored: List[Dict[str, Any]] = []
+        for row in rows:
+            doc_id = str(row.get("CHUNK_ID", row.get("chunk_id", "")))
+            content = (row.get("CONTENT", row.get("content", "")) or "").lower()
+            hits = sum(1 for t in tokens if t in content)
+            score = hits / len(tokens) if tokens else 0.0
+            scored.append({"id": doc_id, "score": score})
+
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:n_results]
+
+    @staticmethod
+    def _rrf_fuse(
+        semantic: List[Dict[str, Any]],
+        lexical: List[Dict[str, Any]],
+        n_results: int,
+        k: int = 60,
+    ) -> List[str]:
+        """Reciprocal Rank Fusion over two ranked lists.
+
+        Each list is ``[{"id": str, "score": float}, ...]`` in descending score
+        order.  Returns the top *n_results* CHUNK_IDs ordered by fused score.
+        """
+        fused: Dict[str, float] = {}
+        for rank, item in enumerate(semantic, start=1):
+            fused[item["id"]] = fused.get(item["id"], 0.0) + 1.0 / (k + rank)
+        for rank, item in enumerate(lexical, start=1):
+            fused[item["id"]] = fused.get(item["id"], 0.0) + 1.0 / (k + rank)
+        ranked = sorted(fused.items(), key=lambda x: x[1], reverse=True)
+        return [doc_id for doc_id, _ in ranked[:n_results]]
+
     # ── Collection management ─────────────────────────────────────────────────
 
     async def create_collection(self, config: CollectionConfig) -> CollectionInfo:
@@ -1190,30 +1430,28 @@ class TeradataVectorBackend(VectorStoreBackend):
         """
         vs_confirmed_gone = False
 
-        # 1. Destroy the VectorStore via EVS REST API.
+        # 1. Destroy the Collection via EVS REST API.
         #    Use cached instance if available, otherwise create a fresh one
         #    so the destroy fires even after server restarts.
         vs = self._stores.pop(name, None)
         if vs is None:
             try:
-                from teradatagenai import VectorStore as _VS  # type: ignore[import]
-                vs = await self._run_in_td_thread(_VS, name)
-                logger.info(f"Created transient VectorStore instance for destroy: '{name}'")
+                vs = await self._create_collection(name)
+                logger.info(f"Created transient Collection instance for destroy: '{name}'")
             except Exception as exc:
-                logger.warning(f"Could not create VectorStore instance for '{name}': {exc}")
+                logger.warning(f"Could not create Collection instance for '{name}': {exc}")
 
         if vs is not None:
             try:
-                logger.info(f"[TD-SDK] vs.destroy() for '{name}'")
+                logger.info(f"[TD-SDK] collection.destroy() for '{name}'")
                 await self._run_in_td_thread(vs.destroy)
-                await self._poll_status(vs, operation="destroy", timeout=120)
                 vs_confirmed_gone = True
-                logger.info(f"Teradata VS '{name}' destroyed")
+                logger.info(f"Teradata Collection '{name}' destroyed")
             except Exception as exc:
-                logger.warning(f"VS destroy/poll failed for '{name}': {exc}")
+                logger.warning(f"Collection destroy failed for '{name}': {exc}")
                 # destroy() may have succeeded but the poll timed out or hit a
-                # transient error (e.g. CloudFront 504).  Verify whether the VS
-                # actually still exists before giving up.
+                # transient error (e.g. CloudFront 504).  Verify whether the
+                # collection actually still exists before giving up.
                 vs_confirmed_gone = await self._verify_vs_absent(name)
 
         if not vs_confirmed_gone:
@@ -1239,53 +1477,56 @@ class TeradataVectorBackend(VectorStoreBackend):
         return True
 
     async def _verify_vs_absent(self, name: str) -> bool:
-        """Check ``VSManager.list()`` to confirm a VectorStore no longer exists.
+        """Check ``CollectionManager`` to confirm a Collection no longer exists.
 
-        Returns True if the VS is confirmed absent, False if it still exists
-        or if the verification itself fails (conservative — assume it exists).
+        Returns True if the collection is confirmed absent, False if it still
+        exists or if the verification itself fails (conservative — assume it exists).
         """
         try:
-            from teradatagenai import VSManager  # type: ignore[import]
+            from teradatagenai import CollectionManager  # type: ignore[import]
 
-            logger.info(f"[TD-SDK] VSManager.list() (verifying '{name}' absent)")
+            logger.info(f"[TD-SDK] CollectionManager().list() (verifying '{name}' absent)")
+            cm = CollectionManager()
             result = await asyncio.wait_for(
-                self._run_in_td_thread(VSManager.list),
+                self._run_in_td_thread(cm.list, return_type="pandas"),
                 timeout=self._VS_STATUS_CALL_TIMEOUT,
             )
 
-            # VSManager.list() returns a teradataml DataFrame
             if result is None:
-                logger.info(f"VSManager.list() returned None — assuming VS '{name}' is gone")
+                logger.info(f"CollectionManager.list() returned None — assuming '{name}' is gone")
                 return True
 
-            pdf = await asyncio.wait_for(
-                self._run_in_td_thread(result.to_pandas),
-                timeout=self._VS_STATUS_CALL_TIMEOUT,
-            )
+            # result may be a pandas DataFrame or teradataml DataFrame
+            if hasattr(result, "to_pandas"):
+                pdf = await asyncio.wait_for(
+                    self._run_in_td_thread(result.to_pandas),
+                    timeout=self._VS_STATUS_CALL_TIMEOUT,
+                )
+            else:
+                pdf = result
 
             if pdf.empty:
-                logger.info(f"VSManager.list() returned empty — VS '{name}' confirmed absent")
+                logger.info(f"CollectionManager.list() returned empty — '{name}' confirmed absent")
                 return True
 
-            # Check if our VS name appears in the listing
-            # The column name may vary; check common variants
+            # Check if our collection name appears in the listing
             name_upper = name.upper()
             for col in pdf.columns:
-                if any(kw in col.lower() for kw in ("name", "vectorstore")):
+                if any(kw in col.lower() for kw in ("name", "collection")):
                     if name_upper in pdf[col].astype(str).str.upper().values:
                         logger.warning(
-                            f"VS '{name}' still present in VSManager.list() — "
+                            f"Collection '{name}' still present in CollectionManager.list() — "
                             f"destroy did not complete"
                         )
                         return False
 
-            logger.info(f"VS '{name}' not found in VSManager.list() — confirmed absent")
+            logger.info(f"Collection '{name}' not found in CollectionManager.list() — confirmed absent")
             return True
 
         except Exception as exc:
             logger.warning(
-                f"VSManager.list() verification failed for '{name}': {exc} — "
-                f"conservatively assuming VS still exists"
+                f"CollectionManager.list() verification failed for '{name}': {exc} — "
+                f"conservatively assuming collection still exists"
             )
             return False
 
@@ -1321,18 +1562,34 @@ class TeradataVectorBackend(VectorStoreBackend):
             return 0
 
         import pandas as pd  # type: ignore[import]
-        from teradataml import copy_to_sql  # type: ignore[import]
+        from teradataml import copy_to_sql, execute_sql  # type: ignore[import]
 
         staging = self._staging_table(collection_name)
         staging_qualified = self._qualified(staging)
         delta_table = f"UDERIA_DELTA_{uuid4().hex[:8].upper()}"
         delta_qualified = self._qualified(delta_table)
 
+        def _safe_text(text: str) -> str:
+            """Strip characters that Teradata Error 6706 rejects in SQL strings.
+
+            With charset=UTF-8 on the connection, most Unicode is fine, but
+            null bytes and C0/C1 control characters still cause driver failures.
+            """
+            if not text:
+                return text
+            # 1. Strip null bytes and C0/C1 control chars that Teradata SQL rejects
+            #    even within the Latin-1 range (keep tab \x09, LF \x0a, CR \x0d).
+            text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', ' ', text)
+            # 2. Encode to Latin-1, replacing characters outside the Latin-1 range
+            #    (e.g. U+2019 right-quote from PDF) with '?' so the Teradata LATIN
+            #    session charset does not raise Error 6706 (untranslatable character).
+            return text.encode("latin-1", errors="replace").decode("latin-1")
+
         rows = [
             {
                 "CHUNK_ID": doc.id,
-                "CONTENT": doc.content,
-                "METADATA_JSON": json.dumps(doc.metadata or {}),
+                "CONTENT": _safe_text(doc.content),
+                "METADATA_JSON": _safe_text(json.dumps(doc.metadata or {})),
             }
             for doc in documents
         ]
@@ -1350,55 +1607,123 @@ class TeradataVectorBackend(VectorStoreBackend):
                 index=False,
             )
 
-            # Append to staging table for ID tracking
-            logger.info(f"[TD-SDK] copy_to_sql(table={staging}, schema={self._database}, rows={len(df)}, if_exists=append)")
-            await self._run_in_td_thread(
-                copy_to_sql,
-                df=df,
-                table_name=staging,
-                schema_name=self._database,
-                if_exists="append",
-                index=False,
-            )
-
-            if collection_name not in self._stores:
-                # First add: create the VectorStore from the full staging table
-                vs = await self._create_vs(collection_name)
-                logger.info(
-                    f"[TD-SDK] vs.create(embeddings_model={self._embedding_model}, "
-                    f"object_names={staging}, key_columns=['CHUNK_ID'], data_columns=['CONTENT'])"
+            # Append to staging table — skip CHUNK_IDs already present (UPI guard)
+            try:
+                existing_ids_result = await self._run_in_td_thread(
+                    execute_sql,
+                    f"SELECT CHUNK_ID FROM {staging_qualified}",
                 )
+                existing_ids = {
+                    row.get("CHUNK_ID") or row.get("chunk_id")
+                    for row in self._result_to_rows(existing_ids_result)
+                }
+                df_new = df[~df["CHUNK_ID"].isin(existing_ids)]
+            except Exception:
+                df_new = df  # staging table may not exist yet on first add
+            if not df_new.empty:
+                logger.info(f"[TD-SDK] copy_to_sql(table={staging}, schema={self._database}, rows={len(df_new)}, if_exists=append)")
                 await self._run_in_td_thread(
-                    vs.create,
-                    embeddings_model=self._embedding_model,
-                    search_algorithm=self._search_algorithm,
-                    top_k=self._top_k,
-                    target_database=self._database,
-                    object_names=staging,
-                    key_columns=["CHUNK_ID"],
-                    data_columns=["CONTENT"],
-                )
-                vs = await self._poll_status(vs, operation="create")
-                self._stores[collection_name] = vs
-                self._collections.add(collection_name)
-                logger.info(
-                    f"Teradata VS '{collection_name}' created "
-                    f"from staging table with {len(documents)} documents"
+                    copy_to_sql,
+                    df=df_new,
+                    table_name=staging,
+                    schema_name=self._database,
+                    if_exists="append",
+                    index=False,
                 )
             else:
-                # Subsequent adds: ingest only the delta into the existing VS
-                vs = self._stores[collection_name]
-                logger.info(f"[TD-SDK] vs.add_datasets(data={delta_qualified}, key_columns=['CHUNK_ID'], update_style=MINOR)")
-                await self._run_in_td_thread(
-                    vs.add_datasets,
-                    data=delta_qualified,
+                logger.info(f"[TD-STAGING] All {len(df)} chunk(s) already in staging — skipping append")
+
+            # Attach to existing collection (or prepare a fresh one).
+            # _get_store() caches it in _stores; if the collection doesn't exist
+            # on EVS yet, Collection(name=...) won't raise — its .exists will be False.
+            from teradatagenai import ContentBasedIndex  # type: ignore[import]
+            from teradatagenai.common.constants import CollectionType  # type: ignore[import]
+
+            col = await self._create_collection(collection_name)
+            # col.exists was evaluated in the constructor; True means EVS already has it.
+            col_on_evs = bool(getattr(col, '_is_exist', None) or
+                              collection_name in self._stores)
+
+            if not col_on_evs:
+                # First add: collection doesn't exist on EVS yet — create it.
+                # IMPORTANT: EVS requires a fully qualified table name in object_names
+                # (e.g. "data_scientist.UDERIA_VS_...") so the service can locate
+                # the table regardless of its own default database setting.
+                # Using an unqualified name causes EVS to fail with CREATE_FAILED.
+                index = ContentBasedIndex(
+                    object_names=staging_qualified,
                     key_columns=["CHUNK_ID"],
                     data_columns=["CONTENT"],
+                )
+                indexing_algo = self._make_hnsw()
+                # Use embedding_model=TeradataAI(...) so AWS credentials are serialized
+                # into the REST payload via to_dict(). Using embeddings_model=string would
+                # send only the model name with no credentials → CREATE_FAILED on enterprise
+                # servers. On VantageCloud Lake, server-side IAM handles credentials so
+                # TeradataAI returns None and we fall back to the string parameter.
+                _td_ai = self._build_teradata_ai()
+                if _td_ai is not None:
+                    _emb_kwargs: dict = {"embedding_model": _td_ai}
+                else:
+                    _emb_kwargs = {"embeddings_model": self._embedding_model}
+                create_kwargs: dict = dict(
+                    type=CollectionType.CONTENT_BASED,
+                    index=index,
+                    indexing_algorithm=indexing_algo,
+                    target_database=self._database,
+                    ignore_embedding_errors=True,
+                    **_emb_kwargs,
+                )
+                logger.info(
+                    f"[TD-SDK] collection.create(type=CONTENT_BASED, "
+                    f"object_names={staging_qualified}, key_columns=['CHUNK_ID'], "
+                    f"data_columns=['CONTENT'], embedding_model={self._embedding_model})"
+                )
+                try:
+                    await self._run_in_td_thread(
+                        col.create,
+                        **create_kwargs,
+                    )
+                except Exception as create_err:
+                    if "already exists" in str(create_err):
+                        # Race or restart: collection was created before we checked.
+                        logger.warning(
+                            f"[TD-SDK] col.create() reported already exists — "
+                            f"treating as subsequent add and calling col.update() instead"
+                        )
+                        col_on_evs = True  # fall through to update path below
+                    else:
+                        raise
+
+            if col_on_evs:
+                # Subsequent add (or post-restart recovery): update the Collection with delta.
+                delta_index = ContentBasedIndex(
+                    object_names=delta_qualified,
+                    key_columns=["CHUNK_ID"],
+                    data_columns=["CONTENT"],
+                )
+                logger.info(
+                    f"[TD-SDK] collection.update(index.object_names={delta_qualified}, "
+                    f"alter_operation=ADD, update_style=MINOR)"
+                )
+                await self._run_in_td_thread(
+                    col.update,
+                    index=delta_index,
+                    alter_operation="ADD",
                     update_style="MINOR",
                 )
-                vs = await self._poll_status(vs, operation="add_datasets")
+                col = await self._poll_status(col, operation="add")
+                self._stores[collection_name] = col
                 logger.info(
-                    f"Added {len(documents)} documents to Teradata VS '{collection_name}'"
+                    f"Added {len(documents)} documents to Teradata Collection '{collection_name}'"
+                )
+            else:
+                col = await self._poll_status(col, operation="create")
+                self._stores[collection_name] = col
+                self._collections.add(collection_name)
+                logger.info(
+                    f"Teradata Collection '{collection_name}' created "
+                    f"from staging table with {len(documents)} documents"
                 )
         finally:
             # Always clean up the delta table
@@ -1425,71 +1750,105 @@ class TeradataVectorBackend(VectorStoreBackend):
         chunking_config: Optional[ServerSideChunkingConfig] = None,
         progress_callback: Optional[IngestionProgressCallback] = None,
     ) -> int:
-        """Ingest files directly via ``VectorStore.create(document_files=...)``.
+        """Ingest files via ``Collection.from_documents()`` (V2 Ingestor pipeline).
 
         The Teradata SDK handles chunking + embedding server-side.
-        Follows the Chatbot PDF pattern from VantageCloud Lake notebooks.
 
-        When ``progress_callback`` is provided, it is invoked with real EVS
-        phase information (PREPARING INPUT → CHUNKING → EMBEDDING → INDEXING
-        → READY) so callers can relay progress to the UI.
+        When ``progress_callback`` is provided it is called once with a
+        "CREATING" progress event before blocking; the SDK's internal polling
+        handles completion.
 
-        IMPORTANT: Uses REST-only initialization (skips create_context SQL connection)
-        to avoid character encoding issues. The SDK handles all SQL operations
-        internally during server-side chunking.
+        Full initialization is used (create_context + set_auth_token) so that
+        subsequent count() and get() calls on the same cached backend instance
+        can reach the EVS-managed chunks table via SQL.  Collection.from_documents()
+        uses the REST API exclusively and is not affected by the SQL context.
         """
         if not self._initialized:
-            await self.initialize(rest_only=True)
+            await self.initialize()
 
         config = chunking_config or ServerSideChunkingConfig()
-        vs = await self._create_vs(collection_name)
 
-        create_kwargs: dict = {
-            "embeddings_model": self._embedding_model,
-            "search_algorithm": self._search_algorithm,
-            "top_k": self._top_k,
-            # IMPORTANT: Do NOT pass target_database for server-side chunking.
-            # Let the SDK use its default database to avoid character set encoding issues.
-            # The user's database (self._database) may have restrictive character sets
-            # (e.g., LATIN1) that fail on UTF-8 characters in PDFs at SQL insertion time.
-            # "target_database": self._database,  # REMOVED
-            "document_files": file_paths,
-            "chunk_size": config.chunk_size,
-            "optimized_chunking": config.optimized_chunking,
-            # Required by EVS per Getting Started guide Section 7:
-            "object_names": [collection_name],
-            "data_columns": ["chunks"],
-            "vector_column": "VectorIndex",
-        }
+        from teradatagenai import (  # type: ignore[import]
+            Collection, LocalConfig, ExtractionSchema,
+        )
+        from teradatagenai.common.constants import CollectionType  # type: ignore[import]
 
-        # Header/footer trimming — only pass when non-zero to avoid
-        # sending unsupported kwargs to older SDK versions.
-        if config.header_height > 0:
-            create_kwargs["header_height"] = int(config.header_height)
-        if config.footer_height > 0:
-            create_kwargs["footer_height"] = int(config.footer_height)
+        # Build BasicIngestor — NVIngestor requires NVIDIA NIM infrastructure which
+        # is not available on VantageCloud Lake.  The optimized_chunking flag in
+        # Collection V2 means EVS-native chunking; BasicIngestor handles that.
+        from teradatagenai import BasicIngestor  # type: ignore[import]
+        ingestor_kwargs: dict = {"chunk_size": config.chunk_size}
+        if config.header_height and config.header_height > 0:
+            ingestor_kwargs["header_height"] = config.header_height
+        if config.footer_height and config.footer_height > 0:
+            ingestor_kwargs["footer_height"] = config.footer_height
+        ingestor = BasicIngestor(**ingestor_kwargs)
+
+        # Detect file type for files_parameters. The lake server fails with
+        # 'NoneType has no attribute files_type' when files_parameters is absent.
+        _supported = {"pdf", "csv", "json", "jsonl", "parquet", "ndjson", "ldjson"}
+        _ext = os.path.splitext(file_paths[0])[1].lstrip(".").lower() if file_paths else ""
+        _files_type = _ext if _ext in _supported else "pdf"
+        local_config = LocalConfig(files=file_paths, files_type=_files_type)
+
+        if progress_callback:
+            progress_callback(IngestionProgress(
+                status="CREATING",
+                phase="Uploading files and building collection (server-side)",
+                percentage=5,
+                elapsed_seconds=0,
+            ))
 
         logger.info(
-            f"[TD-SDK] vs.create(embeddings_model={create_kwargs['embeddings_model']}, "
-            f"search_algorithm={create_kwargs['search_algorithm']}, "
-            f"document_files={create_kwargs['document_files']}, "
-            f"chunk_size={create_kwargs['chunk_size']}, "
-            f"optimized_chunking={create_kwargs['optimized_chunking']})"
-        )
-        await self._run_in_td_thread(vs.create, **create_kwargs)
-        # PDF processing with Bedrock embeddings can take 15–30+ minutes
-        # Use configurable timeout for large document ingestion
-        vs = await self._poll_status(
-            vs, operation="create_from_files",
-            timeout=self._poll_timeout,
-            interval=int(self._poll_interval),
-            progress_callback=progress_callback,
+            f"[TD-SDK] Collection.from_documents(name={collection_name}, "
+            f"files={file_paths}, embedding_model={self._embedding_model}, "
+            f"chunk_size={config.chunk_size}, files_type={_files_type})"
         )
 
-        self._stores[collection_name] = vs
+        # from_documents() is a classmethod that runs the full Ingestor pipeline
+        # internally (including polling) and returns a Collection instance.
+        # On lake servers, TeradataAI returns None and we omit the embedding param
+        # so the SDK uses the string model name with server-side IAM.
+        _td_ai_docs = self._build_teradata_ai()
+        _docs_emb_kwargs: dict = (
+            {"embedding": _td_ai_docs} if _td_ai_docs is not None
+            else {"embeddings_model": self._embedding_model}
+        )
+
+        # Provide an explicit extraction_schema table name to work around a lake-server
+        # bug where the server fails with 'NoneType has no attribute table_name' when
+        # auto-generating the extraction table name. Use UDERIA_EXTR_ prefix + suffix
+        # derived from collection name, truncated to 30 chars total.
+        _extr_table = ("UDERIA_EXTR_" + collection_name)[:30].rstrip("_")
+        _extraction_schema = ExtractionSchema(table_name=_extr_table)
+
+        result = await self._run_in_td_thread(
+            Collection.from_documents,
+            name=collection_name,
+            documents=local_config,
+            type=CollectionType.FILE_CONTENT_BASED,
+            ingestor=ingestor,
+            extraction_schema=_extraction_schema,
+            indexing_algorithm=self._make_hnsw(),
+            ignore_embedding_errors=True,
+            **_docs_emb_kwargs,
+        )
+
+        # from_documents() returns a Collection (or raises on failure)
+        col = result if isinstance(result, Collection) else await self._create_collection(collection_name)
+        self._stores[collection_name] = col
         self._collections.add(collection_name)
+
+        if progress_callback:
+            progress_callback(IngestionProgress(
+                status="COMPLETED",
+                phase="Processing complete",
+                percentage=100,
+                elapsed_seconds=0,
+            ))
+
         logger.info(
-            f"Teradata VS '{collection_name}' created from {len(file_paths)} file(s) "
+            f"Teradata Collection '{collection_name}' created from {len(file_paths)} file(s) "
             f"(server-side chunking, optimized={config.optimized_chunking}, "
             f"chunk_size={config.chunk_size})"
         )
@@ -1552,15 +1911,20 @@ class TeradataVectorBackend(VectorStoreBackend):
                 index=False,
             )
 
-            # 3. Remove from the VectorStore
-            logger.info(f"[TD-SDK] vs.delete_datasets(data={del_qualified}, key_columns=['CHUNK_ID'], update_style=MINOR)")
+            # 3. Remove from the Collection via update(alter_operation="DELETE")
+            from teradatagenai import ContentBasedIndex  # type: ignore[import]
+            del_index = ContentBasedIndex(object_names=del_qualified)
+            logger.info(
+                f"[TD-SDK] collection.update(index.object_names={del_qualified}, "
+                f"alter_operation=DELETE, update_style=MINOR)"
+            )
             await self._run_in_td_thread(
-                vs.delete_datasets,
-                data=del_qualified,
-                key_columns=["CHUNK_ID"],
+                vs.update,
+                index=del_index,
+                alter_operation="DELETE",
                 update_style="MINOR",
             )
-            vs = await self._poll_status(vs, operation="delete_datasets")
+            vs = await self._poll_status(vs, operation="delete")
 
             # 4. Delete from staging table
             await self._execute_sql(
@@ -1605,23 +1969,102 @@ class TeradataVectorBackend(VectorStoreBackend):
         search_mode: SearchMode = SearchMode.SEMANTIC,
         keyword_weight: float = 0.3,
     ) -> QueryResult:
-        """Semantic similarity search via the Teradata VectorStore."""
-        # Teradata does not declare HYBRID_SEARCH — always resolves to SEMANTIC.
+        """Similarity search via the Teradata VectorStore.
+
+        Supports three search modes:
+        - SEMANTIC  — dense vector search via EVS SDK (default)
+        - HYBRID    — dense + lexical legs fused with Reciprocal Rank Fusion
+        - KEYWORD   — lexical-only search against staging table CONTENT
+
+        Metadata filtering (*where*) is applied as a SQL pre-filter against the
+        staging table (METADATA_JSON column) before passing candidate IDs to the
+        SDK or lexical search. Server-side chunked collections carry no staging
+        table and therefore cannot support metadata filtering — a warning is
+        logged and results are returned unfiltered.
+        """
         search_mode = self._resolve_search_mode(search_mode)
+
+        # ── Step 1: resolve metadata filter → allowed CHUNK_ID set ───────────
+        allowed_ids: Optional[set] = None
+        if where is not None:
+            allowed_ids = await self._fetch_filtered_chunk_ids(collection_name, where)
+            if allowed_ids is None:
+                # Staging table absent (server-side chunked collection)
+                logger.warning(
+                    "TeradataVectorBackend: metadata filter ignored for server-side "
+                    "chunked collection '%s' (no staging table).",
+                    collection_name,
+                )
+            elif len(allowed_ids) == 0:
+                # Filter matched nothing — short-circuit immediately
+                return QueryResult(documents=[], distances=[], total_results=0)
+            else:
+                logger.info(
+                    "[TD-FILTER] Metadata pre-filter: %d candidate IDs for '%s'",
+                    len(allowed_ids), collection_name,
+                )
+
+        # ── Step 2: KEYWORD mode — lexical search only ────────────────────────
+        if search_mode == SearchMode.KEYWORD:
+            lexical = await self._lexical_search(
+                collection_name, query_text, n_results, allowed_ids=allowed_ids
+            )
+            if lexical:
+                return await self._build_query_result(
+                    collection_name,
+                    [item["id"] for item in lexical],
+                    {item["id"]: item["score"] for item in lexical},
+                    include_documents=include_documents,
+                    include_metadata=include_metadata,
+                    score_is_similarity=True,
+                )
+            # Lexical returned nothing — server-side chunked collection has no staging
+            # table for LIKE search.  Fall back to SEMANTIC with a warning.
+            logger.warning(
+                "[TD-KEYWORD] Lexical search returned no results for '%s' (likely "
+                "server-side chunked collection with no staging table). "
+                "Falling back to SEMANTIC search.",
+                collection_name,
+            )
+            search_mode = SearchMode.SEMANTIC
+
+        # ── Step 3: SEMANTIC / HYBRID — run dense leg via EVS SDK ────────────
+        # Over-fetch to compensate for post-filtering when metadata filter active
+        sdk_top_k = n_results if allowed_ids is None else max(n_results * 5, n_results + 100)
 
         vs = await self._get_store(collection_name)
 
-        if where is not None:
-            logger.warning(
-                "TeradataVectorBackend: metadata filters in query() are not yet implemented. "
-                "Results will be unfiltered. (TODO: translate MetadataFilter to staging SQL)"
-            )
+        # Determine native BM25 availability from backend_config
+        bm25_enabled: bool = bool(self._config.get("td_bm25_enabled", False))
+        scoring_method: str = self._config.get("td_scoring_method", "rrf")
+        sparse_weight: float = float(self._config.get("td_sparse_weight", 0.3))
 
-        logger.info(f"[TD-SDK] vs.similarity_search(question='{query_text[:80]}...', return_type='pandas')")
+        # Choose search_type: use native hybrid only when BM25 model is built
+        if search_mode == SearchMode.HYBRID and bm25_enabled:
+            search_type_str = "hybrid_search"
+            logger.info(
+                "[TD-BM25] Native hybrid for '%s' (scoring=%s, sparse_weight=%.2f)",
+                collection_name, scoring_method, sparse_weight,
+            )
+        else:
+            search_type_str = "semantic_search"
+
+        from teradatagenai import SearchParams  # type: ignore[import]
+        sp_kwargs: dict = {"top_k": sdk_top_k, "search_type": search_type_str}
+        if search_type_str == "hybrid_search":
+            sp_kwargs["scoring_method"] = scoring_method
+            sp_kwargs["sparse_weight"] = sparse_weight
+        search_params = SearchParams(**sp_kwargs)
+
+        logger.info(
+            "[TD-SDK] collection.similarity_search(question='%s...', search_type=%s, top_k=%d)",
+            query_text[:60], search_type_str, sdk_top_k,
+        )
         try:
-            result_df_raw = await self._run_in_td_thread(
+            result_obj = await self._run_in_td_thread(
                 vs.similarity_search,
                 question=query_text,
+                search_params=search_params,
                 return_type="pandas",
             )
         except Exception as exc:
@@ -1629,74 +2072,254 @@ class TeradataVectorBackend(VectorStoreBackend):
                 raise RuntimeError(
                     f"Teradata similarity_search failed for collection '{collection_name}': {exc}"
                 ) from exc
-            # Stale connection — reconnect and retry once.
             logger.info("teradataml connection lost during query — reconnecting")
             await self._reconnect_all()
-            # Re-acquire VectorStore handle (SDK object may be invalidated)
             vs = await self._get_store(collection_name)
-            result_df_raw = await self._run_in_td_thread(
+            result_obj = await self._run_in_td_thread(
                 vs.similarity_search,
                 question=query_text,
+                search_params=search_params,
                 return_type="pandas",
             )
-
-        # Defensive: some SDK versions return a wrapper with .similar_objects
-        if hasattr(result_df_raw, 'similar_objects'):
-            result_df_raw = result_df_raw.similar_objects
-
-        # Normalise column names to uppercase for consistent access across SDK versions
-        result_df = result_df_raw.rename(columns=str.upper).head(n_results)
-
-        # Locate score column (SDK may use "SCORE" or "SIMILARITY_SCORE")
-        score_col = next(
-            (c for c in result_df.columns if "SCORE" in c),
-            None,
+        # _SimilaritySearch wrapper vs plain DataFrame
+        result_df_raw = (
+            result_obj.similar_objects if hasattr(result_obj, "similar_objects")
+            else result_obj
         )
-        # Locate content column.
-        # Client-side chunking uses CONTENT; server-side chunking (document_files)
-        # uses FILE_SPLITS as the chunk text column.
+
+        result_df = result_df_raw.rename(columns=str.upper)
+
+        # Detect column names
+        score_col = next((c for c in result_df.columns if "SCORE" in c), None)
         content_col = next(
             (c for c in result_df.columns if c in (
-                "CONTENT", "FILE_SPLITS", "REV_TEXT", "TEXT", "CHUNKS",
+                "CONTENT", "TD_FILESPLITS", "FILE_SPLITS", "REV_TEXT", "TEXT", "CHUNKS",
             )),
             None,
         )
-        # Locate ID column: client-side → CHUNK_ID, server-side → TD_ID
+        # Prefer CHUNK_ID (our staging-table key) over TD_ID (EVS internal row number).
+        # Iterate the preference list and check against available columns — NOT the
+        # other way round, which would find TD_ID first because it appears earlier
+        # in the DataFrame column order returned by similarity_search.
         id_col = next(
-            (c for c in result_df.columns if c in ("CHUNK_ID", "TD_ID")),
+            (c for c in ("CHUNK_ID", "TD_ID") if c in result_df.columns),
             None,
         )
 
-        docs: List[VectorDocument] = []
-        distances: List[float] = []
-
-        # Detect server-side chunking: TD_FILENAME column present, no CHUNK_ID
+        # Build ranked list from SDK results: [{id, score}]
         is_server_side = "TD_FILENAME" in result_df.columns or "CHUNK_ID" not in result_df.columns
-
+        semantic_ranked: List[Dict[str, Any]] = []
         for _, row in result_df.iterrows():
             doc_id = str(row[id_col]) if id_col else ""
-            content = str(row[content_col]) if (content_col and include_documents) else ""
+            if not doc_id:
+                continue
+            # Apply metadata post-filter (skip rows not in allowed set)
+            if allowed_ids is not None and doc_id not in allowed_ids:
+                continue
             score = float(row[score_col]) if score_col else 0.0
+            semantic_ranked.append({"id": doc_id, "score": score})
 
-            # Teradata returns a similarity score (0–1, higher = more similar).
-            # Convert to distance (lower = more similar) per abstraction convention.
-            distance = 1.0 - score
+        # ── Step 4: HYBRID — native BM25 or Python-side RRF ─────────────────
+        if search_mode == SearchMode.HYBRID:
+            if bm25_enabled:
+                # Native BM25: SDK already returned fused results — skip Python RRF
+                final_ids = [item["id"] for item in semantic_ranked[:n_results]]
+                score_map = {item["id"]: item["score"] for item in semantic_ranked}
+                if is_server_side:
+                    return self._build_server_side_result(
+                        result_df, final_ids, score_col, content_col,
+                        include_documents, include_metadata,
+                    )
+                return await self._build_query_result(
+                    collection_name,
+                    final_ids,
+                    score_map,
+                    include_documents=include_documents,
+                    include_metadata=include_metadata,
+                    score_is_similarity=True,
+                )
 
+            # Python-side RRF fallback (BM25 not yet built)
+            lexical = await self._lexical_search(
+                collection_name, query_text, n_results * 2, allowed_ids=allowed_ids
+            )
+            if not lexical and is_server_side:
+                logger.warning(
+                    "[TD-HYBRID] Lexical leg empty for server-side collection '%s' "
+                    "(no staging table). Fusion degrades to SEMANTIC only.",
+                    collection_name,
+                )
+            fused_ids = self._rrf_fuse(semantic_ranked, lexical, n_results)
+            # Build a score map: use position as a proxy for distance after fusion
+            score_map = {doc_id: 1.0 - (i / max(len(fused_ids), 1))
+                         for i, doc_id in enumerate(fused_ids)}
+            if is_server_side:
+                # No staging table — build result directly from SDK DataFrame
+                return self._build_server_side_result(
+                    result_df, fused_ids, score_col, content_col,
+                    include_documents, include_metadata,
+                )
+            return await self._build_query_result(
+                collection_name,
+                fused_ids,
+                score_map,
+                include_documents=include_documents,
+                include_metadata=include_metadata,
+                score_is_similarity=True,
+            )
+
+        # ── Step 5: SEMANTIC — trim and build result ───────────────────────────
+        final_ids = [item["id"] for item in semantic_ranked[:n_results]]
+        score_map = {item["id"]: item["score"] for item in semantic_ranked}
+
+        # For server-side collections pass the full result_df to avoid extra SQL
+        if is_server_side:
+            return self._build_server_side_result(
+                result_df, final_ids, score_col, content_col,
+                include_documents, include_metadata,
+            )
+
+        return await self._build_query_result(
+            collection_name,
+            final_ids,
+            score_map,
+            include_documents=include_documents,
+            include_metadata=include_metadata,
+            score_is_similarity=True,
+        )
+
+    async def enable_bm25(
+        self,
+        collection_name: str,
+        scoring_method: str = "rrf",
+        sparse_weight: float = 0.3,
+        progress_callback: Optional[IngestionProgressCallback] = None,
+    ) -> None:
+        """Enable native Teradata BM25 hybrid search on a Collection.
+
+        Calls ``collection.update(search_params=SearchParams(search_type="hybrid_search"))``
+        which triggers the Teradata server to build a BM25 model for the
+        collection.  Polls until the build completes (status UPDATED/READY).
+
+        Args:
+            collection_name: Name of the collection to enable BM25 for.
+            scoring_method:  Fusion method — "rrf" (default), "weighted_sum",
+                             "weighted_rrf".
+            sparse_weight:   BM25 weight in the range 0.0–1.0 (default 0.3).
+            progress_callback: Optional callback receiving IngestionProgress
+                             updates while the BM25 model is being built.
+        """
+        from teradatagenai import SearchParams  # type: ignore[import]
+
+        col = await self._get_store(collection_name)
+        sp = SearchParams(
+            search_type="hybrid_search",
+            scoring_method=scoring_method,
+            sparse_weight=sparse_weight,
+        )
+        logger.info(
+            "[TD-BM25] Enabling native BM25 for '%s' (scoring=%s, sparse_weight=%.2f)",
+            collection_name, scoring_method, sparse_weight,
+        )
+        await self._run_in_td_thread(col.update, search_params=sp)
+        await self._poll_status(
+            col,
+            operation="enable_bm25",
+            timeout=self._poll_timeout,
+            interval=int(self._poll_interval),
+            progress_callback=progress_callback,
+        )
+        logger.info("[TD-BM25] BM25 model built for '%s'", collection_name)
+
+    async def _build_query_result(
+        self,
+        collection_name: str,
+        ordered_ids: List[str],
+        score_map: Dict[str, float],
+        include_documents: bool,
+        include_metadata: bool,
+        score_is_similarity: bool = True,
+    ) -> QueryResult:
+        """Build a QueryResult by fetching content+metadata from the staging table."""
+        if not ordered_ids:
+            return QueryResult(documents=[], distances=[], total_results=0)
+
+        # Batch-fetch content+metadata for the ordered IDs
+        safe_ids = [cid.replace("'", "''") for cid in ordered_ids]
+        in_clause = ", ".join(f"'{cid}'" for cid in safe_ids)
+        qualified = self._qualified(self._staging_table(collection_name))
+        try:
+            result = await self._execute_sql(
+                f"SELECT CHUNK_ID, CONTENT, METADATA_JSON "
+                f"FROM {qualified} WHERE CHUNK_ID IN ({in_clause})"
+            )
+            rows = self._result_to_rows(result)
+        except Exception as exc:
+            logger.warning("_build_query_result staging fetch failed: %s", exc)
+            rows = []
+
+        row_by_id: Dict[str, dict] = {}
+        for row in rows:
+            cid = str(row.get("CHUNK_ID", row.get("chunk_id", "")))
+            row_by_id[cid] = row
+
+        docs: List[VectorDocument] = []
+        distances: List[float] = []
+        for doc_id in ordered_ids:
+            row = row_by_id.get(doc_id, {})
+            content = ""
+            if include_documents:
+                content = str(row.get("CONTENT", row.get("content", "")))
             meta: dict = {}
             if include_metadata:
-                if is_server_side:
-                    # Server-side collections have no staging table.
-                    # Extract metadata from the SDK result columns instead.
-                    if "TD_FILENAME" in result_df.columns:
-                        meta["filename"] = str(row.get("TD_FILENAME", ""))
-                    if "TABLENAME" in result_df.columns:
-                        meta["table_name"] = str(row.get("TABLENAME", ""))
-                elif doc_id:
-                    meta = await self._fetch_metadata(collection_name, doc_id)
-
+                raw = row.get("METADATA_JSON", row.get("metadata_json", ""))
+                try:
+                    meta = json.loads(raw) if raw else {}
+                except (json.JSONDecodeError, TypeError):
+                    meta = {}
+            score = score_map.get(doc_id, 0.0)
+            distance = (1.0 - score) if score_is_similarity else score
             docs.append(VectorDocument(id=doc_id, content=content, metadata=meta))
             distances.append(distance)
 
+        return QueryResult(documents=docs, distances=distances, total_results=len(docs))
+
+    def _build_server_side_result(
+        self,
+        result_df,
+        final_ids: List[str],
+        score_col: Optional[str],
+        content_col: Optional[str],
+        include_documents: bool,
+        include_metadata: bool,
+    ) -> QueryResult:
+        """Build QueryResult for server-side chunked collections from the SDK DataFrame."""
+        id_col = next(
+            (c for c in ("CHUNK_ID", "TD_ID") if c in result_df.columns), None
+        )
+        id_set = set(final_ids)
+        docs: List[VectorDocument] = []
+        distances: List[float] = []
+        for _, row in result_df.iterrows():
+            doc_id = str(row[id_col]) if id_col else ""
+            if doc_id not in id_set:
+                continue
+            content = str(row[content_col]) if (content_col and include_documents) else ""
+            score = float(row[score_col]) if score_col else 0.0
+            meta: dict = {}
+            if include_metadata:
+                if "TD_FILENAME" in result_df.columns:
+                    meta["filename"] = str(row.get("TD_FILENAME", ""))
+                if "TABLENAME" in result_df.columns:
+                    meta["table_name"] = str(row.get("TABLENAME", ""))
+            docs.append(VectorDocument(id=doc_id, content=content, metadata=meta))
+            distances.append(1.0 - score)
+        # Re-order to match final_ids order
+        order = {cid: i for i, cid in enumerate(final_ids)}
+        paired = sorted(zip(docs, distances), key=lambda x: order.get(x[0].id, 999))
+        if paired:
+            docs, distances = zip(*paired)  # type: ignore[assignment]
+            docs, distances = list(docs), list(distances)
         return QueryResult(documents=docs, distances=distances, total_results=len(docs))
 
     async def get(
@@ -1724,23 +2347,33 @@ class TeradataVectorBackend(VectorStoreBackend):
         staging_qualified = self._qualified(self._staging_table(collection_name))
         staging_exists = True
 
+        # Translate metadata filter to SQL — use table alias to avoid Teradata
+        # Error 3706 where bare METADATA_JSON is mis-parsed as a type name by JSON_VALUE.
+        meta_sql_t = to_teradata_sql_where(where, json_column="t.METADATA_JSON") if where is not None else None
+        meta_sql_tbl = to_teradata_sql_where(where, json_column="tbl.METADATA_JSON") if where is not None else None
+
         try:
             if ids is not None:
                 safe_ids = [cid.replace("'", "''") for cid in ids]
                 in_clause = ", ".join(f"'{cid}'" for cid in safe_ids)
+                id_where = f"t.CHUNK_ID IN ({in_clause})"
+                combined_where = (
+                    f"{id_where} AND ({meta_sql_t})" if meta_sql_t else id_where
+                )
                 sql = (
-                    f"SELECT CHUNK_ID, CONTENT, METADATA_JSON "
-                    f"FROM {staging_qualified} "
-                    f"WHERE CHUNK_ID IN ({in_clause})"
+                    f"SELECT t.CHUNK_ID, t.CONTENT, t.METADATA_JSON "
+                    f"FROM {staging_qualified} t "
+                    f"WHERE {combined_where}"
                 )
             else:
+                meta_and = f"WHERE {meta_sql_tbl}" if meta_sql_tbl else ""
                 row_start = offset + 1
                 row_end = (offset + limit) if limit else 2_000_000_000
                 sql = (
                     f"SELECT CHUNK_ID, CONTENT, METADATA_JSON FROM ("
-                    f"  SELECT CHUNK_ID, CONTENT, METADATA_JSON,"
-                    f"         ROW_NUMBER() OVER (ORDER BY CHUNK_ID) AS RN"
-                    f"  FROM {staging_qualified}"
+                    f"  SELECT tbl.CHUNK_ID, tbl.CONTENT, tbl.METADATA_JSON,"
+                    f"         ROW_NUMBER() OVER (ORDER BY tbl.CHUNK_ID) AS RN"
+                    f"  FROM {staging_qualified} tbl {meta_and}"
                     f") T WHERE RN BETWEEN {row_start} AND {row_end}"
                 )
 
