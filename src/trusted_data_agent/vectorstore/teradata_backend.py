@@ -273,7 +273,7 @@ class TeradataVectorBackend(VectorStoreBackend):
     async def initialize(self, rest_only: bool = False) -> None:
         """Open connections to the Teradata Vector Store API and direct SQL interface.
 
-        Follows the VantageCloud Lake Getting Started pattern:
+        Follows the VantageCloud Getting Started pattern:
           1. ``create_context(host, username, password)``  — SQL context (skipped if rest_only=True)
           2. ``set_auth_token(base_url, pat_token, pem_file)`` — VS REST API auth
 
@@ -350,13 +350,13 @@ class TeradataVectorBackend(VectorStoreBackend):
             # If pem_content provided but no pem_file path, write to temp file.
             # CRITICAL: The SDK derives the JWT Key ID (kid) from the PEM *file name*.
             # The temp file MUST be named {key_name}.pem to match the key registered
-            # in the VantageCloud Lake Console.
+            # in the VantageCloud Console.
             if self._pem_content and not self._pem_file:
                 import tempfile, os
                 if not self._pem_key_name:
                     raise RuntimeError(
                         "PEM Key Name is required when providing PEM content. "
-                        "Use the key name from VantageCloud Lake Console."
+                        "Use the key name from VantageCloud Console."
                     )
                 tmpdir = None
                 pem_path = None
@@ -1099,7 +1099,7 @@ class TeradataVectorBackend(VectorStoreBackend):
 
         Returns ``None`` when no credentials are configured and no authorization object
         is set.  Call sites should fall back to passing the model name as a plain string
-        (``embeddings_model=self._embedding_model``) in that case — VantageCloud Lake
+        (``embeddings_model=self._embedding_model``) in that case — VantageCloud
         servers use server-side IAM and do not require explicit credentials.
         """
         from teradatagenai import TeradataAI  # type: ignore[import]
@@ -1673,7 +1673,7 @@ class TeradataVectorBackend(VectorStoreBackend):
                 # Use embedding_model=TeradataAI(...) so AWS credentials are serialized
                 # into the REST payload via to_dict(). Using embeddings_model=string would
                 # send only the model name with no credentials → CREATE_FAILED on enterprise
-                # servers. On VantageCloud Lake, server-side IAM handles credentials so
+                # servers. On VantageCloud, server-side IAM handles credentials so
                 # TeradataAI returns None and we fall back to the string parameter.
                 _td_ai = self._build_teradata_ai()
                 if _td_ai is not None:
@@ -1788,7 +1788,7 @@ class TeradataVectorBackend(VectorStoreBackend):
         from teradatagenai.common.constants import CollectionType  # type: ignore[import]
 
         # Build BasicIngestor — NVIngestor requires NVIDIA NIM infrastructure which
-        # is not available on VantageCloud Lake.  The optimized_chunking flag in
+        # is not available on VantageCloud.  The optimized_chunking flag in
         # Collection V2 means EVS-native chunking; BasicIngestor handles that.
         from teradatagenai import BasicIngestor  # type: ignore[import]
         ingestor_kwargs: dict = {"chunk_size": config.chunk_size}
