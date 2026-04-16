@@ -61,7 +61,7 @@ class AgentPackManager:
         version = manifest.get("format_version")
         if version == "1.0":
             return self._validate_manifest_v10(manifest)
-        elif version in ("1.1", "1.2", "1.3"):
+        elif version in ("1.1", "1.2", "1.3", "1.4"):
             return self._validate_manifest_v11(manifest)
         else:
             return [f"Unsupported format_version: {version}"]
@@ -707,6 +707,66 @@ class AgentPackManager:
                     f"  Restored default profile: @{replaced_default_tag} (new id={new_default_id})"
                 )
 
+            # Step 6c: Import Knowledge Graphs (needs profile IDs from Step 6)
+            pack_kgs = manifest.get("knowledge_graphs", [])
+            if pack_kgs:
+                import uuid as _uuid_kg
+                import sqlite3 as _sq_kg
+                from components.builtin.knowledge_graph.graph_store import GraphStore as _GS_import
+                app_logger.info(f"Importing {len(pack_kgs)} knowledge graph(s)...")
+
+                for _kg_entry in pack_kgs:
+                    _kg_profile_tag = _kg_entry.get("profile_tag")
+                    _kg_target_profile_id = tag_to_profile_id.get(_kg_profile_tag)
+                    if not _kg_target_profile_id:
+                        app_logger.warning(
+                            f"  KG '{_kg_entry.get('name')}': profile @{_kg_profile_tag} not found, skipping"
+                        )
+                        continue
+
+                    _kg_file_path = temp_path / _kg_entry["file"]
+                    if not _kg_file_path.exists():
+                        app_logger.warning(f"  KG file not found in pack: {_kg_entry['file']}")
+                        continue
+
+                    _kg_data = json.loads(_kg_file_path.read_text())
+                    _new_kg_id = str(_uuid_kg.uuid4())
+
+                    # Check if profile already has an active KG — don't displace it
+                    _sq_conn = _sq_kg.connect(self.db_path)
+                    try:
+                        _has_active = _sq_conn.execute(
+                            "SELECT 1 FROM kg_metadata WHERE profile_id = ? AND user_uuid = ? AND is_active = 1 LIMIT 1",
+                            (_kg_target_profile_id, user_uuid),
+                        ).fetchone() is not None
+                    finally:
+                        _sq_conn.close()
+
+                    try:
+                        _store = _GS_import(
+                            profile_id=_kg_target_profile_id,
+                            user_uuid=user_uuid,
+                            kg_id=_new_kg_id,
+                        )
+                        _store.set_kg_metadata(
+                            name=_kg_data.get("name") or _kg_entry.get("name", "Imported KG"),
+                            database_name=_kg_data.get("database_name") or _kg_entry.get("database_name"),
+                            description=_kg_data.get("description") or _kg_entry.get("description"),
+                            is_active=not _has_active,
+                        )
+                        _bulk_result = _store.import_bulk(
+                            entities=_kg_data.get("entities", []),
+                            relationships=_kg_data.get("relationships", []),
+                        )
+                        app_logger.info(
+                            f"  Imported KG '{_kg_entry.get('name')}' -> profile @{_kg_profile_tag} "
+                            f"(id={_new_kg_id}, active={not _has_active}, "
+                            f"entities={_bulk_result['entities_added']}, "
+                            f"rels={_bulk_result['relationships_added']})"
+                        )
+                    except Exception as _e:
+                        app_logger.warning(f"  Failed to import KG '{_kg_entry.get('name')}': {_e}")
+
             # Step 7: Reload retriever once
             retriever = get_rag_retriever()
             if retriever:
@@ -1050,6 +1110,85 @@ class AgentPackManager:
             except Exception as e:
                 app_logger.warning(f"Could not collect skills for agent pack export: {e}")
 
+            # Collect active Knowledge Graphs owned by selected profiles
+            manifest_kgs = []
+            knowledge_graphs_dir = temp_path / "knowledge_graphs"
+            kg_counter = 0
+            exported_kg_ids: set = set()
+
+            try:
+                from components.builtin.knowledge_graph.graph_store import GraphStore as _GS_export
+                all_user_kgs = _GS_export.list_all_graphs(user_uuid)
+
+                for _kg_profile in selected_profiles:
+                    _pid = _kg_profile["id"]
+                    # Only the single active KG per profile
+                    _profile_kgs = [
+                        kg for kg in all_user_kgs
+                        if kg.get("profile_id") == _pid and kg.get("is_active")
+                    ]
+                    _kg_refs_for_profile = []
+
+                    for _kg_meta in _profile_kgs:
+                        if _kg_meta["kg_id"] in exported_kg_ids:
+                            continue  # safety guard against duplicates
+
+                        kg_counter += 1
+                        _kg_ref = f"kg_{kg_counter}"
+                        _kg_file_name = f"{_kg_ref}.json"
+
+                        try:
+                            _store = _GS_export(
+                                profile_id=_pid,
+                                user_uuid=user_uuid,
+                                kg_id=_kg_meta["kg_id"],
+                            )
+                            _entities = _store.list_entities(limit=999999)
+                            _relationships = _store.list_relationships(limit=999999)
+                        except Exception as _e:
+                            app_logger.warning(
+                                f"Failed to export KG '{_kg_meta.get('kg_name')}': {_e}"
+                            )
+                            continue
+
+                        if not knowledge_graphs_dir.exists():
+                            knowledge_graphs_dir.mkdir()
+
+                        _kg_json = {
+                            "name": _kg_meta.get("kg_name", ""),
+                            "database_name": _kg_meta.get("database_name", ""),
+                            "description": _kg_meta.get("description", ""),
+                            "entities": _entities,
+                            "relationships": _relationships,
+                        }
+                        (knowledge_graphs_dir / _kg_file_name).write_text(
+                            json.dumps(_kg_json, indent=2, ensure_ascii=False)
+                        )
+
+                        manifest_kgs.append({
+                            "ref": _kg_ref,
+                            "file": f"knowledge_graphs/{_kg_file_name}",
+                            "profile_tag": _kg_profile.get("tag"),
+                            "name": _kg_meta.get("kg_name", ""),
+                            "database_name": _kg_meta.get("database_name", ""),
+                            "description": _kg_meta.get("description", ""),
+                        })
+                        _kg_refs_for_profile.append(_kg_ref)
+                        exported_kg_ids.add(_kg_meta["kg_id"])
+                        app_logger.info(
+                            f"  Exported KG '{_kg_meta.get('kg_name')}' -> {_kg_file_name}"
+                        )
+
+                    # Attach kg_refs to the matching profile entry in manifest_profiles
+                    if _kg_refs_for_profile:
+                        for _mp in manifest_profiles:
+                            if _mp["tag"] == _kg_profile.get("tag"):
+                                _mp["kg_refs"] = _kg_refs_for_profile
+                                break
+
+            except Exception as e:
+                app_logger.warning(f"Could not collect knowledge graphs for agent pack export: {e}")
+
             # Gather unique vector store configs referenced by pack collections
             manifest_vs_configs = []
             vs_config_ids = set()
@@ -1094,8 +1233,10 @@ class AgentPackManager:
                 for sid, data in skills_to_bundle.items()
             ]
 
-            # Determine manifest version: 1.3 if skills, 1.2 if VS configs, else 1.1
-            if skill_refs:
+            # Determine manifest version: 1.4 if KGs, 1.3 if skills, 1.2 if VS configs, else 1.1
+            if manifest_kgs:
+                manifest_version = "1.4"
+            elif skill_refs:
                 manifest_version = "1.3"
             elif manifest_vs_configs:
                 manifest_version = "1.2"
@@ -1117,6 +1258,8 @@ class AgentPackManager:
                 manifest["vector_store_configurations"] = manifest_vs_configs
             if skill_refs:
                 manifest["skills"] = skill_refs
+            if manifest_kgs:
+                manifest["knowledge_graphs"] = manifest_kgs
 
             # Write manifest
             manifest_file = temp_path / "manifest.json"
@@ -1136,6 +1279,9 @@ class AgentPackManager:
                 for skill_id, skill_data in skills_to_bundle.items():
                     skill_zip_bytes = _build_skill_zip(skill_id, skill_data["manifest"], skill_data["content"])
                     zf.writestr(f"skills/{skill_id}.skill", skill_zip_bytes)
+                if knowledge_graphs_dir.exists():
+                    for _kg_file in knowledge_graphs_dir.rglob("*.json"):
+                        zf.write(_kg_file, f"knowledge_graphs/{_kg_file.name}")
 
             app_logger.info(f"Exported agent pack to {agentpack_path} ({agentpack_path.stat().st_size / 1024 / 1024:.2f} MB)")
             return agentpack_path

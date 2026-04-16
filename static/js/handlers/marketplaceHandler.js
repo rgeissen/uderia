@@ -3576,12 +3576,13 @@ function openKgPublishModal(kg) {
         try {
             const token = await window.authClient.getToken();
             const body = {
-                name: content.querySelector('#kg-pub-name').value.trim() || kg.profile_name || 'Knowledge Graph',
+                name: content.querySelector('#kg-pub-name').value.trim() || kg.kg_name || kg.profile_name || 'Knowledge Graph',
                 description: content.querySelector('#kg-pub-desc').value.trim(),
                 domain: content.querySelector('#kg-pub-domain').value.trim(),
                 version: content.querySelector('#kg-pub-version').value.trim() || '1.0.0',
                 author: content.querySelector('#kg-pub-author').value.trim() || 'Unknown',
                 visibility: 'public',
+                kg_id: kg.kg_id || null,
             };
 
             const resp = await fetch(`/api/v1/knowledge-graph/${encodeURIComponent(kg.profile_id)}/publish`, {

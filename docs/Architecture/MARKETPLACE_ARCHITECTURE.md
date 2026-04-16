@@ -355,6 +355,7 @@ marketplace_knowledge_graphs (
     entity_count, relationship_count,
     entity_types_json, relationship_types_json, tags_json,
     visibility, download_count, install_count,
+    kg_id TEXT,          -- added migration: original source KG UUID for provenance
     created_at, updated_at
 )
 
@@ -386,10 +387,13 @@ kg_marketplace_settings (
 
 **Key Implementation Details:**
 
-- **Profile-scoped install:** Unlike Skills (global), KGs install into a specific target profile via `GraphStore.import_bulk()`. The install modal includes a profile picker.
+- **Profile-scoped install:** Unlike Skills (global), KGs install into a specific target profile. Install and fork both create a **new named KG** via `GraphStore(profile_id, user_uuid, kg_id=new_uuid)` + `set_kg_metadata(name, ..., is_active=not has_active)` followed by `import_bulk()`.
+- **Non-displacing activation:** The installed KG only becomes the active KG when the target profile has no active KG yet (`is_active=not has_active`). An existing active KG is preserved.
 - **Merge semantics:** Entities are matched by `(name, entity_type)` — existing entities are upserted, not replaced.
 - **Source provenance:** Installed entities receive `source = 'marketplace'` for tracking.
-- **Export compatibility:** Published KGs use the same format as `/v1/knowledge-graph/export`, with relationships containing both ID-based and name-based references.
+- **Publish uses `kg_id`:** The publish endpoint accepts `kg_id` in the request body to export a specific named KG rather than the legacy "active KG for profile" lookup.
+- **Export format:** Published KGs use v2.0 format (includes `kg_id`, `kg_name`, `kg_description`, `kg_database_name`). v1.0 exports remain import-compatible.
+- **`kg_id` column migration:** Added to `marketplace_knowledge_graphs` via runtime `ALTER TABLE` in `database.py` — safe on existing installations.
 
 ---
 

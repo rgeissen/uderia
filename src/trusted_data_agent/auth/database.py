@@ -1194,13 +1194,13 @@ def _create_knowledge_graph_tables():
         # Step 1: Ensure the base table exists (without the is_active-dependent index)
         cursor.executescript("""
             CREATE TABLE IF NOT EXISTS kg_profile_assignments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                kg_id               TEXT,
                 kg_owner_profile_id TEXT NOT NULL,
                 assigned_profile_id TEXT NOT NULL,
-                user_uuid TEXT NOT NULL,
-                is_active BOOLEAN DEFAULT 0 CHECK(is_active IN (0, 1)),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(kg_owner_profile_id, assigned_profile_id, user_uuid)
+                user_uuid           TEXT NOT NULL,
+                is_active           BOOLEAN DEFAULT 0 CHECK(is_active IN (0, 1)),
+                UNIQUE(kg_id, assigned_profile_id, user_uuid)
             );
             CREATE INDEX IF NOT EXISTS idx_kg_assignments_assigned
                 ON kg_profile_assignments(assigned_profile_id, user_uuid);
@@ -1228,11 +1228,273 @@ def _create_knowledge_graph_tables():
         except Exception:
             pass  # Index may already exist or column still missing in edge case
 
+        # Multi-KG migration: add kg_id scope key to entities/relationships
+        _migrate_to_multi_kg(conn)
+
+        # Fix kg_profile_assignments unique constraint (runs independently of _migrate_to_multi_kg guard).
+        # Guard: 'created_at' column is only present in the old schema; new schema omits it.
+        _migrate_kg_assignments_constraint(conn)
+
         conn.commit()
         conn.close()
 
     except Exception as e:
         logger.error(f"Error creating knowledge graph tables: {e}", exc_info=True)
+
+
+def _migrate_to_multi_kg(conn) -> None:
+    """
+    One-time migration: adds kg_id as the scope key for kg_entities and kg_relationships.
+
+    Before:   entities scoped by (profile_id, user_uuid) → one KG per profile
+    After:    entities scoped by kg_id (UUID) → many KGs per profile
+
+    Guard:    skipped silently if kg_entities already has a kg_id column.
+    Backfill: existing entities receive kg_id from kg_metadata if available,
+              else profile_id is used as a synthetic kg_id (backwards-compatible).
+    """
+    from datetime import datetime, timezone
+
+    cursor = conn.cursor()
+
+    # ── Guard ────────────────────────────────────────────────────────────────
+    try:
+        cursor.execute("SELECT kg_id FROM kg_entities LIMIT 1")
+        return  # Already migrated
+    except Exception:
+        pass  # kg_id column missing → proceed
+
+    logger.info("[KG Migration] Starting multi-KG architecture migration …")
+    conn.execute("PRAGMA foreign_keys = OFF")
+
+    try:
+        # ── 1. Recreate kg_metadata with new schema ───────────────────────
+        # New schema removes UNIQUE(profile_id, user_uuid) and adds is_active.
+        cursor.execute("""
+            CREATE TABLE kg_metadata_new (
+                kg_id         TEXT PRIMARY KEY,
+                profile_id    TEXT NOT NULL,
+                user_uuid     TEXT NOT NULL,
+                name          TEXT NOT NULL,
+                database_name TEXT,
+                is_active     INTEGER NOT NULL DEFAULT 1,
+                created_at    TEXT NOT NULL,
+                updated_at    TEXT NOT NULL
+            )
+        """)
+        try:
+            # Copy any existing rows; COALESCE handles old tables missing is_active
+            cursor.execute("""
+                INSERT OR IGNORE INTO kg_metadata_new
+                    (kg_id, profile_id, user_uuid, name, database_name, is_active, created_at, updated_at)
+                SELECT kg_id, profile_id, user_uuid, name, database_name,
+                       COALESCE(is_active, 1), created_at, updated_at
+                FROM kg_metadata
+            """)
+        except Exception:
+            pass  # kg_metadata didn't exist yet — that's fine
+        cursor.execute("DROP TABLE IF EXISTS kg_metadata")
+        cursor.execute("ALTER TABLE kg_metadata_new RENAME TO kg_metadata")
+        conn.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_metadata_profile_user ON kg_metadata(profile_id, user_uuid)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_metadata_active ON kg_metadata(profile_id, user_uuid, is_active)")
+        conn.commit()
+        logger.info("[KG Migration] kg_metadata: new schema applied")
+
+        # ── 2. Synthetic kg_metadata for profiles without a metadata row ──
+        now = datetime.now(timezone.utc).isoformat()
+        orphan_profiles = cursor.execute("""
+            SELECT DISTINCT e.profile_id, e.user_uuid FROM kg_entities e
+            WHERE NOT EXISTS (
+                SELECT 1 FROM kg_metadata km
+                WHERE km.profile_id = e.profile_id AND km.user_uuid = e.user_uuid
+            )
+        """).fetchall()
+        for pid, uuid in orphan_profiles:
+            # Use profile_id as synthetic kg_id — preserves all existing references
+            cursor.execute(
+                "INSERT OR IGNORE INTO kg_metadata "
+                "(kg_id, profile_id, user_uuid, name, database_name, is_active, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+                (pid, pid, uuid, "Imported Graph", None, now, now),
+            )
+        conn.commit()
+        if orphan_profiles:
+            logger.info(f"[KG Migration] Created synthetic kg_metadata for {len(orphan_profiles)} profile(s)")
+
+        # ── 3. Recreate kg_entities with kg_id ────────────────────────────
+        cursor.execute("""
+            CREATE TABLE kg_entities_new (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                kg_id         TEXT NOT NULL DEFAULT '',
+                profile_id    TEXT NOT NULL,
+                user_uuid     TEXT NOT NULL,
+                name          TEXT NOT NULL,
+                entity_type   TEXT NOT NULL,
+                properties_json TEXT DEFAULT '{}',
+                source        TEXT NOT NULL DEFAULT 'manual',
+                source_detail TEXT,
+                created_at    TEXT,
+                updated_at    TEXT,
+                UNIQUE(kg_id, name, entity_type)
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO kg_entities_new
+                (id, kg_id, profile_id, user_uuid, name, entity_type,
+                 properties_json, source, source_detail, created_at, updated_at)
+            SELECT e.id,
+                COALESCE(
+                    (SELECT km.kg_id FROM kg_metadata km
+                     WHERE km.profile_id = e.profile_id AND km.user_uuid = e.user_uuid
+                     LIMIT 1),
+                    e.profile_id
+                ),
+                e.profile_id, e.user_uuid, e.name, e.entity_type,
+                e.properties_json, e.source, e.source_detail,
+                e.created_at, e.updated_at
+            FROM kg_entities e
+        """)
+        cursor.execute("DROP TABLE kg_entities")
+        cursor.execute("ALTER TABLE kg_entities_new RENAME TO kg_entities")
+        conn.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_entities_kg_id ON kg_entities(kg_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_entities_profile_user ON kg_entities(profile_id, user_uuid)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_entities_type ON kg_entities(kg_id, entity_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_entities_name ON kg_entities(kg_id, name COLLATE NOCASE)")
+        conn.commit()
+        logger.info("[KG Migration] kg_entities: added kg_id column, unique constraint updated")
+
+        # ── 4. Recreate kg_relationships with kg_id ───────────────────────
+        cursor.execute("""
+            CREATE TABLE kg_relationships_new (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                kg_id                TEXT NOT NULL DEFAULT '',
+                profile_id           TEXT NOT NULL,
+                user_uuid            TEXT NOT NULL,
+                source_entity_id     INTEGER NOT NULL,
+                target_entity_id     INTEGER NOT NULL,
+                relationship_type    TEXT NOT NULL,
+                cardinality          TEXT,
+                metadata_json        TEXT DEFAULT '{}',
+                source               TEXT NOT NULL DEFAULT 'manual',
+                created_at           TEXT,
+                FOREIGN KEY (source_entity_id) REFERENCES kg_entities(id) ON DELETE CASCADE,
+                FOREIGN KEY (target_entity_id) REFERENCES kg_entities(id) ON DELETE CASCADE,
+                UNIQUE(kg_id, source_entity_id, target_entity_id, relationship_type)
+            )
+        """)
+        # Backfill kg_id from the (already migrated) kg_entities table
+        cursor.execute("""
+            INSERT INTO kg_relationships_new
+                (id, kg_id, profile_id, user_uuid, source_entity_id, target_entity_id,
+                 relationship_type, cardinality, metadata_json, source, created_at)
+            SELECT r.id,
+                COALESCE(e.kg_id, r.profile_id),
+                r.profile_id, r.user_uuid, r.source_entity_id, r.target_entity_id,
+                r.relationship_type, r.cardinality, r.metadata_json, r.source, r.created_at
+            FROM kg_relationships r
+            LEFT JOIN kg_entities e ON r.source_entity_id = e.id
+        """)
+        cursor.execute("DROP TABLE kg_relationships")
+        cursor.execute("ALTER TABLE kg_relationships_new RENAME TO kg_relationships")
+        conn.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_relationships_kg_id ON kg_relationships(kg_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_relationships_profile_user ON kg_relationships(profile_id, user_uuid)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_relationships_source ON kg_relationships(source_entity_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_relationships_target ON kg_relationships(target_entity_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_kg_relationships_type ON kg_relationships(kg_id, relationship_type)")
+        conn.commit()
+        logger.info("[KG Migration] kg_relationships: added kg_id column, unique constraint updated")
+
+        # ── 5. Add kg_id to kg_profile_assignments ────────────────────────
+        try:
+            cursor.execute("SELECT kg_id FROM kg_profile_assignments LIMIT 1")
+        except Exception:
+            try:
+                cursor.execute("ALTER TABLE kg_profile_assignments ADD COLUMN kg_id TEXT")
+                conn.commit()
+                cursor.execute("""
+                    UPDATE kg_profile_assignments SET kg_id = COALESCE(
+                        (SELECT km.kg_id FROM kg_metadata km
+                         WHERE km.profile_id = kg_profile_assignments.kg_owner_profile_id
+                           AND km.user_uuid = kg_profile_assignments.user_uuid
+                           AND km.is_active = 1
+                         LIMIT 1),
+                        kg_owner_profile_id
+                    )
+                """)
+                conn.commit()
+                logger.info("[KG Migration] kg_profile_assignments: added and backfilled kg_id column")
+            except Exception as assign_err:
+                logger.debug(f"[KG Migration] kg_profile_assignments kg_id migration skipped: {assign_err}")
+
+        logger.info("[KG Migration] Migration complete ✓")
+
+    except Exception as e:
+        logger.error(f"[KG Migration] Failed: {e}", exc_info=True)
+        raise
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
+
+
+def _migrate_kg_assignments_constraint(conn) -> None:
+    """
+    Fix the unique constraint on kg_profile_assignments so that a profile can be
+    assigned to MULTIPLE knowledge graphs owned by the same owner profile.
+
+    Old constraint: UNIQUE(kg_owner_profile_id, assigned_profile_id, user_uuid)
+      → only one assignment per (owner, assigned_profile) regardless of KG — INSERT OR IGNORE
+        silently drops the second assignment when assigning the same profile to a second KG.
+
+    New constraint: UNIQUE(kg_id, assigned_profile_id, user_uuid)
+      → one assignment per (kg, assigned_profile) — correct multi-KG semantics.
+
+    Guard: 'created_at' column only exists in the old schema (it was never in the new one).
+    This function is safe to call on every startup; it is a no-op once migrated.
+    """
+    try:
+        cursor = conn.cursor()
+        col_names = [row[1] for row in cursor.execute(
+            "PRAGMA table_info(kg_profile_assignments)"
+        ).fetchall()]
+
+        if 'created_at' not in col_names:
+            return  # Already on new schema
+
+        logger.info("[KG Migration] Updating kg_profile_assignments unique constraint …")
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.commit()
+
+        cursor.executescript("""
+            CREATE TABLE IF NOT EXISTS kg_profile_assignments_v2 (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                kg_id               TEXT,
+                kg_owner_profile_id TEXT NOT NULL,
+                assigned_profile_id TEXT NOT NULL,
+                user_uuid           TEXT NOT NULL,
+                is_active           BOOLEAN NOT NULL DEFAULT 0
+                                    CHECK(is_active IN (0, 1)),
+                UNIQUE(kg_id, assigned_profile_id, user_uuid)
+            );
+            INSERT OR IGNORE INTO kg_profile_assignments_v2
+                (id, kg_id, kg_owner_profile_id, assigned_profile_id, user_uuid, is_active)
+            SELECT id, kg_id, kg_owner_profile_id, assigned_profile_id, user_uuid,
+                   COALESCE(is_active, 0)
+            FROM kg_profile_assignments;
+            DROP TABLE kg_profile_assignments;
+            ALTER TABLE kg_profile_assignments_v2 RENAME TO kg_profile_assignments;
+            CREATE INDEX IF NOT EXISTS idx_kg_assignments_assigned
+                ON kg_profile_assignments(assigned_profile_id, user_uuid);
+            CREATE INDEX IF NOT EXISTS idx_kg_assignments_owner
+                ON kg_profile_assignments(kg_owner_profile_id, user_uuid);
+        """)
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
+        logger.info("[KG Migration] kg_profile_assignments: constraint updated to UNIQUE(kg_id, assigned_profile_id, user_uuid)")
+    except Exception as e:
+        logger.warning(f"[KG Migration] kg_profile_assignments constraint migration failed: {e}")
 
 
 def _create_marketplace_knowledge_graph_tables():
@@ -1307,6 +1569,14 @@ def _create_marketplace_knowledge_graph_tables():
                     ON knowledge_graph_ratings(kg_marketplace_id, user_id);
             """)
             logger.info("Created marketplace_knowledge_graphs tables (inline fallback)")
+
+        # Migration: add kg_id column if not present
+        try:
+            cursor.execute("SELECT kg_id FROM marketplace_knowledge_graphs LIMIT 0")
+        except Exception:
+            cursor.execute("ALTER TABLE marketplace_knowledge_graphs ADD COLUMN kg_id TEXT")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_marketplace_kg_kg_id ON marketplace_knowledge_graphs(kg_id)")
+            logger.info("Migrated marketplace_knowledge_graphs: added kg_id column")
 
         conn.commit()
         conn.close()

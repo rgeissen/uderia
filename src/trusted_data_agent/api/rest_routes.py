@@ -13796,11 +13796,17 @@ async def kg_stats():
 @rest_api_bp.route("/v1/knowledge-graph/import", methods=["POST"])
 @require_auth
 async def kg_import(current_user):
-    """Bulk import entities and relationships."""
+    """Bulk import entities and relationships.
+
+    Two modes:
+    - Create new KG (default): always mints a fresh kg_id so existing KGs are never touched.
+    - Merge into existing (target_kg_id provided): merges into the specified KG.
+    """
     user_uuid = _get_user_uuid_from_request()
     data = await request.get_json()
-    store = _get_graph_store(user_uuid, data.get("profile_id"))
 
+    profile_id = (data.get("profile_id") or "__default__")
+    target_kg_id = (data.get("target_kg_id") or "").strip() or None
     entities = data.get("entities", [])
     relationships = data.get("relationships", [])
 
@@ -13808,8 +13814,51 @@ async def kg_import(current_user):
         return jsonify({"status": "error", "message": "No entities or relationships provided"}), 400
 
     try:
-        result = store.import_bulk(entities, relationships)
-        return jsonify({"status": "success", **result})
+        import uuid as _uuid_mod
+        from components.builtin.knowledge_graph.graph_store import GraphStore as _GS
+
+        if target_kg_id:
+            # Merge mode — import into an existing KG
+            # Resolve the owning profile_id for this kg_id
+            import sqlite3 as _sq_imp
+            _ci = _sq_imp.connect(str(DB_PATH))
+            _ri = _ci.execute(
+                "SELECT profile_id FROM kg_metadata WHERE kg_id = ? AND user_uuid = ?",
+                (target_kg_id, user_uuid)
+            ).fetchone()
+            _ci.close()
+            owner_pid = _ri[0] if _ri else profile_id
+            store = _GS(profile_id=owner_pid, user_uuid=user_uuid, kg_id=target_kg_id)
+            result = store.import_bulk(entities, relationships)
+            return jsonify({"status": "success", "kg_id": target_kg_id, "mode": "merge", **result})
+        else:
+            # Create mode — always mint a fresh kg_id so no existing KG is touched
+            new_kg_id = str(_uuid_mod.uuid4())
+            store = _GS(profile_id=profile_id, user_uuid=user_uuid, kg_id=new_kg_id)
+
+            # Check if this profile already has an active KG — if so, register the
+            # imported KG as inactive so the existing one is not displaced
+            import sqlite3 as _sq_chk
+            _cc = _sq_chk.connect(str(DB_PATH))
+            _has_active = _cc.execute(
+                "SELECT 1 FROM kg_metadata WHERE profile_id = ? AND user_uuid = ? AND is_active = 1 LIMIT 1",
+                (profile_id, user_uuid)
+            ).fetchone() is not None
+            _cc.close()
+
+            # Register metadata BEFORE import_bulk so entities are written to new_kg_id
+            kg_name = (data.get("kg_name") or "").strip() or "Imported Knowledge Graph"
+            kg_description = (data.get("kg_description") or "").strip() or None
+            kg_database_name = (data.get("kg_database_name") or "").strip() or None
+            store.set_kg_metadata(
+                name=kg_name,
+                database_name=kg_database_name or "",
+                description=kg_description,
+                is_active=not _has_active,
+            )
+
+            result = store.import_bulk(entities, relationships)
+            return jsonify({"status": "success", "kg_id": new_kg_id, "mode": "create", **result})
     except Exception as e:
         app_logger.error(f"Knowledge graph import failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -13818,14 +13867,49 @@ async def kg_import(current_user):
 @rest_api_bp.route("/v1/knowledge-graph/clear", methods=["DELETE"])
 @require_auth
 async def kg_clear(current_user):
-    """Clear entire knowledge graph for the current profile."""
+    """Clear (delete) a knowledge graph. Accepts kg_id (preferred) or profile_id (legacy)."""
     user_uuid = _get_user_uuid_from_request()
     profile_id = request.args.get("profile_id", "__default__")
-    store = _get_graph_store(user_uuid, profile_id)
+    kg_id_param = request.args.get("kg_id")
 
     try:
+        from components.builtin.knowledge_graph.graph_store import GraphStore as _GS
+
+        if kg_id_param:
+            import sqlite3 as _sq
+            _c = _sq.connect(str(DB_PATH))
+            _row = _c.execute(
+                "SELECT profile_id FROM kg_metadata WHERE kg_id = ? AND user_uuid = ?",
+                (kg_id_param, user_uuid)
+            ).fetchone()
+            _c.close()
+            owner_pid = _row[0] if _row else profile_id
+            store = _GS(profile_id=owner_pid, user_uuid=user_uuid, kg_id=kg_id_param)
+        else:
+            store = _get_graph_store(user_uuid, profile_id)
+
+        resolved_kg_id = store.kg_id
         store.clear_graph()
-        return jsonify({"status": "success", "message": "Knowledge graph cleared"})
+
+        # Remove kg_metadata and kg_profile_assignments rows for this specific KG
+        import sqlite3 as _sq2
+        _conn2 = _sq2.connect(str(DB_PATH))
+        try:
+            _conn2.execute(
+                "DELETE FROM kg_metadata WHERE kg_id = ? AND user_uuid = ?",
+                (resolved_kg_id, user_uuid)
+            )
+            _conn2.execute(
+                "DELETE FROM kg_profile_assignments WHERE kg_id = ? AND user_uuid = ?",
+                (resolved_kg_id, user_uuid)
+            )
+            _conn2.commit()
+        except Exception:
+            pass
+        finally:
+            _conn2.close()
+
+        return jsonify({"status": "success", "message": "Knowledge graph deleted", "kg_id": resolved_kg_id})
     except Exception as e:
         app_logger.error(f"Knowledge graph clear failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -13898,44 +13982,54 @@ async def kg_list_all(current_user):
         profiles = config_manager.get_profiles(user_uuid)
         profile_map = {p["id"]: p for p in profiles}
 
-        # Load assignment data (including is_active state)
+        # Load cross-profile assignment data (kg_id keyed)
         import sqlite3 as _sqlite3
         _conn = _sqlite3.connect(str(DB_PATH))
         _cursor = _conn.cursor()
-        _cursor.execute(
-            "SELECT kg_owner_profile_id, assigned_profile_id, is_active FROM kg_profile_assignments WHERE user_uuid = ?",
-            (user_uuid,),
-        )
+
+        # Try loading with kg_id column (post-migration); fall back to kg_owner_profile_id
+        try:
+            _cursor.execute(
+                "SELECT COALESCE(kg_id, kg_owner_profile_id), kg_owner_profile_id, "
+                "assigned_profile_id, is_active FROM kg_profile_assignments WHERE user_uuid = ?",
+                (user_uuid,),
+            )
+        except Exception:
+            _cursor.execute(
+                "SELECT kg_owner_profile_id, kg_owner_profile_id, assigned_profile_id, is_active "
+                "FROM kg_profile_assignments WHERE user_uuid = ?",
+                (user_uuid,),
+            )
         assignment_rows = _cursor.fetchall()
+        # Each row: (kg_id_or_owner, kg_owner_profile_id, assigned_profile_id, is_active)
 
-        # Lazy migration: ensure every KG has a self-assignment row (owner→owner)
-        existing_self = {row[0] for row in assignment_rows if row[0] == row[1]}
-        kg_profile_ids = {kg["profile_id"] for kg in graphs}
-        missing_self = kg_profile_ids - existing_self
-
-        for pid in missing_self:
-            # Check if any KG is already active for this profile (as assigned_profile_id)
-            has_active = any(r[1] == pid and r[2] == 1 for r in assignment_rows)
-            is_active_val = 0 if has_active else 1  # Active by default if no other KG is active
-            try:
-                _cursor.execute(
-                    "INSERT OR IGNORE INTO kg_profile_assignments "
-                    "(kg_owner_profile_id, assigned_profile_id, user_uuid, is_active) VALUES (?, ?, ?, ?)",
-                    (pid, pid, user_uuid, is_active_val),
-                )
-                assignment_rows.append((pid, pid, is_active_val))
-            except Exception:
-                pass  # Race condition or constraint — safe to ignore
-
-        if missing_self:
+        # Lazy migration: ensure every KG has a self-assignment row (keyed by kg_id)
+        existing_kg_self = {row[0] for row in assignment_rows if row[0] == row[2] or row[1] == row[2]}
+        kg_ids_needing_self = [kg["kg_id"] for kg in graphs if kg["kg_id"] and kg["kg_id"] not in existing_kg_self]
+        committed = False
+        for kid in kg_ids_needing_self:
+            owner_pid = next((g["profile_id"] for g in graphs if g["kg_id"] == kid), None)
+            if owner_pid:
+                try:
+                    _cursor.execute(
+                        "INSERT OR IGNORE INTO kg_profile_assignments "
+                        "(kg_id, kg_owner_profile_id, assigned_profile_id, user_uuid, is_active) "
+                        "VALUES (?, ?, ?, ?, 1)",
+                        (kid, owner_pid, owner_pid, user_uuid),
+                    )
+                    assignment_rows.append((kid, owner_pid, owner_pid, 1))
+                    committed = True
+                except Exception:
+                    pass
+        if committed:
             _conn.commit()
-
         _conn.close()
 
-        # Build lookup: owner_profile_id → [(assigned_profile_id, is_active)]
-        assignments_by_owner: dict = {}
-        for owner_pid, assigned_pid, is_active_flag in assignment_rows:
-            assignments_by_owner.setdefault(owner_pid, []).append((assigned_pid, is_active_flag))
+        # Build lookup: kg_id → [(assigned_profile_id, is_active)]  (exclude self-rows)
+        cross_assignments: dict = {}
+        for kid, owner_pid, assigned_pid, is_active_flag in assignment_rows:
+            if assigned_pid != owner_pid:  # cross-profile only
+                cross_assignments.setdefault(kid, []).append((assigned_pid, is_active_flag))
 
         for kg in graphs:
             profile = profile_map.get(kg["profile_id"])
@@ -13949,26 +14043,21 @@ async def kg_list_all(current_user):
                 kg["profile_tag"] = ""
                 kg["profile_type"] = None
 
-            # Build assigned profiles list (exclude self-assignment rows)
-            all_assignments = assignments_by_owner.get(kg["profile_id"], [])
-            kg["is_active_for_owner"] = False
-            kg["assigned_profiles"] = []
+            # is_active_for_owner comes directly from kg_metadata.is_active
+            kg["is_active_for_owner"] = kg.get("is_active", False)
 
-            for apid, is_active_flag in all_assignments:
-                if apid == kg["profile_id"]:
-                    # Self-assignment — track owner's activation state
-                    kg["is_active_for_owner"] = bool(is_active_flag)
-                else:
-                    # Cross-profile assignment
-                    ap = profile_map.get(apid)
-                    if ap:
-                        kg["assigned_profiles"].append({
-                            "id": apid,
-                            "name": ap.get("name", ""),
-                            "tag": ap.get("tag", ""),
-                            "profile_type": ap.get("profile_type", ""),
-                            "is_active": bool(is_active_flag),
-                        })
+            # Build assigned profiles list (cross-profile only)
+            kg["assigned_profiles"] = []
+            for apid, is_active_flag in cross_assignments.get(kg.get("kg_id", ""), []):
+                ap = profile_map.get(apid)
+                if ap:
+                    kg["assigned_profiles"].append({
+                        "id": apid,
+                        "name": ap.get("name", ""),
+                        "tag": ap.get("tag", ""),
+                        "profile_type": ap.get("profile_type", ""),
+                        "is_active": bool(is_active_flag),
+                    })
 
         return jsonify({"status": "success", "knowledge_graphs": graphs})
     except Exception as e:
@@ -13982,15 +14071,51 @@ async def kg_export(current_user):
     """Export a knowledge graph as a downloadable JSON file."""
     user_uuid = _get_user_uuid_from_request()
     profile_id = request.args.get("profile_id")
+    kg_id_param = request.args.get("kg_id")
 
-    if not profile_id:
-        return jsonify({"status": "error", "message": "profile_id query parameter is required"}), 400
+    if not profile_id and not kg_id_param:
+        return jsonify({"status": "error", "message": "profile_id or kg_id query parameter is required"}), 400
 
     try:
-        store = _get_graph_store(user_uuid, profile_id)
+        from components.builtin.knowledge_graph.graph_store import GraphStore as _GS
+
+        if kg_id_param:
+            import sqlite3 as _sq
+            _c = _sq.connect(str(DB_PATH))
+            _row = _c.execute(
+                "SELECT profile_id FROM kg_metadata WHERE kg_id = ? AND user_uuid = ?",
+                (kg_id_param, user_uuid)
+            ).fetchone()
+            _c.close()
+            owner_pid = _row[0] if _row else (profile_id or "__default__")
+            store = _GS(profile_id=owner_pid, user_uuid=user_uuid, kg_id=kg_id_param)
+            if not profile_id:
+                profile_id = owner_pid
+        else:
+            store = _get_graph_store(user_uuid, profile_id)
         entities = store.list_entities(limit=10000)
         relationships = store.list_relationships()
         stats = store.get_stats()
+
+        # Fetch KG metadata (name, description, database_name)
+        kg_meta = {}
+        try:
+            import sqlite3 as _sq_m
+            _cm = _sq_m.connect(str(DB_PATH))
+            _mr = _cm.execute(
+                "SELECT kg_id, name, description, database_name FROM kg_metadata WHERE kg_id = ? AND user_uuid = ?",
+                (store.kg_id, user_uuid)
+            ).fetchone()
+            _cm.close()
+            if _mr:
+                kg_meta = {
+                    "kg_id": _mr[0],
+                    "kg_name": _mr[1] or "",
+                    "kg_description": _mr[2] or "",
+                    "kg_database_name": _mr[3] or "",
+                }
+        except Exception:
+            pass
 
         # Resolve profile name for the export
         profile_name = profile_id
@@ -14007,7 +14132,8 @@ async def kg_export(current_user):
             pass  # Use profile_id as fallback name
 
         export_data = {
-            "export_version": "1.0",
+            "export_version": "2.0",
+            **kg_meta,
             "profile_id": profile_id,
             "profile_name": profile_name,
             "profile_tag": profile_tag,
@@ -14019,9 +14145,14 @@ async def kg_export(current_user):
 
         export_json = json.dumps(export_data, indent=2, default=str)
 
-        # Build filename
-        tag_part = f"-{profile_tag}" if profile_tag else ""
+        # Build filename — prefer KG name, fall back to profile tag
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        name_part = kg_meta.get("kg_name", "").strip()
+        if name_part:
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", name_part)[:40]
+            tag_part = f"-{safe_name}"
+        else:
+            tag_part = f"-{profile_tag}" if profile_tag else ""
         filename = f"knowledge-graph{tag_part}-{timestamp}.json"
 
         from quart import Response
@@ -14837,13 +14968,20 @@ async def kg_generate(current_user):
         profile_id = data.get("profile_id", "").strip()
         database_name = data.get("database_name", "").strip()
         include_semantic = data.get("include_semantic", True)
+        graph_name = data.get("graph_name", "").strip() or None
+        graph_description = data.get("description", "").strip() or None
 
         if not profile_id:
             return jsonify({"status": "error", "message": "profile_id is required"}), 400
         if not database_name:
             return jsonify({"status": "error", "message": "database_name is required"}), 400
 
-        store = _get_graph_store(user_uuid, profile_id)
+        # Mint a fresh kg_id upfront so this run creates an isolated KG —
+        # never merges into an existing one even if the same profile is reused.
+        import uuid as _uuid_mod
+        from components.builtin.knowledge_graph.graph_store import GraphStore as _GraphStore
+        new_kg_id = str(_uuid_mod.uuid4())
+        store = _GraphStore(profile_id=profile_id, user_uuid=user_uuid, kg_id=new_kg_id)
 
         # ── Setup: Activate profile context for MCP + LLM access ──
         from trusted_data_agent.core.config_manager import get_config_manager
@@ -14897,7 +15035,7 @@ async def kg_generate(current_user):
             profile_tag=profile.get("tag"),
             profile_id=profile_id,
             is_temporary=True,
-            temporary_purpose=f"KG: {database_name}",
+            temporary_purpose=f"KG: {graph_name or database_name}",
         )
         app_logger.info(f"[KG Constructor] System session created: {session_id}")
 
@@ -14945,6 +15083,29 @@ async def kg_generate(current_user):
 
         structural_result = store.import_bulk(structural["entities"], structural["relationships"])
         app_logger.info(f"[KG Constructor] Turn 1 imported: {structural_result}")
+
+        # Register metadata for this new KG and set it as active for the owner profile
+        kg_id = store.set_kg_metadata(
+            name=graph_name or database_name,
+            database_name=database_name,
+            description=graph_description,
+        )
+        app_logger.info(f"[KG Constructor] KG metadata stored: kg_id={kg_id}, name={graph_name or database_name}")
+
+        # Ensure a self-assignment row exists (owner profile can activate/deactivate its own KG)
+        try:
+            import sqlite3 as _sqlite3
+            _aconn = _sqlite3.connect(str(DB_PATH))
+            _aconn.execute(
+                "INSERT OR IGNORE INTO kg_profile_assignments "
+                "(kg_id, kg_owner_profile_id, assigned_profile_id, user_uuid, is_active) "
+                "VALUES (?, ?, ?, ?, 1)",
+                (kg_id, profile_id, profile_id, user_uuid),
+            )
+            _aconn.commit()
+            _aconn.close()
+        except Exception as _ae:
+            app_logger.debug(f"[KG Constructor] Self-assignment row skipped: {_ae}")
 
         # ── Turn 2: Business enrichment (optional) ──
         semantic_result = {"entities_added": 0, "relationships_added": 0}
@@ -15003,6 +15164,8 @@ async def kg_generate(current_user):
 
         return jsonify({
             "status": "success",
+            "kg_id": kg_id,
+            "kg_name": graph_name or database_name,
             "session_id": session_id,
             "structural": structural_result,
             "semantic": semantic_result,
@@ -15014,6 +15177,44 @@ async def kg_generate(current_user):
 
     except Exception as e:
         app_logger.error(f"[KG Constructor] Generation failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/knowledge-graph/rename", methods=["PATCH"])
+@require_auth
+async def kg_rename(current_user):
+    """
+    Update name and/or description for a knowledge graph.
+
+    Request body:
+    {
+        "kg_id":       "uuid",                  // Required
+        "name":        "New Name",              // Required
+        "description": "Optional description"  // Optional; null clears it
+    }
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        data = await request.get_json() or {}
+        kg_id = data.get("kg_id", "").strip()
+        new_name = data.get("name", "").strip()
+        description = data.get("description")  # None means "don't change"
+        if isinstance(description, str):
+            description = description.strip() or None
+
+        if not kg_id:
+            return jsonify({"status": "error", "message": "kg_id is required"}), 400
+        if not new_name:
+            return jsonify({"status": "error", "message": "name is required"}), 400
+
+        from components.builtin.knowledge_graph.graph_store import GraphStore
+        updated = GraphStore.rename_kg(kg_id, new_name, description=description)
+        if not updated:
+            return jsonify({"status": "error", "message": "Knowledge graph not found"}), 404
+
+        return jsonify({"status": "success", "kg_id": kg_id, "name": new_name, "description": description})
+    except Exception as e:
+        app_logger.error(f"KG rename failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -15086,11 +15287,23 @@ async def kg_assignments_update(current_user):
     user_uuid = _get_user_uuid_from_request()
     data = await request.get_json()
 
+    kg_id = data.get("kg_id")
     kg_owner_profile_id = data.get("kg_owner_profile_id")
     assigned_profile_ids = data.get("assigned_profile_ids", [])
 
-    if not kg_owner_profile_id:
-        return jsonify({"status": "error", "message": "kg_owner_profile_id is required"}), 400
+    if not kg_owner_profile_id and not kg_id:
+        return jsonify({"status": "error", "message": "kg_owner_profile_id or kg_id is required"}), 400
+
+    # Resolve kg_owner_profile_id from kg_metadata when only kg_id is provided
+    if kg_id and not kg_owner_profile_id:
+        import sqlite3 as _sq
+        _c = _sq.connect(str(DB_PATH))
+        _row = _c.execute(
+            "SELECT profile_id FROM kg_metadata WHERE kg_id = ? AND user_uuid = ?",
+            (kg_id, user_uuid)
+        ).fetchone()
+        _c.close()
+        kg_owner_profile_id = _row[0] if _row else kg_id
 
     # Don't allow assigning a KG to its own owner via this endpoint (self-assignment is auto-managed)
     assigned_profile_ids = [pid for pid in assigned_profile_ids if pid != kg_owner_profile_id]
@@ -15102,18 +15315,27 @@ async def kg_assignments_update(current_user):
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        # Replace cross-profile assignments only — preserve self-assignment row
-        cursor.execute(
-            "DELETE FROM kg_profile_assignments "
-            "WHERE kg_owner_profile_id = ? AND assigned_profile_id != ? AND user_uuid = ?",
-            (kg_owner_profile_id, kg_owner_profile_id, user_uuid),
-        )
+        # Replace cross-profile assignments for this KG only — preserve self-assignment row
+        # and leave assignments on all other KGs untouched.
+        if kg_id:
+            cursor.execute(
+                "DELETE FROM kg_profile_assignments "
+                "WHERE kg_id = ? AND assigned_profile_id != ? AND user_uuid = ?",
+                (kg_id, kg_owner_profile_id, user_uuid),
+            )
+        else:
+            # Legacy path (no kg_id): scope to this owner profile's KGs only
+            cursor.execute(
+                "DELETE FROM kg_profile_assignments "
+                "WHERE kg_owner_profile_id = ? AND assigned_profile_id != ? AND user_uuid = ?",
+                (kg_owner_profile_id, kg_owner_profile_id, user_uuid),
+            )
 
         for pid in assigned_profile_ids:
             cursor.execute(
                 "INSERT OR IGNORE INTO kg_profile_assignments "
-                "(kg_owner_profile_id, assigned_profile_id, user_uuid, is_active) VALUES (?, ?, ?, 0)",
-                (kg_owner_profile_id, pid, user_uuid),
+                "(kg_id, kg_owner_profile_id, assigned_profile_id, user_uuid, is_active) VALUES (?, ?, ?, ?, 0)",
+                (kg_id or kg_owner_profile_id, kg_owner_profile_id, pid, user_uuid),
             )
 
         conn.commit()
@@ -15186,18 +15408,17 @@ async def kg_assignments_activate(current_user):
 
     Request body:
     {
-        "kg_owner_profile_id": "profile-xxx",
+        "kg_id": "uuid",                       # preferred (new)
+        "kg_owner_profile_id": "profile-xxx",  # legacy fallback
         "assigned_profile_id": "profile-aaa"
     }
 
-    To deactivate all KGs for a profile (no active KG), omit kg_owner_profile_id:
-    {
-        "assigned_profile_id": "profile-aaa"
-    }
+    Omit kg_id / kg_owner_profile_id to deactivate all KGs for assigned_profile_id.
     """
     user_uuid = _get_user_uuid_from_request()
     data = await request.get_json()
 
+    kg_id = data.get("kg_id")
     kg_owner_profile_id = data.get("kg_owner_profile_id")
     assigned_profile_id = data.get("assigned_profile_id")
 
@@ -15209,7 +15430,7 @@ async def kg_assignments_activate(current_user):
         conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
 
-        # Step 1: Deactivate ALL KGs for this profile
+        # Step 1: Deactivate ALL KG assignments for this profile
         cursor.execute(
             "UPDATE kg_profile_assignments SET is_active = 0 "
             "WHERE assigned_profile_id = ? AND user_uuid = ?",
@@ -15217,26 +15438,76 @@ async def kg_assignments_activate(current_user):
         )
 
         activated = False
-        if kg_owner_profile_id:
-            # Step 2: Activate the specified KG
+        if not kg_id and not kg_owner_profile_id:
+            # Pure deactivate — also clear kg_metadata.is_active for this profile's KGs
             cursor.execute(
-                "UPDATE kg_profile_assignments SET is_active = 1 "
-                "WHERE kg_owner_profile_id = ? AND assigned_profile_id = ? AND user_uuid = ?",
-                (kg_owner_profile_id, assigned_profile_id, user_uuid),
+                "UPDATE kg_metadata SET is_active = 0 WHERE profile_id = ? AND user_uuid = ?",
+                (assigned_profile_id, user_uuid),
             )
-            activated = cursor.rowcount > 0
+        if kg_id or kg_owner_profile_id:
+            if kg_id:
+                # Preferred path: match by kg_id column
+                cursor.execute(
+                    "UPDATE kg_profile_assignments SET is_active = 1 "
+                    "WHERE kg_id = ? AND assigned_profile_id = ? AND user_uuid = ?",
+                    (kg_id, assigned_profile_id, user_uuid),
+                )
+                activated = cursor.rowcount > 0
+                if not activated and kg_owner_profile_id:
+                    # Fallback to legacy kg_owner_profile_id match (pre-migration rows)
+                    cursor.execute(
+                        "UPDATE kg_profile_assignments SET is_active = 1 "
+                        "WHERE kg_owner_profile_id = ? AND assigned_profile_id = ? AND user_uuid = ?",
+                        (kg_owner_profile_id, assigned_profile_id, user_uuid),
+                    )
+                    activated = cursor.rowcount > 0
+            else:
+                # Legacy: match by kg_owner_profile_id only
+                cursor.execute(
+                    "UPDATE kg_profile_assignments SET is_active = 1 "
+                    "WHERE kg_owner_profile_id = ? AND assigned_profile_id = ? AND user_uuid = ?",
+                    (kg_owner_profile_id, assigned_profile_id, user_uuid),
+                )
+                activated = cursor.rowcount > 0
+
+            # Step 2: Sync kg_metadata.is_active so the owner's active KG is consistent
+            if kg_id:
+                meta_row = cursor.execute(
+                    "SELECT profile_id FROM kg_metadata WHERE kg_id = ? AND user_uuid = ?",
+                    (kg_id, user_uuid),
+                ).fetchone()
+                if meta_row:
+                    owner_pid = meta_row[0]
+                    cursor.execute(
+                        "UPDATE kg_metadata SET is_active = 0 WHERE profile_id = ? AND user_uuid = ?",
+                        (owner_pid, user_uuid),
+                    )
+                    cursor.execute(
+                        "UPDATE kg_metadata SET is_active = 1 WHERE kg_id = ? AND user_uuid = ?",
+                        (kg_id, user_uuid),
+                    )
+                    if not kg_owner_profile_id:
+                        kg_owner_profile_id = owner_pid
+            elif kg_owner_profile_id:
+                # Legacy: ensure single KG for this profile is marked active
+                cursor.execute(
+                    "UPDATE kg_metadata SET is_active = 1 "
+                    "WHERE profile_id = ? AND user_uuid = ?",
+                    (kg_owner_profile_id, user_uuid),
+                )
 
         conn.commit()
         conn.close()
 
         action = "activated" if activated else "deactivated all"
         app_logger.info(
-            f"[KG Assignments] {action} KG for profile={assigned_profile_id} "
-            f"(owner={kg_owner_profile_id or 'none'})"
+            f"[KG Assignments] {action} KG kg_id={kg_id or kg_owner_profile_id or 'none'} "
+            f"for profile={assigned_profile_id}"
         )
 
         return jsonify({
             "status": "success",
+            "kg_id": kg_id,
             "kg_owner_profile_id": kg_owner_profile_id,
             "assigned_profile_id": assigned_profile_id,
             "activated": activated,

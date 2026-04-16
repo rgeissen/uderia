@@ -8873,36 +8873,40 @@ curl -X POST http://localhost:5050/api/v1/knowledge-graph/discover \
 
 ##### Bulk Import
 
-Import entities and relationships in a single operation.
+Import entities and relationships in a single operation. Supports two modes:
+
+- **Create new KG** (default, omit `target_kg_id`): mints a fresh KG UUID, registers metadata via `set_kg_metadata`, and activates it only if the ownership profile has no active KG yet.
+- **Merge into existing** (provide `target_kg_id`): imports into the specified existing KG using upsert semantics — no new KG is created and the active KG is unchanged.
 
 ```bash
+# Create new KG
 curl -X POST http://localhost:5050/api/v1/knowledge-graph/import \
   -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
   -d '{
     "profile_id": "profile-abc",
+    "kg_name": "CRM Schema",
+    "kg_description": "Customer tables",
+    "kg_database_name": "crm_prod",
     "entities": [
-      {
-        "name": "customers",
-        "entity_type": "table",
-        "properties": {"description": "Customer master data"},
-        "source": "manual"
-      },
-      {
-        "name": "orders",
-        "entity_type": "table",
-        "properties": {"description": "Order transactions"},
-        "source": "manual"
-      }
+      {"name": "customers", "entity_type": "table", "properties": {"description": "Customer master data"}},
+      {"name": "orders",    "entity_type": "table", "properties": {"description": "Order transactions"}}
     ],
     "relationships": [
-      {
-        "source_entity_id": 0,
-        "target_entity_id": 1,
-        "relationship_type": "foreign_key",
-        "cardinality": "1:N"
-      }
+      {"source_name": "orders", "target_name": "customers",
+       "relationship_type": "foreign_key", "cardinality": "N:1"}
     ]
+  }'
+
+# Merge into an existing KG
+curl -X POST http://localhost:5050/api/v1/knowledge-graph/import \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "profile_id": "profile-abc",
+    "target_kg_id": "550e8400-e29b-41d4-a716-446655440000",
+    "entities": [ {"name": "products", "entity_type": "table"} ],
+    "relationships": []
   }'
 ```
 
@@ -8989,11 +8993,15 @@ curl -X GET "http://localhost:5050/api/v1/knowledge-graph/export?profile_id=prof
 
 ```json
 {
-  "export_version": "1.0",
+  "export_version": "2.0",
+  "kg_id": "550e8400-e29b-41d4-a716-446655440000",
+  "kg_name": "CRM Schema",
+  "kg_description": "Customer relationship management tables",
+  "kg_database_name": "crm_prod",
   "profile_id": "profile-abc",
   "profile_name": "CRM Optimizer",
   "profile_tag": "OPTIM",
-  "exported_at": "2026-02-27T10:40:00Z",
+  "exported_at": "2026-04-16T10:40:00Z",
   "stats": {
     "entity_count": 35,
     "relationship_count": 22
@@ -9002,6 +9010,8 @@ curl -X GET "http://localhost:5050/api/v1/knowledge-graph/export?profile_id=prof
   "relationships": [ ]
 }
 ```
+
+> **v1.0 exports** (produced before April 2026) lack `kg_id`/`kg_name` fields but remain import-compatible — they create a new unnamed KG and activate it if the profile has no active KG.
 
 **Status Codes:**
 | Code | Condition |
@@ -11491,6 +11501,15 @@ If you continue to experience issues:
 - **Section 3.26** — Vector Store Configuration Management (`/v1/vectorstore/*`)
 - **Section 3.27** — Execution Provenance & Audit Trail (`/v1/sessions/{id}/provenance/*`)
 - **Section 3.28** — Knowledge Graph Marketplace (`/v1/marketplace/knowledge-graphs/*`)
+
+#### 🔄 Agent Pack v1.4 — Knowledge Graph Bundling
+**What Changed:** Agent pack export now bundles the active Knowledge Graph for each exported profile. Import restores KGs after profiles are created, preserving the name, description, database association, and active/inactive status.
+
+**Manifest version:** `1.4` when knowledge graphs are present (superset of 1.3). New top-level `knowledge_graphs` array; per-profile `kg_refs` field.
+
+**Non-displacing import:** Imported KGs are only set active when the target profile has no active KG yet — an existing active KG is never displaced.
+
+**Backward Compatibility:** ✅ v1.1, v1.2, and v1.3 packs continue to work unchanged.
 
 #### 🔄 Agent Pack v1.3 — Skill Bundling
 **What Changed:** Agent pack export now bundles user skills that are auto-enabled on any exported profile. Import installs bundled skills before creating profiles.
