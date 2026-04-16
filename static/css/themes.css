@@ -4648,10 +4648,30 @@ button[aria-label]:active {
    LIGHT THEME - Profile Modal Styles
    ============================================================================ */
 
-/* Profile Modal Container */
-[data-theme="light"] #profile-modal .glass-panel {
-    background: var(--bg-primary) !important;
-    border-color: var(--border-primary) !important;
+/* Profile Modal Container — outer shell gets a light slate wash so inner cards pop */
+[data-theme="light"] #profile-modal > .glass-panel {
+    background: #f1f5f9 !important;
+    border-color: rgba(148, 163, 184, 0.3) !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Inner accordion cards — pure white, clean shadow, no hover lift */
+[data-theme="light"] #profile-modal .glass-panel.rounded-xl {
+    background: #ffffff !important;
+    border: 1px solid rgba(148, 163, 184, 0.25) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(148, 163, 184, 0.1) !important;
+}
+
+[data-theme="light"] #profile-modal .glass-panel.rounded-xl:hover {
+    transform: none !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(148, 163, 184, 0.2) !important;
+}
+
+/* Sidebar nav column background */
+[data-theme="light"] #profile-modal .profile-modal-sidebar,
+[data-theme="legacy"] #profile-modal .profile-modal-sidebar {
+    background: var(--bg-secondary);
+    border-right-color: var(--border-primary);
 }
 
 /* Modal Header */
@@ -4727,8 +4747,15 @@ button[aria-label]:active {
 
 /* Tab Content Panels */
 [data-theme="light"] #profile-modal .border-gray-700\/50,
-[data-theme="light"] #profile-modal .border-gray-700\/30 {
-    border-color: var(--border-primary) !important;
+[data-theme="light"] #profile-modal .border-gray-700\/30,
+[data-theme="light"] #profile-modal .border-gray-700\/60,
+[data-theme="light"] #profile-modal .border-gray-700\/40 {
+    border-color: rgba(148, 163, 184, 0.3) !important;
+}
+
+/* Sidebar gets slightly darker than the content area to anchor the nav */
+[data-theme="light"] #profile-modal .profile-modal-sidebar {
+    background: #e9eef4 !important;
 }
 
 /* Section Headers - Available Tools, Available Prompts */

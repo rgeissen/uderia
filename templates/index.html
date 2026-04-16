@@ -2703,10 +2703,10 @@
                                     <p class="text-sm text-gray-400 mt-1">Execution strategies and planning patterns captured from successful agent interactions</p>
                                 </div>
                                 <div class="flex items-center gap-3">
-                                    <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-400 hover:text-gray-300 transition-colors">
-                                        <input type="checkbox" id="planner-active-filter"
-                                               class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-500 focus:ring-offset-0" />
-                                        Active only
+                                    <label class="ind-toggle ind-toggle--sm gap-2 cursor-pointer select-none text-sm text-gray-400 hover:text-gray-300 transition-colors">
+                                        <input type="checkbox" id="planner-active-filter">
+                                        <span class="ind-track flex-shrink-0"></span>
+                                        <span>Active only</span>
                                     </label>
                                     <button id="import-planner-collection-btn" class="card-btn card-btn--cyan flex items-center gap-2">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2747,10 +2747,10 @@
                                     <p class="text-sm text-gray-400 mt-1">General documents and reference materials accessible to the planner via RAG</p>
                                 </div>
                                 <div class="flex items-center gap-3">
-                                    <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-400 hover:text-gray-300 transition-colors">
-                                        <input type="checkbox" id="knowledge-active-filter"
-                                               class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-500 focus:ring-offset-0" />
-                                        Active only
+                                    <label class="ind-toggle ind-toggle--sm gap-2 cursor-pointer select-none text-sm text-gray-400 hover:text-gray-300 transition-colors">
+                                        <input type="checkbox" id="knowledge-active-filter">
+                                        <span class="ind-track flex-shrink-0"></span>
+                                        <span>Active only</span>
                                     </label>
                                     <button id="import-knowledge-collection-btn" class="card-btn card-btn--cyan flex items-center gap-2">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2789,10 +2789,10 @@
                                     <p class="text-sm text-gray-400 mt-1">Entity-relationship graphs built across your profiles</p>
                                 </div>
                                 <div class="flex items-center gap-3">
-                                    <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-400 hover:text-gray-300 transition-colors">
-                                        <input type="checkbox" id="kg-active-filter"
-                                               class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-500 focus:ring-offset-0" />
-                                        Active only
+                                    <label class="ind-toggle ind-toggle--sm gap-2 cursor-pointer select-none text-sm text-gray-400 hover:text-gray-300 transition-colors">
+                                        <input type="checkbox" id="kg-active-filter">
+                                        <span class="ind-track flex-shrink-0"></span>
+                                        <span>Active only</span>
                                     </label>
                                     <button id="import-knowledge-graph-btn" class="card-btn card-btn--cyan flex items-center gap-2">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -8492,7 +8492,7 @@
 
     <!-- Add/Edit Profile Modal -->
     <div id="profile-modal" class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 hidden">
-        <div class="glass-panel rounded-lg p-0 max-w-6xl w-full mx-4 shadow-xl overflow-hidden">
+        <div class="glass-panel rounded-lg p-0 max-w-6xl w-full mx-4 shadow-xl overflow-hidden flex flex-col" style="max-height: calc(100vh - 80px);">
             <!-- Modal Header -->
             <div class="bg-gradient-to-r from-gray-800 to-gray-900 border-b-2 border-[#F15F22]/30 px-8 py-6 shadow-lg">
                 <div class="flex items-center gap-3 mb-1">
@@ -8508,949 +8508,1062 @@
                 <p class="text-gray-400 text-sm ml-13">Configure your agent profile with LLM, tools, and intelligence resources</p>
             </div>
             
-            <!-- Modal Body -->
-            <div class="p-8 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
-                <!-- Row 1: Basic Info (Full Width) -->
-                <div class="grid grid-cols-12 gap-4">
-                    <div class="col-span-4">
-                        <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">
-                            Profile Name
-                        </label>
-                        <input type="text" id="profile-modal-name" placeholder="e.g., Production Environment" 
-                               class="w-full px-4 py-2.5 bg-gray-800/40 border border-gray-700/50 rounded-lg 
-                                      focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all
-                                      placeholder-gray-600 text-gray-200 text-sm hover:border-gray-600/50">
-                    </div>
-                    <div class="col-span-4">
-                        <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">
-                            Profile Tag
-                        </label>
-                        <div class="flex items-center gap-2">
-                            <div class="flex-1 flex items-center gap-2 px-4 py-2.5 bg-gray-800/40 border border-gray-700/50 rounded-lg 
-                                        hover:border-gray-600/50 transition-all">
-                                <span class="text-[#F15F22] font-mono text-base font-bold">@</span>
-                                <input type="text" id="profile-modal-tag" placeholder="" maxlength="5"
-                                       class="flex-1 bg-transparent border-none outline-none text-gray-100 text-sm font-mono uppercase tracking-wider"
-                                       style="text-transform: uppercase;">
-                            </div>
-                            <button id="profile-modal-generate-tag" 
-                                    class="px-3 py-2.5 bg-gray-700/40 hover:bg-gray-700/60 border border-gray-600/50 rounded-lg 
-                                           text-gray-300 text-xs font-medium transition-all whitespace-nowrap hover:scale-105"
-                                    title="Generate tag from configuration">
-                                <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            <!-- Two-column modal body -->
+            <div class="flex min-h-0 flex-1">
+
+                <!-- LEFT: sidebar nav -->
+                <div class="profile-modal-sidebar w-44 flex-shrink-0 border-r border-gray-700/40 p-3">
+                    <nav class="space-y-1 sticky top-3">
+                        <button type="button" class="profile-nav-item ind-tab ind-tab--sidebar active" data-profile-section="identity">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                            <span class="text-sm font-medium">Identity</span>
+                        </button>
+                        <button type="button" class="profile-nav-item ind-tab ind-tab--sidebar" data-profile-section="ai-stack">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                            <span class="text-sm font-medium">AI Stack</span>
+                        </button>
+                        <button type="button" class="profile-nav-item ind-tab ind-tab--sidebar" data-profile-section="capabilities">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                            </svg>
+                            <span class="text-sm font-medium">Capabilities</span>
+                        </button>
+                        <button type="button" class="profile-nav-item ind-tab ind-tab--sidebar" data-profile-section="resources">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
+                            </svg>
+                            <span class="text-sm font-medium">Resources</span>
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- RIGHT: section panels -->
+                <div class="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-6">
+
+                    <!-- ============================================================ -->
+                    <!-- SECTION: IDENTITY -->
+                    <!-- ============================================================ -->
+                    <div id="profile-section-identity" class="profile-modal-section space-y-4">
+                        <div class="border-b border-gray-700/60 pb-2 mb-2">
+                            <h2 class="text-base font-bold text-white flex items-center gap-2">
+                                <svg class="h-5 w-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                                 </svg>
-                                Generate
-                            </button>
-                        </div>
-                    </div>
-                    <div class="col-span-4">
-                        <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">
-                            Description
-                        </label>
-                        <input type="text" id="profile-modal-description" placeholder="Brief description of this profile..." 
-                               class="w-full px-4 py-2.5 bg-gray-800/40 border border-gray-700/50 rounded-lg 
-                                      focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all
-                                      placeholder-gray-600 text-gray-200 text-sm hover:border-gray-600/50">
-                    </div>
-                </div>
-
-                <!-- Session Primer Section -->
-                <div class="bg-gradient-to-br from-cyan-900/10 to-blue-900/10 rounded-xl p-4 border border-cyan-700/20">
-                    <!-- Toggle Header -->
-                    <div class="flex items-center gap-3 cursor-pointer group">
-                        <label class="ind-toggle">
-                            <input type="checkbox" id="profile-modal-enable-primer">
-                            <span class="ind-track"></span>
-                        </label>
-                        <div>
-                            <span class="text-sm font-bold text-gray-100 group-hover:text-white">Enable Session Primer</span>
-                            <p class="text-xs text-gray-400 group-hover:text-gray-300">Auto-execute questions when starting a new session with this profile</p>
-                        </div>
-                    </div>
-
-                    <!-- Primer Configuration (hidden when disabled) -->
-                    <div id="profile-modal-primer-container" class="hidden mt-4 ml-7">
-
-                        <!-- Execution Mode Selector -->
-                        <div class="mb-4">
-                            <label class="text-xs font-semibold text-gray-300 mb-2 block">Execution Mode</label>
-                            <div class="grid grid-cols-2 gap-3">
-                                <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-blue-500/30 transition-all group">
-                                    <input type="radio" name="primer-mode" value="individual" checked
-                                           class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-2 mb-1">
-                                            <span class="text-sm font-bold text-gray-100 group-hover:text-white">Individual</span>
-                                            <span class="px-2 py-0.5 text-xs font-bold bg-blue-500/30 text-blue-300 rounded-full border border-blue-400/30">Recommended</span>
-                                        </div>
-                                        <p class="text-xs text-gray-400 group-hover:text-gray-300">Execute each statement separately in sequence</p>
-                                    </div>
-                                </label>
-
-                                <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
-                                    <input type="radio" name="primer-mode" value="combined"
-                                           class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
-                                    <div class="flex-1">
-                                        <span class="text-sm font-bold text-gray-100 group-hover:text-white">Combined</span>
-                                        <p class="text-xs text-gray-400 group-hover:text-gray-300">Merge all statements and execute as one query</p>
-                                    </div>
-                                </label>
-                            </div>
+                                Identity &amp; Type
+                            </h2>
+                            <p class="text-sm text-gray-400 mt-0.5">Set profile name, tag and agent class</p>
                         </div>
 
-                        <!-- Statements List -->
-                        <div class="mb-3">
-                            <div class="flex justify-between items-center mb-2">
-                                <label class="text-xs font-semibold text-gray-300">Statements</label>
-                                <button type="button" id="add-primer-statement" class="card-btn card-btn--primary card-btn--sm">
-                                    + Add Statement
-                                </button>
-                            </div>
-                            <div id="primer-statements-container" class="space-y-3">
-                                <!-- Statement cards rendered here dynamically -->
-                            </div>
-                        </div>
-
-                        <p class="text-xs text-gray-500 mt-3">These questions will run automatically before any user input when a new session is created.</p>
-                    </div>
-                </div>
-
-                <!-- Conversation Capabilities Section (only shown for llm_only profile type) -->
-                <div id="conversation-capabilities-section" class="bg-gradient-to-br from-green-900/10 to-blue-900/10 rounded-xl p-6 border border-green-700/20" style="display: none;">
-                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
-                        <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                        </svg>
-                        Conversation Capabilities
-                    </h4>
-                    <p class="text-xs text-gray-400 mb-4">Enhance your conversation profile with additional capabilities</p>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-blue-500/30 transition-all group">
-                            <label class="ind-toggle">
-                                <input type="checkbox" id="profile-modal-use-mcp-tools">
-                                <span class="ind-track"></span>
-                            </label>
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Use MCP Tools</span>
-                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-blue-500/30 text-blue-300 rounded-full border border-blue-400/30">LangChain</span>
-                                </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Enable tool calling via MCP server integration</p>
-                            </div>
-                        </div>
-
-                        <div class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
-                            <label class="ind-toggle">
-                                <input type="checkbox" id="profile-modal-use-knowledge">
-                                <span class="ind-track"></span>
-                            </label>
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-sm font-bold text-gray-100 group-hover:text-white">Use Knowledge Collections</span>
-                                    <span class="px-1.5 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">RAG</span>
-                                </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Inject context from knowledge repositories</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Row 2: Provider Configuration (Side by Side) -->
-                <div class="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl p-6 border border-gray-700/30">
-                    <h4 class="text-sm font-bold text-white mb-4 flex items-center gap-2 uppercase tracking-wide">
-                        <svg class="w-5 h-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                        </svg>
-                        Provider Configuration
-                    </h4>
-                    <div class="grid grid-cols-3 gap-6">
-                        <div>
-                            <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">LLM Configuration</label>
-                            <select id="profile-modal-llm-provider"
-                                    class="w-full px-4 py-3 bg-gray-800/60 border border-gray-700/50 rounded-lg
-                                           focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all
-                                           text-gray-200 text-sm hover:border-gray-600/50 cursor-pointer"></select>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">MCP Server</label>
-                            <select id="profile-modal-mcp-server"
-                                    class="w-full px-4 py-3 bg-gray-800/60 border border-gray-700/50 rounded-lg
-                                           focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all
-                                           text-gray-200 text-sm hover:border-gray-600/50 cursor-pointer"></select>
-                        </div>
-                        <div id="context-window-type-container">
-                            <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">Context Window</label>
-                            <select id="profile-modal-context-window-type"
-                                    class="w-full px-4 py-3 bg-gray-800/60 border border-gray-700/50 rounded-lg
-                                           focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all
-                                           text-gray-200 text-sm hover:border-gray-600/50 cursor-pointer"></select>
-                        </div>
-                    </div>
-
-                    <!-- Context Limit Override Slider -->
-                    <div id="context-limit-slider-container" class="mt-4 pt-4 border-t border-gray-700/20">
-                        <div class="flex items-center justify-between mb-2">
-                            <label class="text-xs font-semibold text-gray-300 uppercase tracking-wide flex items-center gap-2">
-                                Context Limit
-                                <span class="text-gray-500 cursor-help" title="Cap the effective context window for this profile. Default uses the model's full context.">&#9432;</span>
-                            </label>
-                            <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer hover:text-white transition-colors">
-                                <input type="checkbox" id="context-limit-use-default" class="w-3.5 h-3.5" checked>
-                                <span>Use model default</span>
-                            </label>
-                        </div>
-                        <div id="context-limit-controls" class="flex items-center gap-4" style="display: none;">
-                            <input type="range" id="context-limit-slider"
-                                   min="4096" max="128000" step="1024" value="128000"
-                                   class="flex-1 h-2 bg-gray-700/50 rounded-lg appearance-none cursor-pointer"
-                                   style="accent-color: #F15F22;">
-                            <div class="flex items-center gap-1">
-                                <input type="number" id="context-limit-input"
-                                       min="4" max="128" step="1" value="128"
-                                       class="w-16 px-2 py-1.5 bg-gray-800/60 border border-gray-700/50 rounded-lg
-                                              text-gray-200 text-sm text-center focus:ring-2 focus:ring-[#F15F22]/50
-                                              focus:border-[#F15F22]/50 outline-none">
-                                <span class="text-xs text-gray-400 font-mono">K</span>
-                            </div>
-                        </div>
-                        <div id="context-limit-display" class="text-xs text-gray-500 mt-1">
-                            Using model default context limit
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Dual-Model Configuration (tool_enabled only) -->
-                <div id="dual-model-section" class="mt-6 rounded-xl bg-gray-800/20 border border-gray-700/30 p-6" style="display: none;">
-                    <div class="flex items-center justify-between mb-4">
-                        <h4 class="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wide">
-                            <svg class="w-5 h-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                            </svg>
-                            Advanced: Dual-Model Configuration
-                            <span class="ml-2 px-2 py-0.5 text-xs bg-blue-900/40 border border-blue-700/30 rounded-full text-blue-300">Optional</span>
-                        </h4>
-                        <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-white transition-colors">
-                            <input type="checkbox" id="enable-dual-model" class="w-4 h-4">
-                            <span>Enable separate strategic & tactical models</span>
-                        </label>
-                    </div>
-
-                    <div id="dual-model-controls" style="display: none;">
-                        <div class="bg-gray-800/40 border border-gray-700/30 rounded-lg p-4">
-                            <div class="grid grid-cols-2 gap-6">
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">
-                                        Strategic Planner Model
-                                        <span class="ml-1 text-gray-500" title="Used for meta-planning (WORKFLOW_META_PLANNING_PROMPT)">ⓘ</span>
-                                    </label>
-                                    <select id="profile-modal-strategic-model" class="w-full px-4 py-3 bg-gray-800/60 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-[#F15F22]/50 text-gray-200 text-sm">
-                                        <option value="">Use main LLM configuration</option>
-                                    </select>
-                                    <p class="text-xs text-gray-500 mt-1">Optimize for reasoning (Qwen3-235B, GPT-4o)</p>
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">
-                                        Tactical Executor Model
-                                        <span class="ml-1 text-gray-500" title="Used for per-phase execution (WORKFLOW_TACTICAL_PROMPT)">ⓘ</span>
-                                    </label>
-                                    <select id="profile-modal-tactical-model" class="w-full px-4 py-3 bg-gray-800/60 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-[#F15F22]/50 text-gray-200 text-sm">
-                                        <option value="">Use main LLM configuration</option>
-                                    </select>
-                                    <p class="text-xs text-gray-500 mt-1">Optimize for speed (Llama 3.3 70B, Flash)</p>
-                                </div>
-                            </div>
-
-                            <div class="mt-4 p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
-                                <p class="text-xs text-blue-300">
-                                    <strong>Cost optimization:</strong> Use a cheap model for strategic planning and an accurate model for tactical execution. Typical savings: 30-60%.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Component Configuration Section (all profile types) -->
-                <div id="component-config-section" class="mt-6 rounded-xl bg-gray-800/20 border border-gray-700/30 p-6" style="display: none;">
-                    <div class="flex items-center justify-between mb-4">
-                        <h4 class="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wide">
-                            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
-                            </svg>
-                            Component Configuration
-                        </h4>
-                    </div>
-                    <p class="text-xs text-gray-500 mb-4">Enable or disable components for this profile. Disabled components won't have their instructions injected into the LLM prompt.</p>
-                    <div id="profile-component-toggles" class="space-y-3">
-                        <!-- Populated dynamically by configurationHandler.js -->
-                    </div>
-                </div>
-
-                <!-- Row 3: Classification Mode (Horizontal Layout) -->
-                <div class="bg-gradient-to-br from-purple-900/10 to-blue-900/10 rounded-xl p-6 border border-purple-700/20">
-                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
-                        <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
-                        </svg>
-                        Tool & Prompt Classification
-                    </h4>
-                    <p class="text-xs text-gray-400 mb-4">Choose how MCP tools and prompts are categorized in the UI</p>
-                    <div class="grid grid-cols-2 gap-4">
-                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-blue-500/30 transition-all group">
-                            <input type="radio" name="classification-mode" value="light" id="profile-modal-classification-light" checked
-                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">Light</span>
-                                    <span class="px-2 py-0.5 text-xs font-bold bg-blue-500/30 text-blue-300 rounded-full border border-blue-400/30">Recommended</span>
-                                </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Generic categories: "All Tools", "All Prompts", "All Resources"</p>
-                            </div>
-                        </label>
-                        
-                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
-                            <input type="radio" name="classification-mode" value="full" id="profile-modal-classification-full"
-                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">Full</span>
-                                    <span class="px-2 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">Semantic</span>
-                                </div>
-                                <p class="text-xs text-gray-400 group-hover:text-gray-300">LLM-powered semantic categorization (e.g., "Data Quality", "Performance")</p>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- Genie Child Profiles Section (only shown for genie profile type) -->
-                <div id="genie-slave-profiles-section" class="bg-gradient-to-br from-amber-900/10 to-orange-900/10 rounded-xl p-6 border border-amber-700/20" style="display: none;">
-                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
-                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                        </svg>
-                        Available Child Profiles
-                    </h4>
-                    <p class="text-xs text-gray-400 mb-4">Select profiles this Genie can coordinate. The coordinator will route questions to these profiles as needed.</p>
-                    <div id="genie-slave-profiles-list" class="space-y-2 max-h-48 overflow-y-auto bg-gray-800/40 rounded-lg p-3 custom-scrollbar">
-                        <!-- Populated dynamically with checkboxes for available profiles -->
-                        <p class="text-gray-500 text-sm italic">Loading available profiles...</p>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-2">Tip: Select at least two profiles with different capabilities for best coordination results.</p>
-                </div>
-
-                <!-- Genie Settings Section (only shown for genie profile type) -->
-                <div id="genie-profile-settings-section" class="bg-gradient-to-br from-amber-900/10 to-orange-900/10 rounded-xl p-6 border border-amber-700/20" style="display: none;">
-                    <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
-                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
-                        </svg>
-                        Genie Coordination Settings
-                    </h4>
-                    <p class="text-xs text-gray-400 mb-4">Override global defaults for this Genie profile. Locked settings are enforced by admin.</p>
-
-                    <div class="space-y-4">
-                        <!-- Temperature -->
-                        <div class="p-3 bg-gray-800/40 rounded-lg">
-                            <div class="flex items-center justify-between mb-2">
-                                <label for="profile-genie-temperature" class="text-sm font-medium text-gray-300">Temperature</label>
-                                <span id="profile-genie-temperature-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
-                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                    </svg>
-                                    Locked by Admin
-                                </span>
-                            </div>
-                            <div class="flex items-center gap-3">
-                                <input type="range" id="profile-genie-temperature" min="0" max="1" step="0.1" value="0.7" class="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-amber-500">
-                                <span id="profile-genie-temperature-value" class="text-sm text-white font-mono w-10 text-right">0.7</span>
-                            </div>
-                            <p id="profile-genie-temperature-hint" class="text-xs text-gray-500 mt-1">Leave empty to use global default from Administration panel</p>
-                        </div>
-
-                        <!-- Query Timeout -->
-                        <div class="p-3 bg-gray-800/40 rounded-lg">
-                            <div class="flex items-center justify-between mb-2">
-                                <label for="profile-genie-query-timeout" class="text-sm font-medium text-gray-300">Query Timeout (seconds)</label>
-                                <span id="profile-genie-query-timeout-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
-                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                    </svg>
-                                    Locked by Admin
-                                </span>
-                            </div>
-                            <input type="number" id="profile-genie-query-timeout" min="60" max="900" placeholder="300" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
-                            <p id="profile-genie-query-timeout-hint" class="text-xs text-gray-500 mt-1">Leave empty to use global default from Administration panel</p>
-                        </div>
-
-                        <!-- Max Iterations -->
-                        <div class="p-3 bg-gray-800/40 rounded-lg">
-                            <div class="flex items-center justify-between mb-2">
-                                <label for="profile-genie-max-iterations" class="text-sm font-medium text-gray-300">Max Iterations</label>
-                                <span id="profile-genie-max-iterations-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
-                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                    </svg>
-                                    Locked by Admin
-                                </span>
-                            </div>
-                            <input type="number" id="profile-genie-max-iterations" min="1" max="25" placeholder="10" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
-                            <p id="profile-genie-max-iterations-hint" class="text-xs text-gray-500 mt-1">Leave empty to use global default from Administration panel</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Row 4: Tabbed Interface for MCP Resources and Intelligence Collections -->
-                <div class="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl overflow-hidden border border-gray-700/30">
-                    <!-- Tab Headers -->
-                    <div class="flex border-b border-gray-700/50 bg-gray-900/60">
-                        <button id="profile-tab-mcp-resources"
-                                class="flex-1 px-6 py-4 text-sm font-bold uppercase tracking-wide transition-all duration-300 flex items-center justify-center gap-2 border-b-3 border-[#F15F22] text-white bg-gradient-to-b from-gray-800/70 to-gray-900/50 shadow-lg relative">
-                            <div class="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-[#F15F22] to-[#D9501A] shadow-lg shadow-orange-500/50"></div>
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
-                            </svg>
-                            MCP Resources
-                        </button>
-                        <button id="profile-tab-intelligence" 
-                                class="flex-1 px-6 py-4 text-sm font-bold uppercase tracking-wide transition-all duration-300 flex items-center justify-center gap-2 border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-800/40 hover:border-gray-600/50">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-                            </svg>
-                            Intelligence Collections
-                        </button>
-                        <button id="profile-tab-skills"
-                                class="flex-1 px-6 py-4 text-sm font-bold uppercase tracking-wide transition-all duration-300 flex items-center justify-center gap-2 border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-800/40 hover:border-gray-600/50">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"></path>
-                            </svg>
-                            Skills
-                        </button>
-                        <button id="profile-tab-system-prompts"
-                                class="flex-1 px-6 py-4 text-sm font-bold uppercase tracking-wide transition-all duration-300 flex items-center justify-center gap-2 border-b-2 border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-800/40 hover:border-gray-600/50">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                            </svg>
-                            System Prompts
-                        </button>
-                    </div>
-
-                    <!-- Tab Content: MCP Resources -->
-                    <div id="profile-content-mcp-resources" class="p-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
-                    <div class="grid grid-cols-2 gap-6">
-                        <div>
-                            <div class="flex items-center justify-between mb-2">
-                                <label class="block text-xs font-semibold text-blue-300 uppercase tracking-wide flex items-center gap-2">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
-                                    </svg>
-                                    Available Tools
-                                </label>
-                                <button id="profile-modal-tools-uncheck-all" 
-                                        class="px-2 py-1 text-xs text-gray-400 hover:text-gray-200 
-                                               hover:bg-gray-700/40 rounded transition-all font-medium">
-                                    Uncheck All
-                                </button>
-                            </div>
-                            <div id="profile-modal-tools" 
-                                 class="max-h-48 overflow-y-auto px-4 py-3 bg-gray-800/40 border border-gray-700/40 rounded-lg 
-                                        hover:border-gray-700/60 transition-all custom-scrollbar space-y-1"></div>
-                        </div>
-                        <div id="profile-modal-prompts-section">
-                            <div class="flex items-center justify-between mb-2">
-                                <label class="block text-xs font-semibold text-green-300 uppercase tracking-wide flex items-center gap-2">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                                    </svg>
-                                    Available Prompts
-                                </label>
-                                <button id="profile-modal-prompts-uncheck-all"
-                                        class="px-2 py-1 text-xs text-gray-400 hover:text-gray-200
-                                               hover:bg-gray-700/40 rounded transition-all font-medium">
-                                    Uncheck All
-                                </button>
-                            </div>
-                            <div id="profile-modal-prompts"
-                                 class="max-h-48 overflow-y-auto px-4 py-3 bg-gray-800/40 border border-gray-700/40 rounded-lg
-                                        hover:border-gray-700/60 transition-all custom-scrollbar space-y-1"></div>
-                        </div>
-                    </div>
-                    </div>
-
-                    <!-- Tab Content: Intelligence Collections -->
-                    <div id="profile-content-intelligence" class="p-6 hidden max-h-[50vh] overflow-y-auto custom-scrollbar">
-                        <p class="text-sm text-gray-400 mb-6">Select which intelligence repositories should be available in this profile and enable autocomplete suggestions</p>
-                    
-                        <!-- Planner Repositories Section -->
-                        <div class="mb-6">
-                            <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
-                                <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
+                        <!-- Card: Profile Details -->
+                        <div class="glass-panel rounded-xl p-5">
+                            <details class="group" open>
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
                                     <div class="flex items-center gap-3">
-                                        <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
-                                            <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                                            </svg>
-                                        </div>
-                                        <div class="flex-1">
-                                            <h4 class="text-sm font-semibold text-white">Planner Repositories</h4>
-                                            <p class="text-xs text-gray-400 mt-0.5">Execution strategies and planning patterns from successful agent interactions</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="p-5">
-                                    <div class="bg-gray-900/50 rounded-lg border border-gray-700/40 overflow-hidden">
-                                        <!-- Column Headers -->
-                                        <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/50 border-b border-gray-700/40">
-                                            <span class="text-xs text-gray-300 font-medium">Collection Name</span>
-                                            <div class="flex items-center gap-8 flex-shrink-0">
-                                                <span id="planner-query-column-header" class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Query</span>
-                                                <span class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Autocomplete</span>
-                                            </div>
-                                        </div>
-                                        <!-- Collections List -->
-                                        <div id="profile-modal-planner-collections" 
-                                             class="max-h-64 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Knowledge Repositories Section -->
-                        <div class="mb-6">
-                            <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
-                                <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
-                                    <div class="flex items-center gap-3">
-                                        <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
-                                            <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
-                                            </svg>
-                                        </div>
-                                        <div class="flex-1">
-                                            <h4 class="text-sm font-semibold text-white">Knowledge Repositories</h4>
-                                            <p class="text-xs text-gray-400 mt-0.5">Document collections and reference materials for context augmentation</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="p-5">
-                                    <div class="bg-gray-900/50 rounded-lg border border-gray-700/40 overflow-hidden">
-                                        <!-- Column Headers -->
-                                        <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/50 border-b border-gray-700/40">
-                                            <span class="text-xs text-gray-300 font-medium">Collection Name</span>
-                                            <div class="flex items-center gap-8 flex-shrink-0">
-                                                <span class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Query</span>
-                                            </div>
-                                        </div>
-                                        <!-- Collections List -->
-                                        <div id="profile-modal-knowledge-collections"
-                                             class="max-h-64 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1"></div>
-                                    </div>
-                                    
-                                    <!-- Empty State Message -->
-                                    <div id="profile-modal-knowledge-empty" class="hidden text-center py-8 text-gray-500 text-sm">
-                                        No knowledge repositories found
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- LLM Reranking Section -->
-                        <div class="mb-6">
-                            <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
-                                <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
-                                    <div class="flex items-center gap-3">
-                                        <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
-                                            <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
-                                            </svg>
-                                        </div>
-                                        <div class="flex-1">
-                                            <h4 class="text-sm font-semibold text-white">LLM Reranking (Per-Collection Override)</h4>
-                                            <p class="text-xs text-gray-400 mt-0.5">Enable LLM-powered reranking for specific collections to improve relevance <span class="text-orange-400">(incurs additional LLM costs)</span></p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="p-5">
-                                    <div id="profile-modal-knowledge-reranking-list" class="space-y-2">
-                                        <!-- Reranking toggles will be populated dynamically for selected knowledge collections -->
-                                        <p class="text-xs text-gray-500 italic">Select knowledge collections above to configure reranking</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Knowledge Graphs Section — shown only when KGs are assigned to this profile -->
-                        <div id="profile-modal-kg-section" class="mb-6 hidden">
-                            <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
-                                <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
-                                    <div class="flex items-center gap-3">
-                                        <div class="flex items-center justify-center w-8 h-8 rounded-lg" style="background:rgba(147,51,234,0.12);">
-                                            <svg class="w-4 h-4" style="color:#a78bfa;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"></path>
-                                            </svg>
-                                        </div>
-                                        <div class="flex-1">
-                                            <h4 class="text-sm font-semibold text-white">Knowledge Graphs</h4>
-                                            <p class="text-xs text-gray-400 mt-0.5">Assigned knowledge graphs — activate one for context enrichment</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="p-5">
-                                    <div class="bg-gray-900/50 rounded-lg border border-gray-700/40 overflow-hidden">
-                                        <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/50 border-b border-gray-700/40">
-                                            <span class="text-xs text-gray-300 font-medium">Knowledge Graph</span>
-                                            <span class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Active</span>
-                                        </div>
-                                        <div id="profile-modal-kg-list" class="px-2 py-2 space-y-1"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Advanced Settings Section -->
-                        <div>
-                            <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
-                                <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
-                                    <div class="flex items-center gap-3">
-                                        <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
-                                            <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
-                                            </svg>
-                                        </div>
-                                        <div class="flex-1">
-                                            <h4 class="text-sm font-semibold text-white">Advanced Settings</h4>
-                                            <p class="text-xs text-gray-400 mt-0.5">Override global knowledge retrieval settings for this profile</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="p-5">
-                                    <p class="text-xs text-gray-400 mb-4">Override global defaults for this profile. Locked settings are enforced by admin.</p>
-                                    <div class="grid grid-cols-3 gap-4">
-                                        <!-- Min Relevance Score -->
+                                        <svg class="h-5 w-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0"/>
+                                        </svg>
                                         <div>
-                                            <div class="flex items-center justify-between mb-2">
-                                                <label for="profile-modal-min-relevance" class="block text-xs font-medium text-gray-300">
-                                                    Min Relevance Score
-                                                </label>
-                                                <span id="profile-knowledge-min-relevance-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
-                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                                    </svg>
-                                                    Locked
-                                                </span>
-                                            </div>
-                                            <input type="number" id="profile-modal-min-relevance"
-                                                   min="0" max="1" step="0.05"
-                                                   placeholder="0.30"
-                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
-                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
-                                                          hover:border-gray-600 transition-colors">
-                                            <p class="text-xs text-gray-500 mt-1.5">Cosine similarity threshold (0.0-1.0)</p>
-                                        </div>
-
-                                        <!-- Max Documents -->
-                                        <div>
-                                            <div class="flex items-center justify-between mb-2">
-                                                <label for="profile-modal-max-docs" class="block text-xs font-medium text-gray-300">
-                                                    Max Documents
-                                                </label>
-                                                <span id="profile-knowledge-max-docs-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
-                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                                    </svg>
-                                                    Locked
-                                                </span>
-                                            </div>
-                                            <input type="number" id="profile-modal-max-docs"
-                                                   min="1" max="20" step="1"
-                                                   placeholder="3"
-                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
-                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
-                                                          hover:border-gray-600 transition-colors">
-                                            <p class="text-xs text-gray-500 mt-1.5">Number of chunks to retrieve (1-20)</p>
-                                        </div>
-
-                                        <!-- Max Tokens -->
-                                        <div>
-                                            <div class="flex items-center justify-between mb-2">
-                                                <label for="profile-modal-max-tokens" class="block text-xs font-medium text-gray-300">
-                                                    Max Tokens
-                                                </label>
-                                                <span id="profile-knowledge-max-tokens-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
-                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                                    </svg>
-                                                    Locked
-                                                </span>
-                                            </div>
-                                            <input type="number" id="profile-modal-max-tokens"
-                                                   min="500" max="10000" step="100"
-                                                   placeholder="2000"
-                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
-                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
-                                                          hover:border-gray-600 transition-colors">
-                                            <p class="text-xs text-gray-500 mt-1.5">Context window limit (500-10000)</p>
-                                        </div>
-
-                                        <!-- Max Chunks Per Document -->
-                                        <div>
-                                            <div class="flex items-center justify-between mb-2">
-                                                <label for="profile-modal-max-chunks-per-doc" class="block text-xs font-medium text-gray-300">
-                                                    Max Chunks/Doc
-                                                </label>
-                                                <span id="profile-knowledge-max-chunks-per-doc-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
-                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                                    </svg>
-                                                    Locked
-                                                </span>
-                                            </div>
-                                            <input type="number" id="profile-modal-max-chunks-per-doc"
-                                                   min="0" max="50" step="1"
-                                                   placeholder="0"
-                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
-                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
-                                                          hover:border-gray-600 transition-colors">
-                                            <p class="text-xs text-gray-500 mt-1.5">0 = no limit per document (0-50)</p>
-                                        </div>
-
-                                        <!-- Freshness Weight -->
-                                        <div>
-                                            <div class="flex items-center justify-between mb-2">
-                                                <label for="profile-modal-freshness-weight" class="block text-xs font-medium text-gray-300">
-                                                    Freshness Weight
-                                                </label>
-                                                <span id="profile-knowledge-freshness-weight-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
-                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                                    </svg>
-                                                    Locked
-                                                </span>
-                                            </div>
-                                            <input type="number" id="profile-modal-freshness-weight"
-                                                   min="0" max="1" step="0.05"
-                                                   placeholder="0.0"
-                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
-                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
-                                                          hover:border-gray-600 transition-colors">
-                                            <p class="text-xs text-gray-500 mt-1.5">Relevance vs recency (0.0-1.0)</p>
-                                        </div>
-
-                                        <!-- Freshness Decay Rate -->
-                                        <div>
-                                            <div class="flex items-center justify-between mb-2">
-                                                <label for="profile-modal-freshness-decay-rate" class="block text-xs font-medium text-gray-300">
-                                                    Freshness Decay Rate
-                                                </label>
-                                                <span id="profile-knowledge-freshness-decay-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
-                                                    <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                                                    </svg>
-                                                    Locked
-                                                </span>
-                                            </div>
-                                            <input type="number" id="profile-modal-freshness-decay-rate"
-                                                   min="0.001" max="1.0" step="0.001"
-                                                   placeholder="0.005"
-                                                   class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
-                                                          placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
-                                                          hover:border-gray-600 transition-colors">
-                                            <p class="text-xs text-gray-500 mt-1.5">Exponential decay (0.001-1.0)</p>
+                                            <h3 class="text-base font-bold text-white">Profile Details</h3>
+                                            <p class="text-sm text-gray-400">Name, tag and description</p>
                                         </div>
                                     </div>
-
-                                    <!-- Synthesis Prompt Override (full width, separate row) -->
-                                    <div class="mt-4">
-                                        <div class="flex items-center justify-between mb-2">
-                                            <label for="profile-modal-synthesis-prompt" class="block text-xs font-medium text-gray-300">
-                                                Synthesis Prompt Override
-                                            </label>
-                                            <span id="profile-knowledge-synthesis-prompt-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
-                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </summary>
+                                <div class="mt-5 space-y-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">Profile Name</label>
+                                        <input type="text" id="profile-modal-name" placeholder="e.g., Production Environment"
+                                               class="w-full px-4 py-2.5 bg-gray-800/40 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all placeholder-gray-600 text-gray-200 text-sm hover:border-gray-600/50">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">Profile Tag</label>
+                                        <div class="flex items-center gap-2">
+                                            <div class="flex-1 flex items-center gap-2 px-4 py-2.5 bg-gray-800/40 border border-gray-700/50 rounded-lg hover:border-gray-600/50 transition-all">
+                                                <span class="text-[#F15F22] font-mono text-base font-bold">@</span>
+                                                <input type="text" id="profile-modal-tag" placeholder="" maxlength="5"
+                                                       class="flex-1 bg-transparent border-none outline-none text-gray-100 text-sm font-mono uppercase tracking-wider"
+                                                       style="text-transform: uppercase;">
+                                            </div>
+                                            <button id="profile-modal-generate-tag"
+                                                    class="px-3 py-2.5 bg-gray-700/40 hover:bg-gray-700/60 border border-gray-600/50 rounded-lg text-gray-300 text-xs font-medium transition-all whitespace-nowrap hover:scale-105"
+                                                    title="Generate tag from configuration">
+                                                <svg class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                                                 </svg>
-                                                Locked
+                                                Generate
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">Description</label>
+                                        <input type="text" id="profile-modal-description" placeholder="Brief description of this profile..."
+                                               class="w-full px-4 py-2.5 bg-gray-800/40 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all placeholder-gray-600 text-gray-200 text-sm hover:border-gray-600/50">
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+
+                    <!-- ============================================================ -->
+                    <!-- SECTION: AI STACK -->
+                    <!-- ============================================================ -->
+                    <div id="profile-section-ai-stack" class="profile-modal-section space-y-4 hidden">
+                        <div class="border-b border-gray-700/60 pb-2 mb-2">
+                            <h2 class="text-base font-bold text-white flex items-center gap-2">
+                                <svg class="h-5 w-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                </svg>
+                                AI Stack
+                            </h2>
+                            <p class="text-sm text-gray-400 mt-0.5">LLM provider, MCP server and model configuration</p>
+                        </div>
+
+                        <!-- Card: Provider Configuration -->
+                        <div class="glass-panel rounded-xl p-5">
+                            <details class="group" open>
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
+                                    <div class="flex items-center gap-3">
+                                        <svg class="h-5 w-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        </svg>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">Provider Configuration</h3>
+                                            <p class="text-sm text-gray-400">LLM, MCP server and context window</p>
+                                        </div>
+                                    </div>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </summary>
+                                <div class="mt-5 space-y-4">
+                                    <div class="grid grid-cols-3 gap-4">
+                                        <div>
+                                            <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">LLM Configuration</label>
+                                            <select id="profile-modal-llm-provider"
+                                                    class="w-full px-4 py-3 bg-gray-800/60 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all text-gray-200 text-sm hover:border-gray-600/50 cursor-pointer"></select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">MCP Server</label>
+                                            <select id="profile-modal-mcp-server"
+                                                    class="w-full px-4 py-3 bg-gray-800/60 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all text-gray-200 text-sm hover:border-gray-600/50 cursor-pointer"></select>
+                                        </div>
+                                        <div id="context-window-type-container">
+                                            <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">Context Window</label>
+                                            <select id="profile-modal-context-window-type"
+                                                    class="w-full px-4 py-3 bg-gray-800/60 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none transition-all text-gray-200 text-sm hover:border-gray-600/50 cursor-pointer"></select>
+                                        </div>
+                                    </div>
+                                    <!-- Context Limit Override Slider -->
+                                    <div id="context-limit-slider-container" class="pt-4 border-t border-gray-700/20">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="text-xs font-semibold text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                                                Context Limit
+                                                <span class="text-gray-500 cursor-help" title="Cap the effective context window for this profile. Default uses the model's full context.">&#9432;</span>
+                                            </label>
+                                            <label class="ind-toggle ind-toggle--sm gap-2 text-xs text-gray-400 cursor-pointer hover:text-white transition-colors">
+                                                <input type="checkbox" id="context-limit-use-default" checked>
+                                                <span class="ind-track flex-shrink-0"></span>
+                                                <span>Use model default</span>
+                                            </label>
+                                        </div>
+                                        <div id="context-limit-controls" class="flex items-center gap-4" style="display: none;">
+                                            <input type="range" id="context-limit-slider"
+                                                   min="4096" max="128000" step="1024" value="128000"
+                                                   class="flex-1 h-2 bg-gray-700/50 rounded-lg appearance-none cursor-pointer"
+                                                   style="accent-color: #F15F22;">
+                                            <div class="flex items-center gap-1">
+                                                <input type="number" id="context-limit-input"
+                                                       min="4" max="128" step="1" value="128"
+                                                       class="w-16 px-2 py-1.5 bg-gray-800/60 border border-gray-700/50 rounded-lg text-gray-200 text-sm text-center focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 outline-none">
+                                                <span class="text-xs text-gray-400 font-mono">K</span>
+                                            </div>
+                                        </div>
+                                        <div id="context-limit-display" class="text-xs text-gray-500 mt-1">Using model default context limit</div>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <!-- Card: Advanced Configuration (dual-model — shown for tool_enabled only) -->
+                        <div id="dual-model-section" class="glass-panel rounded-xl p-5" style="display: none;">
+                            <details class="group">
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
+                                    <div class="flex items-center gap-3">
+                                        <svg class="h-5 w-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                        </svg>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">Advanced Configuration</h3>
+                                            <p class="text-sm text-gray-400">Dual-model strategic/tactical routing</p>
+                                        </div>
+                                    </div>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </summary>
+                                <div class="mt-5 space-y-4">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-sm font-bold text-white flex items-center gap-2">
+                                            Dual-Model Configuration
+                                            <span class="ml-1 px-2 py-0.5 text-xs bg-blue-900/40 border border-blue-700/30 rounded-full text-blue-300">Optional</span>
+                                        </span>
+                                        <label class="ind-toggle ind-toggle--sm gap-2 text-sm text-gray-300 cursor-pointer hover:text-white transition-colors">
+                                            <input type="checkbox" id="enable-dual-model">
+                                            <span class="ind-track flex-shrink-0"></span>
+                                            <span>Enable separate strategic &amp; tactical models</span>
+                                        </label>
+                                    </div>
+                                    <div id="dual-model-controls" style="display: none;">
+                                        <div class="bg-gray-800/40 border border-gray-700/30 rounded-lg p-4">
+                                            <div class="grid grid-cols-2 gap-6">
+                                                <div>
+                                                    <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">
+                                                        Strategic Planner Model
+                                                        <span class="ml-1 text-gray-500" title="Used for meta-planning (WORKFLOW_META_PLANNING_PROMPT)">ⓘ</span>
+                                                    </label>
+                                                    <select id="profile-modal-strategic-model" class="w-full px-4 py-3 bg-gray-800/60 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-[#F15F22]/50 text-gray-200 text-sm">
+                                                        <option value="">Use main LLM configuration</option>
+                                                    </select>
+                                                    <p class="text-xs text-gray-500 mt-1">Optimize for reasoning (Qwen3-235B, GPT-4o)</p>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-semibold text-gray-300 mb-2 uppercase tracking-wide">
+                                                        Tactical Executor Model
+                                                        <span class="ml-1 text-gray-500" title="Used for per-phase execution (WORKFLOW_TACTICAL_PROMPT)">ⓘ</span>
+                                                    </label>
+                                                    <select id="profile-modal-tactical-model" class="w-full px-4 py-3 bg-gray-800/60 border border-gray-700/50 rounded-lg focus:ring-2 focus:ring-[#F15F22]/50 text-gray-200 text-sm">
+                                                        <option value="">Use main LLM configuration</option>
+                                                    </select>
+                                                    <p class="text-xs text-gray-500 mt-1">Optimize for speed (Llama 3.3 70B, Flash)</p>
+                                                </div>
+                                            </div>
+                                            <div class="mt-4 p-3 bg-blue-900/20 border border-blue-700/30 rounded-lg">
+                                                <p class="text-xs text-blue-300">
+                                                    <strong>Cost optimization:</strong> Use a cheap model for strategic planning and an accurate model for tactical execution. Typical savings: 30-60%.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <!-- Card: Session Behavior -->
+                        <div class="glass-panel rounded-xl p-5">
+                            <details class="group">
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
+                                    <div class="flex items-center gap-3">
+                                        <svg class="h-5 w-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                                        </svg>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">Session Behavior</h3>
+                                            <p class="text-sm text-gray-400">Session primer and conversation capabilities</p>
+                                        </div>
+                                    </div>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </summary>
+                                <div class="mt-5 space-y-4">
+                                    <!-- Session Primer -->
+                                    <div class="rounded-lg p-4 border border-gray-700/30">
+                                        <div class="flex items-center gap-3 cursor-pointer group">
+                                            <label class="ind-toggle">
+                                                <input type="checkbox" id="profile-modal-enable-primer">
+                                                <span class="ind-track"></span>
+                                            </label>
+                                            <div>
+                                                <span class="text-sm font-bold text-gray-100 group-hover:text-white">Enable Session Primer</span>
+                                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Auto-execute questions when starting a new session with this profile</p>
+                                            </div>
+                                        </div>
+                                        <div id="profile-modal-primer-container" class="hidden mt-4 ml-7">
+                                            <div class="mb-4">
+                                                <label class="text-xs font-semibold text-gray-300 mb-2 block">Execution Mode</label>
+                                                <div class="grid grid-cols-2 gap-3">
+                                                    <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-blue-500/30 transition-all group">
+                                                        <input type="radio" name="primer-mode" value="individual" checked
+                                                               class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
+                                                        <div class="flex-1">
+                                                            <div class="flex items-center gap-2 mb-1">
+                                                                <span class="text-sm font-bold text-gray-100 group-hover:text-white">Individual</span>
+                                                                <span class="px-2 py-0.5 text-xs font-bold bg-blue-500/30 text-blue-300 rounded-full border border-blue-400/30">Recommended</span>
+                                                            </div>
+                                                            <p class="text-xs text-gray-400 group-hover:text-gray-300">Execute each statement separately in sequence</p>
+                                                        </div>
+                                                    </label>
+                                                    <label class="relative flex items-start gap-3 p-3 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
+                                                        <input type="radio" name="primer-mode" value="combined"
+                                                               class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
+                                                        <div class="flex-1">
+                                                            <span class="text-sm font-bold text-gray-100 group-hover:text-white">Combined</span>
+                                                            <p class="text-xs text-gray-400 group-hover:text-gray-300">Merge all statements and execute as one query</p>
+                                                        </div>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="mb-3">
+                                                <div class="flex justify-between items-center mb-2">
+                                                    <label class="text-xs font-semibold text-gray-300">Statements</label>
+                                                    <button type="button" id="add-primer-statement" class="card-btn card-btn--primary card-btn--sm">+ Add Statement</button>
+                                                </div>
+                                                <div id="primer-statements-container" class="space-y-3"></div>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-3">These questions will run automatically before any user input when a new session is created.</p>
+                                        </div>
+                                    </div>
+                                    <!-- Conversation Capabilities (llm_only only) -->
+                                    <div id="conversation-capabilities-section" class="rounded-lg p-4 border border-green-700/20" style="display: none;">
+                                        <h4 class="text-sm font-bold text-white mb-2 flex items-center gap-2 uppercase tracking-wide">
+                                            <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                            </svg>
+                                            Conversation Capabilities
+                                        </h4>
+                                        <p class="text-xs text-gray-400 mb-4">Enhance your conversation profile with additional capabilities</p>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-blue-500/30 transition-all group">
+                                                <label class="ind-toggle">
+                                                    <input type="checkbox" id="profile-modal-use-mcp-tools">
+                                                    <span class="ind-track"></span>
+                                                </label>
+                                                <div class="flex-1">
+                                                    <div class="flex items-center gap-2 mb-1">
+                                                        <span class="text-sm font-bold text-gray-100 group-hover:text-white">Use MCP Tools</span>
+                                                        <span class="px-1.5 py-0.5 text-xs font-bold bg-blue-500/30 text-blue-300 rounded-full border border-blue-400/30">LangChain</span>
+                                                    </div>
+                                                    <p class="text-xs text-gray-400 group-hover:text-gray-300">Enable tool calling via MCP server integration</p>
+                                                </div>
+                                            </div>
+                                            <div class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
+                                                <label class="ind-toggle">
+                                                    <input type="checkbox" id="profile-modal-use-knowledge">
+                                                    <span class="ind-track"></span>
+                                                </label>
+                                                <div class="flex-1">
+                                                    <div class="flex items-center gap-2 mb-1">
+                                                        <span class="text-sm font-bold text-gray-100 group-hover:text-white">Use Knowledge Collections</span>
+                                                        <span class="px-1.5 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">RAG</span>
+                                                    </div>
+                                                    <p class="text-xs text-gray-400 group-hover:text-gray-300">Inject context from knowledge repositories</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+
+                    <!-- ============================================================ -->
+                    <!-- SECTION: CAPABILITIES -->
+                    <!-- ============================================================ -->
+                    <div id="profile-section-capabilities" class="profile-modal-section space-y-4 hidden">
+                        <div class="border-b border-gray-700/60 pb-2 mb-2">
+                            <h2 class="text-base font-bold text-white flex items-center gap-2">
+                                <svg class="h-5 w-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                                </svg>
+                                Capabilities
+                            </h2>
+                            <p class="text-sm text-gray-400 mt-0.5">Components, classification and genie coordination</p>
+                        </div>
+
+                        <!-- Card: Component Configuration -->
+                        <div id="component-config-section" class="glass-panel rounded-xl p-5" style="display: none;">
+                            <details class="group" open>
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
+                                    <div class="flex items-center gap-3">
+                                        <svg class="h-5 w-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                                        </svg>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">Component Configuration</h3>
+                                            <p class="text-sm text-gray-400">Enable or disable components for this profile</p>
+                                        </div>
+                                    </div>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </summary>
+                                <div class="mt-5 space-y-3">
+                                    <p class="text-xs text-gray-500">Disabled components won't have their instructions injected into the LLM prompt.</p>
+                                    <div id="profile-component-toggles" class="space-y-3">
+                                        <!-- Populated dynamically by configurationHandler.js -->
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <!-- Card: Classification Mode -->
+                        <div class="glass-panel rounded-xl p-5">
+                            <details class="group" open>
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
+                                    <div class="flex items-center gap-3">
+                                        <svg class="h-5 w-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                                        </svg>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">Tool &amp; Prompt Classification</h3>
+                                            <p class="text-sm text-gray-400">How MCP tools and prompts are categorized in the UI</p>
+                                        </div>
+                                    </div>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </summary>
+                                <div class="mt-5 space-y-3">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-blue-500/30 transition-all group">
+                                            <input type="radio" name="classification-mode" value="light" id="profile-modal-classification-light" checked
+                                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
+                                            <div class="flex-1">
+                                                <div class="flex items-center gap-2 mb-1">
+                                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">Light</span>
+                                                    <span class="px-2 py-0.5 text-xs font-bold bg-blue-500/30 text-blue-300 rounded-full border border-blue-400/30">Recommended</span>
+                                                </div>
+                                                <p class="text-xs text-gray-400 group-hover:text-gray-300">Generic categories: "All Tools", "All Prompts", "All Resources"</p>
+                                            </div>
+                                        </label>
+                                        <label class="relative flex items-start gap-3 p-4 bg-gray-800/30 border-2 border-gray-700/30 rounded-lg cursor-pointer hover:bg-gray-800/50 hover:border-purple-500/30 transition-all group">
+                                            <input type="radio" name="classification-mode" value="full" id="profile-modal-classification-full"
+                                                   class="mt-1 text-[#F15F22] focus:ring-[#F15F22] focus:ring-offset-gray-900">
+                                            <div class="flex-1">
+                                                <div class="flex items-center gap-2 mb-1">
+                                                    <span class="text-base font-bold text-gray-100 group-hover:text-white">Full</span>
+                                                    <span class="px-2 py-0.5 text-xs font-bold bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/30">Semantic</span>
+                                                </div>
+                                                <p class="text-xs text-gray-400 group-hover:text-gray-300">LLM-powered semantic categorization (e.g., "Data Quality", "Performance")</p>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <!-- Card: Genie Child Profiles -->
+                        <div id="genie-slave-profiles-section" class="glass-panel rounded-xl p-5" style="display: none;">
+                            <details class="group" open>
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
+                                    <div class="flex items-center gap-3">
+                                        <svg class="h-5 w-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                        </svg>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">Available Child Profiles</h3>
+                                            <p class="text-sm text-gray-400">Profiles this Genie can coordinate</p>
+                                        </div>
+                                    </div>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </summary>
+                                <div class="mt-5 space-y-3">
+                                    <p class="text-xs text-gray-400">Select profiles this Genie can coordinate. The coordinator will route questions to these profiles as needed.</p>
+                                    <div id="genie-slave-profiles-list" class="space-y-2 max-h-48 overflow-y-auto bg-gray-800/40 rounded-lg p-3 custom-scrollbar">
+                                        <p class="text-gray-500 text-sm italic">Loading available profiles...</p>
+                                    </div>
+                                    <p class="text-xs text-gray-500">Tip: Select at least two profiles with different capabilities for best coordination results.</p>
+                                </div>
+                            </details>
+                        </div>
+
+                        <!-- Card: Genie Coordinator Settings -->
+                        <div id="genie-profile-settings-section" class="glass-panel rounded-xl p-5" style="display: none;">
+                            <details class="group">
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
+                                    <div class="flex items-center gap-3">
+                                        <svg class="h-5 w-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+                                        </svg>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">Genie Coordination Settings</h3>
+                                            <p class="text-sm text-gray-400">Temperature, timeout and iteration overrides</p>
+                                        </div>
+                                    </div>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </summary>
+                                <div class="mt-5 space-y-4">
+                                    <p class="text-xs text-gray-400">Override global defaults for this Genie profile. Locked settings are enforced by admin.</p>
+                                    <div class="p-3 bg-gray-800/40 rounded-lg">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label for="profile-genie-temperature" class="text-sm font-medium text-gray-300">Temperature</label>
+                                            <span id="profile-genie-temperature-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                Locked by Admin
                                             </span>
                                         </div>
-                                        <textarea id="profile-modal-synthesis-prompt" rows="3"
-                                                  placeholder="Leave empty to use global/default synthesis prompt..."
-                                                  class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white
-                                                         placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50
-                                                         hover:border-gray-600 transition-colors resize-y"></textarea>
-                                        <p class="text-xs text-gray-500 mt-1.5">Custom system prompt for knowledge synthesis. Leave empty to use global default.</p>
+                                        <div class="flex items-center gap-3">
+                                            <input type="range" id="profile-genie-temperature" min="0" max="1" step="0.1" value="0.7" class="flex-1 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                                            <span id="profile-genie-temperature-value" class="text-sm text-white font-mono w-10 text-right">0.7</span>
+                                        </div>
+                                        <p id="profile-genie-temperature-hint" class="text-xs text-gray-500 mt-1">Leave empty to use global default from Administration panel</p>
                                     </div>
-
-                                    <div class="mt-4 p-3 bg-gray-900/30 border border-gray-700/30 rounded-lg">
-                                        <p class="text-xs text-gray-400">
-                                            <svg class="w-4 h-4 inline-block mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                            </svg>
-                                            Leave empty to use global defaults from Administration panel
-                                        </p>
+                                    <div class="p-3 bg-gray-800/40 rounded-lg">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label for="profile-genie-query-timeout" class="text-sm font-medium text-gray-300">Query Timeout (seconds)</label>
+                                            <span id="profile-genie-query-timeout-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                Locked by Admin
+                                            </span>
+                                        </div>
+                                        <input type="number" id="profile-genie-query-timeout" min="60" max="900" placeholder="300" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
+                                        <p id="profile-genie-query-timeout-hint" class="text-xs text-gray-500 mt-1">Leave empty to use global default from Administration panel</p>
+                                    </div>
+                                    <div class="p-3 bg-gray-800/40 rounded-lg">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label for="profile-genie-max-iterations" class="text-sm font-medium text-gray-300">Max Iterations</label>
+                                            <span id="profile-genie-max-iterations-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                Locked by Admin
+                                            </span>
+                                        </div>
+                                        <input type="number" id="profile-genie-max-iterations" min="1" max="25" placeholder="10" class="w-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent">
+                                        <p id="profile-genie-max-iterations-hint" class="text-xs text-gray-500 mt-1">Leave empty to use global default from Administration panel</p>
                                     </div>
                                 </div>
-                            </div>
+                            </details>
                         </div>
                     </div>
 
-                    <!-- Tab Content: Skills -->
-                    <div id="profile-content-skills" class="p-6 hidden max-h-[50vh] overflow-y-auto custom-scrollbar">
-                        <p class="text-sm text-gray-400 mb-6">Assign skills to this profile. Active skills are auto-applied on every query without manual #hashtag activation.</p>
-                        <div class="mb-6">
-                            <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
-                                <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
+                    <!-- ============================================================ -->
+                    <!-- SECTION: RESOURCES -->
+                    <!-- ============================================================ -->
+                    <div id="profile-section-resources" class="profile-modal-section space-y-4 hidden">
+                        <div class="border-b border-gray-700/60 pb-2 mb-2">
+                            <h2 class="text-base font-bold text-white flex items-center gap-2">
+                                <svg class="h-5 w-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
+                                </svg>
+                                Resources
+                            </h2>
+                            <p class="text-sm text-gray-400 mt-0.5">MCP tools, intelligence collections, skills and system prompts</p>
+                        </div>
+
+                        <!-- Hidden spans: preserve IDs used by updateSectionVisibility() and tab-switching code -->
+                        <span id="profile-tab-mcp-resources" style="display: none;"></span>
+                        <span id="profile-tab-intelligence" style="display: none;"></span>
+                        <span id="profile-tab-skills" style="display: none;"></span>
+                        <span id="profile-tab-system-prompts" style="display: none;"></span>
+
+                        <!-- Card: MCP Tools & Prompts -->
+                        <div id="profile-content-mcp-resources" class="glass-panel rounded-xl p-5">
+                            <details class="group">
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
                                     <div class="flex items-center gap-3">
-                                        <div class="flex items-center justify-center w-8 h-8 bg-emerald-500/10 rounded-lg">
-                                            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"></path>
-                                            </svg>
-                                        </div>
-                                        <div class="flex-1">
-                                            <h4 class="text-sm font-semibold text-white">Available Skills</h4>
-                                            <p class="text-xs text-gray-400 mt-0.5">Toggle skills on to auto-assign them to this profile</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="p-5">
-                                    <div id="profile-modal-skills-list" class="space-y-2">
-                                        <p class="text-xs text-gray-500 italic">Loading skills...</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Tab Content: System Prompts -->
-                    <div id="profile-content-system-prompts" class="p-6 hidden max-h-[50vh] overflow-y-auto custom-scrollbar">
-                        <p id="system-prompts-description" class="text-xs text-gray-400 mb-4">Configure which prompt versions should be used for different functional areas. Defaults to system-wide prompt mappings.</p>
-
-                        <!-- Conversation Focused (LLM Only) Section - shown only for llm_only profiles -->
-                        <div id="conversation-execution-section" class="mb-6 hidden">
-                            <div class="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 rounded-lg p-4 border-2 border-blue-700/30">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                                    </svg>
-                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Conversation Execution Prompt</h4>
-                                </div>
-                                <p class="text-xs text-gray-400 mb-3">Select the system prompt for LLM conversation mode</p>
-                                <div id="profile-modal-conversation-prompts" class="space-y-2"></div>
-                            </div>
-                        </div>
-
-                        <!-- RAG Focused Execution Section - shown only for rag_focused profiles -->
-                        <div id="rag-execution-section" class="mb-6 hidden">
-                            <div class="bg-gradient-to-br from-emerald-900/20 to-teal-900/20 rounded-lg p-4 border-2 border-emerald-700/30">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                    </svg>
-                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">RAG Focused Execution Prompt</h4>
-                                </div>
-                                <p class="text-xs text-gray-400 mb-3">Select the system prompt for knowledge base synthesis and retrieval</p>
-                                <div id="profile-modal-rag-prompts" class="space-y-2"></div>
-                            </div>
-                        </div>
-
-                        <!-- Genie Coordination Section - shown only for genie profiles -->
-                        <div id="genie-coordination-section" class="mb-6 hidden">
-                            <div class="bg-gradient-to-br from-amber-900/20 to-orange-900/20 rounded-lg p-4 border-2 border-amber-700/30">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                                    </svg>
-                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Genie Coordinator Prompt</h4>
-                                </div>
-                                <p class="text-xs text-gray-400 mb-3">Configure the system prompt that guides how the Genie coordinates between child profiles</p>
-                                <div id="profile-modal-genie-prompts" class="space-y-2"></div>
-                            </div>
-                        </div>
-
-                        <!-- Master System Prompts Section - shown only for tool_enabled profiles -->
-                        <div id="master-system-section" class="mb-6">
-                            <div class="bg-gradient-to-br from-purple-900/20 to-indigo-900/20 rounded-lg p-4 border-2 border-purple-700/30">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                    </svg>
-                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Master System Prompt</h4>
-                                </div>
-                                <p class="text-xs text-gray-400 mb-3">Select the base system prompt for this profile's LLM provider</p>
-                                <div id="profile-modal-master-prompts" class="space-y-2"></div>
-                            </div>
-                        </div>
-
-                        <!-- Efficiency Focused Only Sections - shown only for tool_enabled profiles -->
-                        <div id="tool-enabled-prompts-section">
-                            <!-- Workflow & Classification Section -->
-                            <div class="mb-6">
-                                <div class="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 rounded-lg p-4 border-2 border-blue-700/30">
-                                    <div class="flex items-center gap-2 mb-3">
-                                        <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                                        <svg class="h-5 w-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
                                         </svg>
-                                        <h4 class="text-sm font-bold text-white uppercase tracking-wide">Workflow & Classification</h4>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">MCP Tools &amp; Prompts</h3>
+                                            <p class="text-sm text-gray-400">Select available tools and prompts for this profile</p>
+                                        </div>
                                     </div>
-                                    <p class="text-xs text-gray-400 mb-3">Prompts for task analysis and workflow planning</p>
-                                    <div id="profile-modal-workflow-prompts" class="space-y-2"></div>
-                                </div>
-                            </div>
-
-                            <!-- Error Recovery Section -->
-                        <div class="mb-6">
-                            <div class="bg-gradient-to-br from-red-900/20 to-orange-900/20 rounded-lg p-4 border-2 border-red-700/30">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                                     </svg>
-                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Error Recovery & Self-Correction</h4>
+                                </summary>
+                                <div class="mt-5">
+                                    <div class="grid grid-cols-2 gap-6">
+                                        <div>
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label class="block text-xs font-semibold text-blue-300 uppercase tracking-wide flex items-center gap-2">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                                                    </svg>
+                                                    Available Tools
+                                                </label>
+                                                <button id="profile-modal-tools-uncheck-all"
+                                                        class="px-2 py-1 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700/40 rounded transition-all font-medium">
+                                                    Uncheck All
+                                                </button>
+                                            </div>
+                                            <div id="profile-modal-tools"
+                                                 class="max-h-48 overflow-y-auto px-4 py-3 bg-gray-800/40 border border-gray-700/40 rounded-lg hover:border-gray-700/60 transition-all custom-scrollbar space-y-1"></div>
+                                        </div>
+                                        <div id="profile-modal-prompts-section">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label class="block text-xs font-semibold text-green-300 uppercase tracking-wide flex items-center gap-2">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                                    </svg>
+                                                    Available Prompts
+                                                </label>
+                                                <button id="profile-modal-prompts-uncheck-all"
+                                                        class="px-2 py-1 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-700/40 rounded transition-all font-medium">
+                                                    Uncheck All
+                                                </button>
+                                            </div>
+                                            <div id="profile-modal-prompts"
+                                                 class="max-h-48 overflow-y-auto px-4 py-3 bg-gray-800/40 border border-gray-700/40 rounded-lg hover:border-gray-700/60 transition-all custom-scrollbar space-y-1"></div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <p class="text-xs text-gray-400 mb-3">Prompts for handling errors and corrections</p>
-                                <div id="profile-modal-error-prompts" class="space-y-2"></div>
-                            </div>
+                            </details>
                         </div>
 
-                        <!-- Data Operations Section -->
-                        <div class="mb-6">
-                            <div class="bg-gradient-to-br from-green-900/20 to-emerald-900/20 rounded-lg p-4 border-2 border-green-700/30">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
+                        <!-- Card: Intelligence Collections -->
+                        <div id="profile-content-intelligence" class="glass-panel rounded-xl p-5">
+                            <details class="group">
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
+                                    <div class="flex items-center gap-3">
+                                        <svg class="h-5 w-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                                        </svg>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">Intelligence Collections</h3>
+                                            <p class="text-sm text-gray-400">Planner and knowledge repositories</p>
+                                        </div>
+                                    </div>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                                     </svg>
-                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Data Operations</h4>
+                                </summary>
+                                <div class="mt-5 space-y-4">
+                                    <p class="text-sm text-gray-400">Select which intelligence repositories should be available in this profile and enable autocomplete suggestions</p>
+
+                                    <!-- Planner Repositories Section -->
+                                    <div class="mb-6">
+                                        <details class="group bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
+                                            <summary class="flex justify-between items-center cursor-pointer list-none px-5 py-3 bg-gray-800/60 group-open:border-b group-open:border-gray-700/50 hover:bg-gray-800/70 transition-colors select-none">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
+                                                        <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                                                        </svg>
+                                                    </div>
+                                                    <div class="flex-1">
+                                                        <h4 class="text-sm font-semibold text-white">Planner Repositories</h4>
+                                                        <p class="text-xs text-gray-400 mt-0.5">Execution strategies and planning patterns from successful agent interactions</p>
+                                                    </div>
+                                                </div>
+                                                <svg class="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                                </svg>
+                                            </summary>
+                                            <div class="p-5">
+                                                <div class="bg-gray-900/50 rounded-lg border border-gray-700/40 overflow-hidden">
+                                                    <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/50 border-b border-gray-700/40">
+                                                        <span class="text-xs text-gray-300 font-medium">Collection Name</span>
+                                                        <div class="flex items-center gap-8 flex-shrink-0">
+                                                            <span id="planner-query-column-header" class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Query</span>
+                                                            <span class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Autocomplete</span>
+                                                        </div>
+                                                    </div>
+                                                    <div id="profile-modal-planner-collections"
+                                                         class="max-h-64 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1"></div>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
+
+                                    <!-- Knowledge Repositories Section -->
+                                    <div class="mb-6">
+                                        <details class="group bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
+                                            <summary class="flex justify-between items-center cursor-pointer list-none px-5 py-3 bg-gray-800/60 group-open:border-b group-open:border-gray-700/50 hover:bg-gray-800/70 transition-colors select-none">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
+                                                        <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                                                        </svg>
+                                                    </div>
+                                                    <div class="flex-1">
+                                                        <h4 class="text-sm font-semibold text-white">Knowledge Repositories</h4>
+                                                        <p class="text-xs text-gray-400 mt-0.5">Document collections and reference materials for context augmentation</p>
+                                                    </div>
+                                                </div>
+                                                <svg class="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                                </svg>
+                                            </summary>
+                                            <div class="p-5">
+                                                <div class="bg-gray-900/50 rounded-lg border border-gray-700/40 overflow-hidden">
+                                                    <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/50 border-b border-gray-700/40">
+                                                        <span class="text-xs text-gray-300 font-medium">Collection Name</span>
+                                                        <div class="flex items-center gap-8 flex-shrink-0">
+                                                            <span class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Query</span>
+                                                        </div>
+                                                    </div>
+                                                    <div id="profile-modal-knowledge-collections"
+                                                         class="max-h-64 overflow-y-auto px-2 py-2 custom-scrollbar space-y-1"></div>
+                                                </div>
+                                                <div id="profile-modal-knowledge-empty" class="hidden text-center py-8 text-gray-500 text-sm">
+                                                    No knowledge repositories found
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
+
+                                    <!-- LLM Reranking Section -->
+                                    <div class="mb-6">
+                                        <details class="group bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
+                                            <summary class="flex justify-between items-center cursor-pointer list-none px-5 py-3 bg-gray-800/60 group-open:border-b group-open:border-gray-700/50 hover:bg-gray-800/70 transition-colors select-none">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
+                                                        <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+                                                        </svg>
+                                                    </div>
+                                                    <div class="flex-1">
+                                                        <h4 class="text-sm font-semibold text-white">LLM Reranking</h4>
+                                                        <p class="text-xs text-gray-400 mt-0.5">Per-collection override — enable LLM-powered reranking to improve relevance <span class="text-orange-400">(incurs additional LLM costs)</span></p>
+                                                    </div>
+                                                </div>
+                                                <svg class="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                                </svg>
+                                            </summary>
+                                            <div class="p-5">
+                                                <div id="profile-modal-knowledge-reranking-list" class="space-y-2">
+                                                    <p class="text-xs text-gray-500 italic">Select knowledge collections above to configure reranking</p>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
+
+                                    <!-- Knowledge Graphs Section -->
+                                    <div id="profile-modal-kg-section" class="mb-6 hidden">
+                                        <details class="group bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
+                                            <summary class="flex justify-between items-center cursor-pointer list-none px-5 py-3 bg-gray-800/60 group-open:border-b group-open:border-gray-700/50 hover:bg-gray-800/70 transition-colors select-none">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="flex items-center justify-center w-8 h-8 rounded-lg" style="background:rgba(147,51,234,0.12);">
+                                                        <svg class="w-4 h-4" style="color:#a78bfa;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/>
+                                                        </svg>
+                                                    </div>
+                                                    <div class="flex-1">
+                                                        <h4 class="text-sm font-semibold text-white">Knowledge Graphs</h4>
+                                                        <p class="text-xs text-gray-400 mt-0.5">Assigned knowledge graphs — activate one for context enrichment</p>
+                                                    </div>
+                                                </div>
+                                                <svg class="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                                </svg>
+                                            </summary>
+                                            <div class="p-5">
+                                                <div class="bg-gray-900/50 rounded-lg border border-gray-700/40 overflow-hidden">
+                                                    <div class="flex items-center justify-between px-4 py-2.5 bg-gray-800/50 border-b border-gray-700/40">
+                                                        <span class="text-xs text-gray-300 font-medium">Knowledge Graph</span>
+                                                        <span class="text-xs text-gray-300 font-medium" style="width: 50px; text-align: center; display: block;">Active</span>
+                                                    </div>
+                                                    <div id="profile-modal-kg-list" class="px-2 py-2 space-y-1"></div>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
+
+                                    <!-- Advanced Settings Section -->
+                                    <!-- NOTE: bg-gray-800/40 is on the <details> so closest('.bg-gray-800/40')?.parentElement still works for updateSectionVisibility -->
+                                    <div>
+                                        <details class="group bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
+                                            <summary class="flex justify-between items-center cursor-pointer list-none px-5 py-3 bg-gray-800/60 group-open:border-b group-open:border-gray-700/50 hover:bg-gray-800/70 transition-colors select-none">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="flex items-center justify-center w-8 h-8 bg-[#F15F22]/10 rounded-lg">
+                                                        <svg class="w-4 h-4 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+                                                        </svg>
+                                                    </div>
+                                                    <div class="flex-1">
+                                                        <h4 class="text-sm font-semibold text-white">Advanced Settings</h4>
+                                                        <p class="text-xs text-gray-400 mt-0.5">Override global knowledge retrieval settings for this profile</p>
+                                                    </div>
+                                                </div>
+                                                <svg class="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                                </svg>
+                                            </summary>
+                                            <div class="p-5">
+                                                <p class="text-xs text-gray-400 mb-4">Override global defaults for this profile. Locked settings are enforced by admin.</p>
+                                                <div class="grid grid-cols-3 gap-4">
+                                                    <div>
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label for="profile-modal-min-relevance" class="block text-xs font-medium text-gray-300">Min Relevance Score</label>
+                                                            <span id="profile-knowledge-min-relevance-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                                Locked
+                                                            </span>
+                                                        </div>
+                                                        <input type="number" id="profile-modal-min-relevance" min="0" max="1" step="0.05" placeholder="0.30"
+                                                               class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 hover:border-gray-600 transition-colors">
+                                                        <p class="text-xs text-gray-500 mt-1.5">Cosine similarity threshold (0.0-1.0)</p>
+                                                    </div>
+                                                    <div>
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label for="profile-modal-max-docs" class="block text-xs font-medium text-gray-300">Max Documents</label>
+                                                            <span id="profile-knowledge-max-docs-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                                Locked
+                                                            </span>
+                                                        </div>
+                                                        <input type="number" id="profile-modal-max-docs" min="1" max="20" step="1" placeholder="3"
+                                                               class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 hover:border-gray-600 transition-colors">
+                                                        <p class="text-xs text-gray-500 mt-1.5">Number of chunks to retrieve (1-20)</p>
+                                                    </div>
+                                                    <div>
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label for="profile-modal-max-tokens" class="block text-xs font-medium text-gray-300">Max Tokens</label>
+                                                            <span id="profile-knowledge-max-tokens-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                                Locked
+                                                            </span>
+                                                        </div>
+                                                        <input type="number" id="profile-modal-max-tokens" min="500" max="10000" step="100" placeholder="2000"
+                                                               class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 hover:border-gray-600 transition-colors">
+                                                        <p class="text-xs text-gray-500 mt-1.5">Context window limit (500-10000)</p>
+                                                    </div>
+                                                    <div>
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label for="profile-modal-max-chunks-per-doc" class="block text-xs font-medium text-gray-300">Max Chunks/Doc</label>
+                                                            <span id="profile-knowledge-max-chunks-per-doc-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                                Locked
+                                                            </span>
+                                                        </div>
+                                                        <input type="number" id="profile-modal-max-chunks-per-doc" min="0" max="50" step="1" placeholder="0"
+                                                               class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 hover:border-gray-600 transition-colors">
+                                                        <p class="text-xs text-gray-500 mt-1.5">0 = no limit per document (0-50)</p>
+                                                    </div>
+                                                    <div>
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label for="profile-modal-freshness-weight" class="block text-xs font-medium text-gray-300">Freshness Weight</label>
+                                                            <span id="profile-knowledge-freshness-weight-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                                Locked
+                                                            </span>
+                                                        </div>
+                                                        <input type="number" id="profile-modal-freshness-weight" min="0" max="1" step="0.05" placeholder="0.0"
+                                                               class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 hover:border-gray-600 transition-colors">
+                                                        <p class="text-xs text-gray-500 mt-1.5">Relevance vs recency (0.0-1.0)</p>
+                                                    </div>
+                                                    <div>
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label for="profile-modal-freshness-decay-rate" class="block text-xs font-medium text-gray-300">Freshness Decay Rate</label>
+                                                            <span id="profile-knowledge-freshness-decay-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                                <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                                Locked
+                                                            </span>
+                                                        </div>
+                                                        <input type="number" id="profile-modal-freshness-decay-rate" min="0.001" max="1.0" step="0.001" placeholder="0.005"
+                                                               class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 hover:border-gray-600 transition-colors">
+                                                        <p class="text-xs text-gray-500 mt-1.5">Exponential decay (0.001-1.0)</p>
+                                                    </div>
+                                                </div>
+                                                <div class="mt-4">
+                                                    <div class="flex items-center justify-between mb-2">
+                                                        <label for="profile-modal-synthesis-prompt" class="block text-xs font-medium text-gray-300">Synthesis Prompt Override</label>
+                                                        <span id="profile-knowledge-synthesis-prompt-locked-badge" class="hidden px-2 py-0.5 text-xs rounded bg-gray-600 text-gray-300">
+                                                            <svg class="w-3 h-3 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                                            Locked
+                                                        </span>
+                                                    </div>
+                                                    <textarea id="profile-modal-synthesis-prompt" rows="3"
+                                                              placeholder="Leave empty to use global/default synthesis prompt..."
+                                                              class="w-full px-3 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#F15F22]/50 focus:border-[#F15F22]/50 hover:border-gray-600 transition-colors resize-y"></textarea>
+                                                    <p class="text-xs text-gray-500 mt-1.5">Custom system prompt for knowledge synthesis. Leave empty to use global default.</p>
+                                                </div>
+                                                <div class="mt-4 p-3 bg-gray-900/30 border border-gray-700/30 rounded-lg">
+                                                    <p class="text-xs text-gray-400">
+                                                        <svg class="w-4 h-4 inline-block mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                                        </svg>
+                                                        Leave empty to use global defaults from Administration panel
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
                                 </div>
-                                <p class="text-xs text-gray-400 mb-3">Prompts for SQL and data manipulation</p>
-                                <div id="profile-modal-data-prompts" class="space-y-2"></div>
-                            </div>
+                            </details>
                         </div>
 
-                        <!-- Visualization Section -->
-                        <div class="mb-6">
-                            <div class="bg-gradient-to-br from-yellow-900/20 to-amber-900/20 rounded-lg p-4 border-2 border-yellow-700/30">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <svg class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        <!-- Card: Skills -->
+                        <div id="profile-content-skills" class="glass-panel rounded-xl p-5">
+                            <details class="group">
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
+                                    <div class="flex items-center gap-3">
+                                        <svg class="h-5 w-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
+                                        </svg>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">Skills</h3>
+                                            <p class="text-sm text-gray-400">Auto-assigned skills for this profile</p>
+                                        </div>
+                                    </div>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                                     </svg>
-                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Visualization</h4>
+                                </summary>
+                                <div class="mt-5 space-y-4">
+                                    <p class="text-sm text-gray-400">Assign skills to this profile. Active skills are auto-applied on every query without manual #hashtag activation.</p>
+                                    <div class="bg-gray-800/40 rounded-lg border border-gray-700/50 overflow-hidden">
+                                        <div class="bg-gray-800/60 px-5 py-3 border-b border-gray-700/50">
+                                            <div class="flex items-center gap-3">
+                                                <div class="flex items-center justify-center w-8 h-8 bg-emerald-500/10 rounded-lg">
+                                                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
+                                                    </svg>
+                                                </div>
+                                                <div class="flex-1">
+                                                    <h4 class="text-sm font-semibold text-white">Available Skills</h4>
+                                                    <p class="text-xs text-gray-400 mt-0.5">Toggle skills on to auto-assign them to this profile</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="p-5">
+                                            <div id="profile-modal-skills-list" class="space-y-2">
+                                                <p class="text-xs text-gray-500 italic">Loading skills...</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <p class="text-xs text-gray-400 mb-3">Prompts for charting and data visualization</p>
-                                <div id="profile-modal-visualization-prompts" class="space-y-2"></div>
-                            </div>
+                            </details>
                         </div>
-                        </div><!-- End tool-enabled-prompts-section -->
-                    </div>
-                </div>
 
+                        <!-- Card: System Prompts -->
+                        <div id="profile-content-system-prompts" class="glass-panel rounded-xl p-5">
+                            <details class="group">
+                                <summary class="flex justify-between items-center cursor-pointer list-none">
+                                    <div class="flex items-center gap-3">
+                                        <svg class="h-5 w-5 text-[#F15F22]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                        </svg>
+                                        <div>
+                                            <h3 class="text-base font-bold text-white">System Prompts</h3>
+                                            <p class="text-sm text-gray-400">Configure prompt versions for functional areas</p>
+                                        </div>
+                                    </div>
+                                    <svg class="h-5 w-5 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </summary>
+                                <div class="mt-5 space-y-4">
+                                    <p id="system-prompts-description" class="text-xs text-gray-400">Configure which prompt versions should be used for different functional areas. Defaults to system-wide prompt mappings.</p>
 
-            </div>
+                                    <div id="conversation-execution-section" class="mb-6 hidden">
+                                        <div class="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 rounded-lg p-4 border-2 border-blue-700/30">
+                                            <div class="flex items-center gap-2 mb-3">
+                                                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                                                </svg>
+                                                <h4 class="text-sm font-bold text-white uppercase tracking-wide">Conversation Execution Prompt</h4>
+                                            </div>
+                                            <p class="text-xs text-gray-400 mb-3">Select the system prompt for LLM conversation mode</p>
+                                            <div id="profile-modal-conversation-prompts" class="space-y-2"></div>
+                                        </div>
+                                    </div>
+
+                                    <div id="rag-execution-section" class="mb-6 hidden">
+                                        <div class="bg-gradient-to-br from-emerald-900/20 to-teal-900/20 rounded-lg p-4 border-2 border-emerald-700/30">
+                                            <div class="flex items-center gap-2 mb-3">
+                                                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                                </svg>
+                                                <h4 class="text-sm font-bold text-white uppercase tracking-wide">RAG Focused Execution Prompt</h4>
+                                            </div>
+                                            <p class="text-xs text-gray-400 mb-3">Select the system prompt for knowledge base synthesis and retrieval</p>
+                                            <div id="profile-modal-rag-prompts" class="space-y-2"></div>
+                                        </div>
+                                    </div>
+
+                                    <div id="genie-coordination-section" class="mb-6 hidden">
+                                        <div class="bg-gradient-to-br from-amber-900/20 to-orange-900/20 rounded-lg p-4 border-2 border-amber-700/30">
+                                            <div class="flex items-center gap-2 mb-3">
+                                                <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                                </svg>
+                                                <h4 class="text-sm font-bold text-white uppercase tracking-wide">Genie Coordinator Prompt</h4>
+                                            </div>
+                                            <p class="text-xs text-gray-400 mb-3">Configure the system prompt that guides how the Genie coordinates between child profiles</p>
+                                            <div id="profile-modal-genie-prompts" class="space-y-2"></div>
+                                        </div>
+                                    </div>
+
+                                    <div id="master-system-section" class="mb-6">
+                                        <div class="bg-gradient-to-br from-purple-900/20 to-indigo-900/20 rounded-lg p-4 border-2 border-purple-700/30">
+                                            <div class="flex items-center gap-2 mb-3">
+                                                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                                </svg>
+                                                <h4 class="text-sm font-bold text-white uppercase tracking-wide">Master System Prompt</h4>
+                                            </div>
+                                            <p class="text-xs text-gray-400 mb-3">Select the base system prompt for this profile's LLM provider</p>
+                                            <div id="profile-modal-master-prompts" class="space-y-2"></div>
+                                        </div>
+                                    </div>
+
+                                    <div id="tool-enabled-prompts-section">
+                                        <div class="mb-6">
+                                            <div class="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 rounded-lg p-4 border-2 border-blue-700/30">
+                                                <div class="flex items-center gap-2 mb-3">
+                                                    <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                                                    </svg>
+                                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Workflow &amp; Classification</h4>
+                                                </div>
+                                                <p class="text-xs text-gray-400 mb-3">Prompts for task analysis and workflow planning</p>
+                                                <div id="profile-modal-workflow-prompts" class="space-y-2"></div>
+                                            </div>
+                                        </div>
+                                        <div class="mb-6">
+                                            <div class="bg-gradient-to-br from-red-900/20 to-orange-900/20 rounded-lg p-4 border-2 border-red-700/30">
+                                                <div class="flex items-center gap-2 mb-3">
+                                                    <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                                    </svg>
+                                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Error Recovery &amp; Self-Correction</h4>
+                                                </div>
+                                                <p class="text-xs text-gray-400 mb-3">Prompts for handling errors and corrections</p>
+                                                <div id="profile-modal-error-prompts" class="space-y-2"></div>
+                                            </div>
+                                        </div>
+                                        <div class="mb-6">
+                                            <div class="bg-gradient-to-br from-green-900/20 to-emerald-900/20 rounded-lg p-4 border-2 border-green-700/30">
+                                                <div class="flex items-center gap-2 mb-3">
+                                                    <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+                                                    </svg>
+                                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Data Operations</h4>
+                                                </div>
+                                                <p class="text-xs text-gray-400 mb-3">Prompts for SQL and data manipulation</p>
+                                                <div id="profile-modal-data-prompts" class="space-y-2"></div>
+                                            </div>
+                                        </div>
+                                        <div class="mb-6">
+                                            <div class="bg-gradient-to-br from-yellow-900/20 to-amber-900/20 rounded-lg p-4 border-2 border-yellow-700/30">
+                                                <div class="flex items-center gap-2 mb-3">
+                                                    <svg class="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                                    </svg>
+                                                    <h4 class="text-sm font-bold text-white uppercase tracking-wide">Visualization</h4>
+                                                </div>
+                                                <p class="text-xs text-gray-400 mb-3">Prompts for charting and data visualization</p>
+                                                <div id="profile-modal-visualization-prompts" class="space-y-2"></div>
+                                            </div>
+                                        </div>
+                                    </div><!-- End tool-enabled-prompts-section -->
+                                </div>
+                            </details>
+                        </div>
+
+                    </div><!-- End profile-section-resources -->
+
+                </div><!-- End right panel -->
+            </div><!-- End two-column body -->
 
             <!-- Modal Footer -->
-            <div class="flex gap-3 pt-4">
-                <button type="button" id="profile-modal-cancel" class="flex-1 card-btn card-btn--neutral">
-                    Cancel
-                </button>
-                <button type="submit" id="profile-modal-save" class="flex-1 card-btn card-btn--primary">
-                    Save Profile
-                </button>
+            <div class="flex justify-end gap-3 px-6 py-4 border-t border-gray-700/30 flex-shrink-0">
+                <button type="button" id="profile-modal-cancel" class="card-btn card-btn--neutral">Cancel</button>
+                <button type="submit" id="profile-modal-save" class="card-btn card-btn--primary">Save Profile</button>
             </div>
         </div>
     </div>

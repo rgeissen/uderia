@@ -5521,6 +5521,73 @@ async function renderKnowledgeGraphsForProfile(profileId, kgSection, kgList) {
     }
 }
 
+function _initProfileModalAccordion(modal) {
+    // Tear down previous listeners (prevents stacking on modal re-open)
+    if (modal._accordionAbort) modal._accordionAbort.abort();
+    modal._accordionAbort = new AbortController();
+    const { signal } = modal._accordionAbort;
+
+    function makeExclusive(group) {
+        group.forEach(details => {
+            details.addEventListener('toggle', () => {
+                if (!details.open) return;
+                group.forEach(other => { if (other !== details) other.open = false; });
+            }, { signal });
+        });
+    }
+
+    // Level 1: top-level glass-panel cards within each section
+    modal.querySelectorAll('.profile-modal-section').forEach(section => {
+        makeExclusive(Array.from(section.querySelectorAll('.glass-panel > details')));
+    });
+
+    // Level 2: sub-section details inside the Intelligence Collections card
+    const intelCard = modal.querySelector('#profile-content-intelligence > details');
+    if (intelCard) {
+        // Sub-details are: content-div > wrapper-div > details
+        const subDetails = Array.from(intelCard.querySelectorAll(':scope > div > div > details'));
+        makeExclusive(subDetails);
+    }
+}
+
+function _openFirstCard(section) {
+    if (!section) return;
+    const cards = Array.from(section.querySelectorAll('.glass-panel > details'));
+    cards.forEach((d, i) => { d.open = i === 0; });
+}
+
+function _initProfileModalNav(modal) {
+    const navBtns = modal.querySelectorAll('.profile-nav-item');
+    const sections = modal.querySelectorAll('.profile-modal-section');
+
+    // Reset to Identity section each time the modal opens
+    navBtns.forEach(b => b.classList.remove('active'));
+    sections.forEach(s => s.classList.add('hidden'));
+    const identityBtn = modal.querySelector('[data-profile-section="identity"]');
+    const identitySection = modal.querySelector('#profile-section-identity');
+    if (identityBtn) identityBtn.classList.add('active');
+    if (identitySection) {
+        identitySection.classList.remove('hidden');
+        _openFirstCard(identitySection);
+    }
+
+    navBtns.forEach(btn => {
+        // Replace with a fresh clone to avoid stacking listeners on re-open
+        const fresh = btn.cloneNode(true);
+        btn.parentNode.replaceChild(fresh, btn);
+        fresh.addEventListener('click', () => {
+            modal.querySelectorAll('.profile-nav-item').forEach(b => b.classList.remove('active'));
+            sections.forEach(s => s.classList.add('hidden'));
+            fresh.classList.add('active');
+            const target = modal.querySelector(`#profile-section-${fresh.dataset.profileSection}`);
+            if (target) {
+                target.classList.remove('hidden');
+                _openFirstCard(target);
+            }
+        });
+    });
+}
+
 async function showProfileModal(profileId = null, defaultProfileType = null) {
     const profile = profileId ? configState.profiles.find(p => p.id === profileId) : null;
     const isEdit = !!profile;
@@ -5715,7 +5782,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 systemPromptsTab.style.display = '';
             }
             if (systemPromptsContent) {
-                systemPromptsContent.style.display = '';
+                systemPromptsContent.style.display = isPrivileged ? '' : 'none';
             }
         } else if (profileType === 'rag_focused') {
             console.log('[Profile Modal] Configuring sections for RAG-focused profile');
@@ -5763,7 +5830,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 systemPromptsTab.style.display = '';
             }
             if (systemPromptsContent) {
-                systemPromptsContent.style.display = '';
+                systemPromptsContent.style.display = isPrivileged ? '' : 'none';
             }
         } else if (profileType === 'genie') {
             console.log('[Profile Modal] Configuring sections for genie profile');
@@ -5825,7 +5892,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 systemPromptsTab.style.display = '';
             }
             if (systemPromptsContent) {
-                systemPromptsContent.style.display = '';
+                systemPromptsContent.style.display = isPrivileged ? '' : 'none';
             }
         } else {
             console.log('[Profile Modal] Configuring sections for tool-enabled profile');
@@ -5889,7 +5956,7 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 systemPromptsTab.style.display = '';
             }
             if (systemPromptsContent) {
-                systemPromptsContent.style.display = '';
+                systemPromptsContent.style.display = isPrivileged ? '' : 'none';
             }
         }
 
@@ -6407,16 +6474,18 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             const promptsNotYetConfigured = profile && (profile.prompts === null || profile.prompts === undefined || profile.prompts.length === 0);
 
             toolsContainer.innerHTML = allTools.map(tool => `
-                <label class="flex items-center gap-2 text-sm text-gray-300">
+                <label class="ind-toggle ind-toggle--sm gap-2 text-sm text-gray-300 w-full">
                     <input type="checkbox" value="${escapeHtml(tool)}" ${!isEdit || toolsNotYetConfigured || profile?.tools?.includes(tool) || profile?.tools?.includes('*') ? 'checked' : ''}>
-                    ${escapeHtml(tool)}
+                    <span class="ind-track flex-shrink-0"></span>
+                    <span>${escapeHtml(tool)}</span>
                 </label>
             `).join('') || '<span class="text-gray-400">No tools found.</span>';
 
             promptsContainer.innerHTML = allPrompts.map(prompt => `
-                <label class="flex items-center gap-2 text-sm text-gray-300">
+                <label class="ind-toggle ind-toggle--sm gap-2 text-sm text-gray-300 w-full">
                     <input type="checkbox" value="${escapeHtml(prompt)}" ${!isEdit || promptsNotYetConfigured || profile?.prompts?.includes(prompt) || profile?.prompts?.includes('*') ? 'checked' : ''}>
-                    ${escapeHtml(prompt)}
+                    <span class="ind-track flex-shrink-0"></span>
+                    <span>${escapeHtml(prompt)}</span>
                 </label>
             `).join('') || '<span class="text-gray-400">No prompts found.</span>';
         } catch (error) {
@@ -6955,6 +7024,12 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
 
     // Show the modal
     modal.classList.remove('hidden');
+
+    // Initialize two-column sidebar nav (resets to Identity section, wires click handlers)
+    _initProfileModalNav(modal);
+
+    // Exclusive accordion: opening one card auto-collapses siblings in the same section
+    _initProfileModalAccordion(modal);
 
     // Tab switching logic for MCP Resources, Intelligence Collections, Skills, and System Prompts
     const mcpResourcesTab = modal.querySelector('#profile-tab-mcp-resources');
