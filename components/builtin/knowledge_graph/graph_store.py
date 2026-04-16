@@ -49,7 +49,11 @@ _MAX_JOIN_DISCOVERY_ROUNDS = 3
 
 class GraphStore:
     """
-    Dual-layer graph store scoped to a single (profile_id, user_uuid) pair.
+    Dual-layer graph store scoped to a single knowledge graph (kg_id).
+
+    Multiple KGs can exist per (profile_id, user_uuid) pair; only one is active
+    at a time.  When kg_id is omitted, the active KG is resolved lazily on first
+    use — profile_id is used as a final fallback for backwards compatibility.
 
     SQLite handles durable CRUD. NetworkX provides graph algorithms
     (BFS, shortest path, centrality, cycle detection). The NetworkX graph
@@ -57,9 +61,16 @@ class GraphStore:
     Any write operation invalidates the cache.
     """
 
-    def __init__(self, profile_id: str, user_uuid: str, db_path: Optional[str] = None):
+    def __init__(
+        self,
+        profile_id: str,
+        user_uuid: str,
+        kg_id: Optional[str] = None,
+        db_path: Optional[str] = None,
+    ):
         self.profile_id = profile_id
         self.user_uuid = user_uuid
+        self._kg_id = kg_id  # explicit kg_id or None (resolved lazily on first use)
 
         if db_path:
             self._db_path = db_path
@@ -72,6 +83,40 @@ class GraphStore:
 
         # NetworkX cache — lazy-loaded, invalidated on writes
         self._graph: Optional[Any] = None
+
+    # -----------------------------------------------------------------------
+    # kg_id resolution
+    # -----------------------------------------------------------------------
+
+    @property
+    def kg_id(self) -> str:
+        """
+        The active kg_id for this store instance.
+
+        If an explicit kg_id was passed at construction time, that value is
+        used permanently.  Otherwise the active kg_id is looked up from
+        kg_metadata on first use and cached.  Falls back to profile_id so
+        that stores created before the multi-KG migration still work.
+        """
+        if self._kg_id is not None:
+            return self._kg_id
+        active = self._resolve_active_kg_id()
+        self._kg_id = active if active else self.profile_id
+        return self._kg_id
+
+    def _resolve_active_kg_id(self) -> Optional[str]:
+        """Fetch the is_active=1 kg_id for this (profile_id, user_uuid) pair."""
+        conn = self._get_conn()
+        try:
+            GraphStore._ensure_kg_metadata_table(conn)
+            row = conn.execute(
+                "SELECT kg_id FROM kg_metadata "
+                "WHERE profile_id=? AND user_uuid=? AND is_active=1 LIMIT 1",
+                (self.profile_id, self.user_uuid),
+            ).fetchone()
+            return row["kg_id"] if row else None
+        finally:
+            conn.close()
 
     # -----------------------------------------------------------------------
     # SQLite connection helper
@@ -100,7 +145,7 @@ class GraphStore:
         source_detail: Optional[str] = None,
     ) -> int:
         """
-        Add an entity (node) to the graph. Upserts on (profile_id, user_uuid, name, entity_type).
+        Add an entity (node) to the graph. Upserts on (kg_id, name, entity_type).
 
         Returns:
             The entity ID (new or existing).
@@ -110,21 +155,22 @@ class GraphStore:
 
         props_json = json.dumps(properties or {})
         now = datetime.now(timezone.utc).isoformat()
+        kg_id = self.kg_id
 
         conn = self._get_conn()
         try:
             cursor = conn.execute(
                 """
-                INSERT INTO kg_entities (profile_id, user_uuid, name, entity_type, properties_json, source, source_detail, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(profile_id, user_uuid, name, entity_type)
+                INSERT INTO kg_entities (kg_id, profile_id, user_uuid, name, entity_type, properties_json, source, source_detail, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(kg_id, name, entity_type)
                 DO UPDATE SET
                     properties_json = excluded.properties_json,
                     source = excluded.source,
                     source_detail = excluded.source_detail,
                     updated_at = excluded.updated_at
                 """,
-                (self.profile_id, self.user_uuid, name, entity_type, props_json, source, source_detail, now, now),
+                (kg_id, self.profile_id, self.user_uuid, name, entity_type, props_json, source, source_detail, now, now),
             )
             conn.commit()
             entity_id = cursor.lastrowid
@@ -132,8 +178,8 @@ class GraphStore:
             # If upsert updated an existing row, lastrowid may be 0 — fetch the real ID
             if not entity_id:
                 row = conn.execute(
-                    "SELECT id FROM kg_entities WHERE profile_id=? AND user_uuid=? AND name=? AND entity_type=?",
-                    (self.profile_id, self.user_uuid, name, entity_type),
+                    "SELECT id FROM kg_entities WHERE kg_id=? AND name=? AND entity_type=?",
+                    (kg_id, name, entity_type),
                 ).fetchone()
                 entity_id = row["id"] if row else 0
 
@@ -143,30 +189,30 @@ class GraphStore:
             conn.close()
 
     def get_entity(self, entity_id: int) -> Optional[Dict[str, Any]]:
-        """Get a single entity by ID (within profile scope)."""
+        """Get a single entity by ID (within kg scope)."""
         conn = self._get_conn()
         try:
             row = conn.execute(
-                "SELECT * FROM kg_entities WHERE id=? AND profile_id=? AND user_uuid=?",
-                (entity_id, self.profile_id, self.user_uuid),
+                "SELECT * FROM kg_entities WHERE id=? AND kg_id=?",
+                (entity_id, self.kg_id),
             ).fetchone()
             return self._row_to_entity(row) if row else None
         finally:
             conn.close()
 
     def get_entity_by_name(self, name: str, entity_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Lookup entity by name (case-insensitive) within profile scope."""
+        """Lookup entity by name (case-insensitive) within kg scope."""
         conn = self._get_conn()
         try:
             if entity_type:
                 row = conn.execute(
-                    "SELECT * FROM kg_entities WHERE profile_id=? AND user_uuid=? AND name=? COLLATE NOCASE AND entity_type=?",
-                    (self.profile_id, self.user_uuid, name, entity_type),
+                    "SELECT * FROM kg_entities WHERE kg_id=? AND name=? COLLATE NOCASE AND entity_type=?",
+                    (self.kg_id, name, entity_type),
                 ).fetchone()
             else:
                 row = conn.execute(
-                    "SELECT * FROM kg_entities WHERE profile_id=? AND user_uuid=? AND name=? COLLATE NOCASE",
-                    (self.profile_id, self.user_uuid, name),
+                    "SELECT * FROM kg_entities WHERE kg_id=? AND name=? COLLATE NOCASE",
+                    (self.kg_id, name),
                 ).fetchone()
             return self._row_to_entity(row) if row else None
         finally:
@@ -180,25 +226,26 @@ class GraphStore:
         conn = self._get_conn()
         try:
             pattern = f"%{query_text}%"
+            kg_id = self.kg_id
             if entity_type:
                 rows = conn.execute(
                     """
                     SELECT * FROM kg_entities
-                    WHERE profile_id=? AND user_uuid=? AND entity_type=?
+                    WHERE kg_id=? AND entity_type=?
                       AND (name LIKE ? COLLATE NOCASE OR properties_json LIKE ? COLLATE NOCASE)
                     ORDER BY name LIMIT ?
                     """,
-                    (self.profile_id, self.user_uuid, entity_type, pattern, pattern, limit),
+                    (kg_id, entity_type, pattern, pattern, limit),
                 ).fetchall()
             else:
                 rows = conn.execute(
                     """
                     SELECT * FROM kg_entities
-                    WHERE profile_id=? AND user_uuid=?
+                    WHERE kg_id=?
                       AND (name LIKE ? COLLATE NOCASE OR properties_json LIKE ? COLLATE NOCASE)
                     ORDER BY name LIMIT ?
                     """,
-                    (self.profile_id, self.user_uuid, pattern, pattern, limit),
+                    (kg_id, pattern, pattern, limit),
                 ).fetchall()
             return [self._row_to_entity(r) for r in rows]
         finally:
@@ -208,15 +255,16 @@ class GraphStore:
         """List all entities, optionally filtered by type."""
         conn = self._get_conn()
         try:
+            kg_id = self.kg_id
             if entity_type:
                 rows = conn.execute(
-                    "SELECT * FROM kg_entities WHERE profile_id=? AND user_uuid=? AND entity_type=? ORDER BY name LIMIT ?",
-                    (self.profile_id, self.user_uuid, entity_type, limit),
+                    "SELECT * FROM kg_entities WHERE kg_id=? AND entity_type=? ORDER BY name LIMIT ?",
+                    (kg_id, entity_type, limit),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM kg_entities WHERE profile_id=? AND user_uuid=? ORDER BY entity_type, name LIMIT ?",
-                    (self.profile_id, self.user_uuid, limit),
+                    "SELECT * FROM kg_entities WHERE kg_id=? ORDER BY entity_type, name LIMIT ?",
+                    (kg_id, limit),
                 ).fetchall()
             return [self._row_to_entity(r) for r in rows]
         finally:
@@ -227,8 +275,8 @@ class GraphStore:
         conn = self._get_conn()
         try:
             row = conn.execute(
-                "SELECT properties_json FROM kg_entities WHERE id=? AND profile_id=? AND user_uuid=?",
-                (entity_id, self.profile_id, self.user_uuid),
+                "SELECT properties_json FROM kg_entities WHERE id=? AND kg_id=?",
+                (entity_id, self.kg_id),
             ).fetchone()
             if not row:
                 return False
@@ -238,8 +286,8 @@ class GraphStore:
             now = datetime.now(timezone.utc).isoformat()
 
             conn.execute(
-                "UPDATE kg_entities SET properties_json=?, updated_at=? WHERE id=? AND profile_id=? AND user_uuid=?",
-                (json.dumps(existing), now, entity_id, self.profile_id, self.user_uuid),
+                "UPDATE kg_entities SET properties_json=?, updated_at=? WHERE id=? AND kg_id=?",
+                (json.dumps(existing), now, entity_id, self.kg_id),
             )
             conn.commit()
             self._invalidate_cache()
@@ -252,8 +300,8 @@ class GraphStore:
         conn = self._get_conn()
         try:
             cursor = conn.execute(
-                "DELETE FROM kg_entities WHERE id=? AND profile_id=? AND user_uuid=?",
-                (entity_id, self.profile_id, self.user_uuid),
+                "DELETE FROM kg_entities WHERE id=? AND kg_id=?",
+                (entity_id, self.kg_id),
             )
             conn.commit()
             self._invalidate_cache()
@@ -274,27 +322,28 @@ class GraphStore:
         metadata: Optional[Dict[str, Any]] = None,
         source: str = "manual",
     ) -> int:
-        """Add a typed edge between two entities. Upserts on (profile, source, target, type)."""
+        """Add a typed edge between two entities. Upserts on (kg_id, source, target, type)."""
         if relationship_type not in RELATIONSHIP_TYPES:
             raise ValueError(f"Invalid relationship_type '{relationship_type}'. Must be one of: {RELATIONSHIP_TYPES}")
 
         metadata_json = json.dumps(metadata or {})
         now = datetime.now(timezone.utc).isoformat()
+        kg_id = self.kg_id
 
         conn = self._get_conn()
         try:
             cursor = conn.execute(
                 """
-                INSERT INTO kg_relationships (profile_id, user_uuid, source_entity_id, target_entity_id,
+                INSERT INTO kg_relationships (kg_id, profile_id, user_uuid, source_entity_id, target_entity_id,
                                               relationship_type, cardinality, metadata_json, source, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(profile_id, user_uuid, source_entity_id, target_entity_id, relationship_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(kg_id, source_entity_id, target_entity_id, relationship_type)
                 DO UPDATE SET
                     cardinality = excluded.cardinality,
                     metadata_json = excluded.metadata_json,
                     source = excluded.source
                 """,
-                (self.profile_id, self.user_uuid, source_entity_id, target_entity_id,
+                (kg_id, self.profile_id, self.user_uuid, source_entity_id, target_entity_id,
                  relationship_type, cardinality, metadata_json, source, now),
             )
             conn.commit()
@@ -303,9 +352,9 @@ class GraphStore:
             if not rel_id:
                 row = conn.execute(
                     """SELECT id FROM kg_relationships
-                       WHERE profile_id=? AND user_uuid=? AND source_entity_id=?
+                       WHERE kg_id=? AND source_entity_id=?
                          AND target_entity_id=? AND relationship_type=?""",
-                    (self.profile_id, self.user_uuid, source_entity_id, target_entity_id, relationship_type),
+                    (kg_id, source_entity_id, target_entity_id, relationship_type),
                 ).fetchone()
                 rel_id = row["id"] if row else 0
 
@@ -318,6 +367,7 @@ class GraphStore:
         """Get all edges from/to an entity. direction: 'outgoing', 'incoming', or 'both'."""
         conn = self._get_conn()
         try:
+            kg_id = self.kg_id
             results = []
             if direction in ("outgoing", "both"):
                 rows = conn.execute(
@@ -327,9 +377,9 @@ class GraphStore:
                     FROM kg_relationships r
                     JOIN kg_entities e1 ON r.source_entity_id = e1.id
                     JOIN kg_entities e2 ON r.target_entity_id = e2.id
-                    WHERE r.source_entity_id=? AND r.profile_id=? AND r.user_uuid=?
+                    WHERE r.source_entity_id=? AND r.kg_id=?
                     """,
-                    (entity_id, self.profile_id, self.user_uuid),
+                    (entity_id, kg_id),
                 ).fetchall()
                 results.extend(self._row_to_relationship(r) for r in rows)
 
@@ -341,9 +391,9 @@ class GraphStore:
                     FROM kg_relationships r
                     JOIN kg_entities e1 ON r.source_entity_id = e1.id
                     JOIN kg_entities e2 ON r.target_entity_id = e2.id
-                    WHERE r.target_entity_id=? AND r.profile_id=? AND r.user_uuid=?
+                    WHERE r.target_entity_id=? AND r.kg_id=?
                     """,
-                    (entity_id, self.profile_id, self.user_uuid),
+                    (entity_id, kg_id),
                 ).fetchall()
                 results.extend(self._row_to_relationship(r) for r in rows)
 
@@ -368,9 +418,9 @@ class GraphStore:
                 FROM kg_relationships r
                 JOIN kg_entities e1 ON r.source_entity_id = e1.id
                 JOIN kg_entities e2 ON r.target_entity_id = e2.id
-                WHERE r.profile_id=? AND r.user_uuid=?
+                WHERE r.kg_id=?
             """
-            params: list = [self.profile_id, self.user_uuid]
+            params: list = [self.kg_id]
 
             if entity_id is not None:
                 query += " AND (r.source_entity_id=? OR r.target_entity_id=?)"
@@ -392,8 +442,8 @@ class GraphStore:
         conn = self._get_conn()
         try:
             cursor = conn.execute(
-                "DELETE FROM kg_relationships WHERE id=? AND profile_id=? AND user_uuid=?",
-                (relationship_id, self.profile_id, self.user_uuid),
+                "DELETE FROM kg_relationships WHERE id=? AND kg_id=?",
+                (relationship_id, self.kg_id),
             )
             conn.commit()
             self._invalidate_cache()
@@ -459,16 +509,17 @@ class GraphStore:
         return {"entities_added": entities_added, "relationships_added": rels_added}
 
     def clear_graph(self) -> Dict[str, int]:
-        """Delete all entities and relationships for this profile/user."""
+        """Delete all entities and relationships for this specific KG (scoped by kg_id)."""
         conn = self._get_conn()
         try:
+            kg_id = self.kg_id
             rels_deleted = conn.execute(
-                "DELETE FROM kg_relationships WHERE profile_id=? AND user_uuid=?",
-                (self.profile_id, self.user_uuid),
+                "DELETE FROM kg_relationships WHERE kg_id=?",
+                (kg_id,),
             ).rowcount
             entities_deleted = conn.execute(
-                "DELETE FROM kg_entities WHERE profile_id=? AND user_uuid=?",
-                (self.profile_id, self.user_uuid),
+                "DELETE FROM kg_entities WHERE kg_id=?",
+                (kg_id,),
             ).rowcount
             conn.commit()
             self._invalidate_cache()
@@ -495,10 +546,11 @@ class GraphStore:
         G = nx.DiGraph()
         conn = self._get_conn()
         try:
+            kg_id = self.kg_id
             # Load nodes
             entities = conn.execute(
-                "SELECT * FROM kg_entities WHERE profile_id=? AND user_uuid=?",
-                (self.profile_id, self.user_uuid),
+                "SELECT * FROM kg_entities WHERE kg_id=?",
+                (kg_id,),
             ).fetchall()
             for e in entities:
                 G.add_node(
@@ -511,8 +563,8 @@ class GraphStore:
 
             # Load edges
             rels = conn.execute(
-                "SELECT * FROM kg_relationships WHERE profile_id=? AND user_uuid=?",
-                (self.profile_id, self.user_uuid),
+                "SELECT * FROM kg_relationships WHERE kg_id=?",
+                (kg_id,),
             ).fetchall()
             for r in rels:
                 G.add_edge(
@@ -872,13 +924,14 @@ class GraphStore:
             # Fallback to SQL counts
             conn = self._get_conn()
             try:
+                kg_id = self.kg_id
                 ent_count = conn.execute(
-                    "SELECT COUNT(*) FROM kg_entities WHERE profile_id=? AND user_uuid=?",
-                    (self.profile_id, self.user_uuid),
+                    "SELECT COUNT(*) FROM kg_entities WHERE kg_id=?",
+                    (kg_id,),
                 ).fetchone()[0]
                 rel_count = conn.execute(
-                    "SELECT COUNT(*) FROM kg_relationships WHERE profile_id=? AND user_uuid=?",
-                    (self.profile_id, self.user_uuid),
+                    "SELECT COUNT(*) FROM kg_relationships WHERE kg_id=?",
+                    (kg_id,),
                 ).fetchone()[0]
                 return {
                     "total_entities": ent_count,
@@ -982,6 +1035,192 @@ class GraphStore:
         }
 
     # -------------------------------------------------------------------
+    # KG Metadata  (name ↔ stable kg_id mapping)
+    # -------------------------------------------------------------------
+
+    @staticmethod
+    def _ensure_kg_metadata_table(conn: sqlite3.Connection) -> None:
+        """Create kg_metadata if it doesn't exist yet.
+        New schema: no UNIQUE(profile_id, user_uuid), has is_active + description columns."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS kg_metadata (
+                kg_id         TEXT PRIMARY KEY,
+                profile_id    TEXT NOT NULL,
+                user_uuid     TEXT NOT NULL,
+                name          TEXT NOT NULL,
+                database_name TEXT,
+                description   TEXT,
+                is_active     INTEGER NOT NULL DEFAULT 1,
+                created_at    TEXT NOT NULL,
+                updated_at    TEXT NOT NULL
+            )
+            """
+        )
+        # Additive migration: add description column to existing tables
+        try:
+            conn.execute("ALTER TABLE kg_metadata ADD COLUMN description TEXT")
+        except Exception:
+            pass  # Column already exists
+        conn.commit()
+
+    def set_kg_metadata(
+        self,
+        name: str,
+        database_name: Optional[str] = None,
+        description: Optional[str] = None,
+        is_active: bool = True,
+    ) -> str:
+        """
+        Register this KG's name, database, and description in kg_metadata.
+
+        Uses self._kg_id if already set (from __init__ or previous call), otherwise
+        mints a new UUID.
+
+        When is_active=True (default): deactivates all other KGs for this profile and
+        makes this one the active KG.
+        When is_active=False: registers the KG as inactive without touching any other
+        KG's active state — used when importing into a profile that already has an
+        active KG so the existing active KG is not displaced.
+
+        Returns the stable kg_id.
+        """
+        import uuid as _uuid
+        if self._kg_id is None:
+            self._kg_id = str(_uuid.uuid4())
+        kg_id = self._kg_id
+        now = datetime.now(timezone.utc).isoformat()
+
+        conn = self._get_conn()
+        try:
+            GraphStore._ensure_kg_metadata_table(conn)
+            if is_active:
+                # Deactivate all other KGs for this profile/user before activating this one
+                conn.execute(
+                    "UPDATE kg_metadata SET is_active=0, updated_at=? WHERE profile_id=? AND user_uuid=?",
+                    (now, self.profile_id, self.user_uuid),
+                )
+            # Insert or update this KG with the requested active state
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO kg_metadata
+                    (kg_id, profile_id, user_uuid, name, database_name, description,
+                     is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(
+                    (SELECT created_at FROM kg_metadata WHERE kg_id=?), ?
+                ), ?)
+                """,
+                (kg_id, self.profile_id, self.user_uuid, name, database_name, description,
+                 1 if is_active else 0, kg_id, now, now),
+            )
+            conn.commit()
+            return kg_id
+        finally:
+            conn.close()
+
+    def get_kg_metadata(self) -> Optional[Dict[str, Any]]:
+        """Return {kg_id, name, database_name, is_active} for the active KG, or None."""
+        conn = self._get_conn()
+        try:
+            GraphStore._ensure_kg_metadata_table(conn)
+            kg_id = self._kg_id  # don't trigger lazy resolution here
+            if kg_id:
+                row = conn.execute(
+                    "SELECT kg_id, name, database_name, is_active, created_at, updated_at "
+                    "FROM kg_metadata WHERE kg_id=?",
+                    (kg_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT kg_id, name, database_name, is_active, created_at, updated_at "
+                    "FROM kg_metadata WHERE profile_id=? AND user_uuid=? AND is_active=1 LIMIT 1",
+                    (self.profile_id, self.user_uuid),
+                ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    @staticmethod
+    def rename_kg(
+        kg_id: str,
+        new_name: str,
+        description: Optional[str] = None,
+        db_path: Optional[str] = None,
+    ) -> bool:
+        """Update name (and optionally description) for a KG.  Returns True if found and updated."""
+        if not db_path:
+            try:
+                from trusted_data_agent.core.config import APP_CONFIG
+                db_path = APP_CONFIG.AUTH_DB_PATH.replace("sqlite:///", "")
+            except Exception:
+                db_path = "tda_auth.db"
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            GraphStore._ensure_kg_metadata_table(conn)
+            now = datetime.now(timezone.utc).isoformat()
+            if description is not None:
+                cursor = conn.execute(
+                    "UPDATE kg_metadata SET name=?, description=?, updated_at=? WHERE kg_id=?",
+                    (new_name, description, now, kg_id),
+                )
+            else:
+                cursor = conn.execute(
+                    "UPDATE kg_metadata SET name=?, updated_at=? WHERE kg_id=?",
+                    (new_name, now, kg_id),
+                )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    @staticmethod
+    def set_active_kg(kg_id: str, db_path: Optional[str] = None) -> bool:
+        """
+        Activate a specific KG (deactivates all other KGs for the same profile/user).
+        Returns True if the kg_id was found and activated.
+        """
+        if not db_path:
+            try:
+                from trusted_data_agent.core.config import APP_CONFIG
+                db_path = APP_CONFIG.AUTH_DB_PATH.replace("sqlite:///", "")
+            except Exception:
+                db_path = "tda_auth.db"
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            GraphStore._ensure_kg_metadata_table(conn)
+            row = conn.execute(
+                "SELECT profile_id, user_uuid FROM kg_metadata WHERE kg_id=?",
+                (kg_id,),
+            ).fetchone()
+            if not row:
+                return False
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "UPDATE kg_metadata SET is_active=0, updated_at=? WHERE profile_id=? AND user_uuid=?",
+                (now, row["profile_id"], row["user_uuid"]),
+            )
+            conn.execute(
+                "UPDATE kg_metadata SET is_active=1, updated_at=? WHERE kg_id=?",
+                (now, kg_id),
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _load_all_kg_metadata(user_uuid: str, conn: sqlite3.Connection) -> Dict[str, Dict[str, Any]]:
+        """Return {kg_id: {kg_id, profile_id, name, database_name, is_active}} for the given user."""
+        GraphStore._ensure_kg_metadata_table(conn)
+        rows = conn.execute(
+            "SELECT kg_id, profile_id, name, database_name, is_active FROM kg_metadata WHERE user_uuid=?",
+            (user_uuid,),
+        ).fetchall()
+        return {row["kg_id"]: dict(row) for row in rows}
+
+    # -------------------------------------------------------------------
     # Cross-profile enumeration (static — no instance needed)
     # -------------------------------------------------------------------
 
@@ -990,9 +1229,8 @@ class GraphStore:
         """
         List all knowledge graphs for a user across all profiles.
 
-        Returns one entry per profile_id that has at least one entity,
-        with summary statistics (entity/relationship counts, type breakdowns).
-        Ordered by most recently updated first.
+        Returns one entry per kg_id (multiple KGs can exist per profile).
+        Ordered by active-first, then most recently updated.
         """
         if not db_path:
             try:
@@ -1004,40 +1242,41 @@ class GraphStore:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         try:
-            # Profiles with KG data — aggregated stats
-            rows = conn.execute(
+            GraphStore._ensure_kg_metadata_table(conn)
+
+            # All KGs from kg_metadata joined with entity counts
+            meta_rows = conn.execute(
                 """
-                SELECT profile_id,
-                       COUNT(*) AS entity_count,
-                       MIN(created_at) AS first_created,
-                       MAX(updated_at) AS last_updated
-                FROM kg_entities
-                WHERE user_uuid = ?
-                GROUP BY profile_id
-                ORDER BY MAX(updated_at) DESC
+                SELECT km.kg_id, km.profile_id, km.name AS kg_name, km.database_name,
+                       km.description, km.is_active, km.created_at, km.updated_at,
+                       COUNT(e.id) AS entity_count
+                FROM kg_metadata km
+                LEFT JOIN kg_entities e ON e.kg_id = km.kg_id
+                WHERE km.user_uuid = ?
+                GROUP BY km.kg_id
+                ORDER BY km.name COLLATE NOCASE ASC
                 """,
                 (user_uuid,),
             ).fetchall()
 
             results: List[Dict[str, Any]] = []
-            for row in rows:
-                pid = row["profile_id"]
+            for row in meta_rows:
+                kid = row["kg_id"]
 
                 # Relationship count
                 rel_count = conn.execute(
-                    "SELECT COUNT(*) FROM kg_relationships WHERE profile_id = ? AND user_uuid = ?",
-                    (pid, user_uuid),
+                    "SELECT COUNT(*) FROM kg_relationships WHERE kg_id = ?",
+                    (kid,),
                 ).fetchone()[0]
 
                 # Entity type breakdown
                 type_rows = conn.execute(
                     """
                     SELECT entity_type, COUNT(*) AS cnt
-                    FROM kg_entities
-                    WHERE profile_id = ? AND user_uuid = ?
+                    FROM kg_entities WHERE kg_id = ?
                     GROUP BY entity_type
                     """,
-                    (pid, user_uuid),
+                    (kid,),
                 ).fetchall()
                 entity_types = {r["entity_type"]: r["cnt"] for r in type_rows}
 
@@ -1045,22 +1284,26 @@ class GraphStore:
                 rel_type_rows = conn.execute(
                     """
                     SELECT relationship_type, COUNT(*) AS cnt
-                    FROM kg_relationships
-                    WHERE profile_id = ? AND user_uuid = ?
+                    FROM kg_relationships WHERE kg_id = ?
                     GROUP BY relationship_type
                     """,
-                    (pid, user_uuid),
+                    (kid,),
                 ).fetchall()
                 relationship_types = {r["relationship_type"]: r["cnt"] for r in rel_type_rows}
 
                 results.append({
-                    "profile_id": pid,
+                    "kg_id": kid,
+                    "profile_id": row["profile_id"],
+                    "kg_name": row["kg_name"],
+                    "database_name": row["database_name"],
+                    "description": row["description"],
+                    "is_active": bool(row["is_active"]),
                     "total_entities": row["entity_count"],
                     "total_relationships": rel_count,
                     "entity_types": entity_types,
                     "relationship_types": relationship_types,
-                    "first_created": row["first_created"],
-                    "last_updated": row["last_updated"],
+                    "first_created": row["created_at"],
+                    "last_updated": row["updated_at"],
                 })
 
             return results

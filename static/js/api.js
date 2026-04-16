@@ -660,6 +660,21 @@ export async function getRagCollections(light = false) {
 // KNOWLEDGE GRAPH MANAGEMENT API
 // ============================================================================
 
+export async function renameKnowledgeGraph(kgId, newName, description = undefined) {
+    const body = { kg_id: kgId, name: newName };
+    if (description !== undefined) body.description = description;
+    const res = await fetch('/api/v1/knowledge-graph/rename', {
+        method: 'PATCH',
+        headers: _getHeaders(true),
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to rename knowledge graph');
+    }
+    return await res.json();
+}
+
 export async function loadKnowledgeGraphList() {
     const res = await fetch('/api/v1/knowledge-graph/list', { headers: _getHeaders(false) });
     if (!res.ok) {
@@ -669,8 +684,11 @@ export async function loadKnowledgeGraphList() {
     return await res.json();
 }
 
-export async function exportKnowledgeGraph(profileId) {
-    const res = await fetch(`/api/v1/knowledge-graph/export?profile_id=${encodeURIComponent(profileId)}`, {
+export async function exportKnowledgeGraph(profileId, kgId = null) {
+    const params = new URLSearchParams();
+    if (kgId) params.set('kg_id', kgId);
+    else if (profileId) params.set('profile_id', profileId);
+    const res = await fetch(`/api/v1/knowledge-graph/export?${params}`, {
         headers: _getHeaders(false)
     });
     if (!res.ok) {
@@ -705,8 +723,11 @@ export async function fetchKnowledgeGraphSpec(profileId, maxNodes = 500) {
     return await res.json();
 }
 
-export async function deleteKnowledgeGraph(profileId) {
-    const res = await fetch(`/api/v1/knowledge-graph/clear?profile_id=${encodeURIComponent(profileId)}`, {
+export async function deleteKnowledgeGraph(profileId, kgId = null) {
+    const params = new URLSearchParams();
+    if (kgId) params.set('kg_id', kgId);
+    else if (profileId) params.set('profile_id', profileId);
+    const res = await fetch(`/api/v1/knowledge-graph/clear?${params}`, {
         method: 'DELETE',
         headers: _getHeaders(false)
     });
@@ -717,11 +738,19 @@ export async function deleteKnowledgeGraph(profileId) {
     return await res.json();
 }
 
-export async function importKnowledgeGraph(profileId, entities, relationships) {
+export async function importKnowledgeGraph(profileId, entities, relationships, meta = {}, targetKgId = null) {
     const res = await fetch('/api/v1/knowledge-graph/import', {
         method: 'POST',
         headers: _getHeaders(true),
-        body: JSON.stringify({ profile_id: profileId, entities, relationships })
+        body: JSON.stringify({
+            profile_id: profileId,
+            entities,
+            relationships,
+            kg_name: meta.kg_name || '',
+            kg_description: meta.kg_description || '',
+            kg_database_name: meta.kg_database_name || '',
+            target_kg_id: targetKgId || null,
+        })
     });
     if (!res.ok) {
         const errorData = await res.json();
@@ -730,14 +759,16 @@ export async function importKnowledgeGraph(profileId, entities, relationships) {
     return await res.json();
 }
 
-export async function generateKnowledgeGraph(profileId, databaseName, includeSemantic = true) {
+export async function generateKnowledgeGraph(profileId, databaseName, includeSemantic = true, graphName = null, description = null) {
     const res = await fetch('/api/v1/knowledge-graph/generate', {
         method: 'POST',
         headers: _getHeaders(true),
         body: JSON.stringify({
             profile_id: profileId,
             database_name: databaseName,
-            include_semantic: includeSemantic
+            include_semantic: includeSemantic,
+            ...(graphName ? { graph_name: graphName } : {}),
+            ...(description ? { description } : {}),
         })
     });
     if (!res.ok) {
@@ -751,15 +782,16 @@ export async function generateKnowledgeGraph(profileId, databaseName, includeSem
  * Update profile assignments for a knowledge graph (replace all).
  * @param {string} kgOwnerProfileId - Profile that owns the KG data
  * @param {string[]} assignedProfileIds - Profiles that should have access
+ * @param {string|null} kgId - kg_id (preferred; falls back to kgOwnerProfileId if null)
  */
-export async function updateKgAssignments(kgOwnerProfileId, assignedProfileIds) {
+export async function updateKgAssignments(kgOwnerProfileId, assignedProfileIds, kgId = null) {
+    const body = { assigned_profile_ids: assignedProfileIds };
+    if (kgId) body.kg_id = kgId;
+    else body.kg_owner_profile_id = kgOwnerProfileId;
     const res = await fetch('/api/v1/knowledge-graph/assignments', {
         method: 'POST',
         headers: _getHeaders(true),
-        body: JSON.stringify({
-            kg_owner_profile_id: kgOwnerProfileId,
-            assigned_profile_ids: assignedProfileIds
-        })
+        body: JSON.stringify(body)
     });
     if (!res.ok) {
         const errorData = await res.json();
@@ -770,12 +802,12 @@ export async function updateKgAssignments(kgOwnerProfileId, assignedProfileIds) 
 
 /**
  * Activate a specific KG for a profile. Deactivates all others for that profile.
- * @param {string} kgOwnerProfileId - KG to activate (null to deactivate all)
+ * @param {string|null} kgId - kg_id to activate (null to deactivate all)
  * @param {string} assignedProfileId - Profile to activate the KG for
  */
-export async function activateKgForProfile(kgOwnerProfileId, assignedProfileId) {
+export async function activateKgForProfile(kgId, assignedProfileId) {
     const body = { assigned_profile_id: assignedProfileId };
-    if (kgOwnerProfileId) body.kg_owner_profile_id = kgOwnerProfileId;
+    if (kgId) body.kg_id = kgId;
 
     const res = await fetch('/api/v1/knowledge-graph/assignments/activate', {
         method: 'PATCH',

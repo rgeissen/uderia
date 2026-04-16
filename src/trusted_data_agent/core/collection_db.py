@@ -39,20 +39,20 @@ class CollectionDatabase:
         if user_id is None:
             # Admin view - all collections
             cursor.execute("""
-                SELECT c.*, u.username as owner_username 
+                SELECT c.*, u.username as owner_username
                 FROM collections c
                 LEFT JOIN users u ON c.owner_user_id = u.id
-                ORDER BY c.id
+                ORDER BY c.name COLLATE NOCASE ASC
             """)
         else:
             # User view - owned + subscribed collections
             cursor.execute("""
-                SELECT DISTINCT c.*, u.username as owner_username 
+                SELECT DISTINCT c.*, u.username as owner_username
                 FROM collections c
                 LEFT JOIN users u ON c.owner_user_id = u.id
                 LEFT JOIN collection_subscriptions cs ON c.id = cs.source_collection_id
                 WHERE c.owner_user_id = ? OR cs.user_id = ?
-                ORDER BY c.id
+                ORDER BY c.name COLLATE NOCASE ASC
             """, (user_id, user_id))
         
         rows = cursor.fetchall()
@@ -119,7 +119,7 @@ class CollectionDatabase:
         cursor.execute("""
             SELECT * FROM collections
             WHERE owner_user_id = ?
-            ORDER BY id
+            ORDER BY name COLLATE NOCASE ASC
         """, (user_id,))
         
         rows = cursor.fetchall()

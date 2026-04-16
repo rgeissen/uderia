@@ -6316,9 +6316,11 @@ export async function loadRagCollections() {
         const data = await res.json();
         let collections = (data && data.collections) ? data.collections : [];
 
-        // Separate collections by repository type
-        const plannerCollections = collections.filter(c => c.repository_type === 'planner');
-        const knowledgeCollections = collections.filter(c => c.repository_type === 'knowledge');
+        // Separate collections by repository type, applying active-only filter if toggled
+        const plannerFilter = document.getElementById('planner-active-filter')?.checked ?? false;
+        const knowledgeFilter = document.getElementById('knowledge-active-filter')?.checked ?? false;
+        const plannerCollections = collections.filter(c => c.repository_type === 'planner' && (!plannerFilter || c.enabled));
+        const knowledgeCollections = collections.filter(c => c.repository_type === 'knowledge' && (!knowledgeFilter || c.enabled));
         
         // Sort collections: Default Collection first, then by ID
         const sortCollections = (arr) => {
@@ -6407,6 +6409,15 @@ export async function loadRagCollections() {
         errMsg.textContent = `Error loading collections: ${err.message}`;
         DOM.ragMaintenanceCollectionsContainer.appendChild(errMsg);
     }
+
+    // Wire active-filter toggles (idempotent via data-wired guard)
+    ['planner-active-filter', 'knowledge-active-filter'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && !el.dataset.wired) {
+            el.dataset.wired = '1';
+            el.addEventListener('change', () => loadRagCollections());
+        }
+    });
 }
 
 // Make loadRagCollections globally available for marketplace handler

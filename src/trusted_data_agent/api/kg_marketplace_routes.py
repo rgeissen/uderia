@@ -77,30 +77,41 @@ async def publish_knowledge_graph(profile_id: str):
         if not is_kg_marketplace_enabled():
             return jsonify({"error": "Knowledge graph marketplace has been disabled by the administrator."}), 403
 
-        # Verify KG exists for this profile/user
-        from components.builtin.knowledge_graph.graph_store import GraphStore
-        store = GraphStore(profile_id, user_uuid)
-        stats = store.get_stats()
-        if stats.get("total_entities", 0) == 0:
-            return jsonify({"error": "Knowledge graph is empty. Add entities before publishing."}), 400
-
         data = (await request.get_json()) or {}
         visibility = data.get("visibility", "public")
         user_ids = data.get("user_ids", [])
+        kg_id_param = (data.get("kg_id") or "").strip() or None
 
         if visibility not in ("public", "targeted"):
             return jsonify({"error": "Visibility must be 'public' or 'targeted'"}), 400
         if visibility == "targeted" and not user_ids:
             return jsonify({"error": "Targeted publish requires at least one user"}), 400
 
+        # Instantiate the correct KG — use explicit kg_id when provided (multi-KG)
+        from components.builtin.knowledge_graph.graph_store import GraphStore
+        if kg_id_param:
+            store = GraphStore(profile_id, user_uuid, kg_id=kg_id_param)
+        else:
+            store = GraphStore(profile_id, user_uuid)
+
+        stats = store.get_stats()
+        if stats.get("total_entities", 0) == 0:
+            return jsonify({"error": "Knowledge graph is empty. Add entities before publishing."}), 400
+
         conn = _get_conn()
         cursor = conn.cursor()
 
-        # Check if already published
-        cursor.execute(
-            "SELECT id FROM marketplace_knowledge_graphs WHERE source_profile_id = ? AND publisher_user_id = ?",
-            (profile_id, user_uuid),
-        )
+        # Duplicate check: scoped to specific kg_id if provided, else to profile
+        if kg_id_param:
+            cursor.execute(
+                "SELECT id FROM marketplace_knowledge_graphs WHERE kg_id = ? AND publisher_user_id = ?",
+                (kg_id_param, user_uuid),
+            )
+        else:
+            cursor.execute(
+                "SELECT id FROM marketplace_knowledge_graphs WHERE source_profile_id = ? AND publisher_user_id = ? AND (kg_id IS NULL OR kg_id = '')",
+                (profile_id, user_uuid),
+            )
         existing = cursor.fetchone()
         if existing:
             conn.close()
@@ -110,9 +121,26 @@ async def publish_knowledge_graph(profile_id: str):
         entities = store.list_entities(limit=10000)
         relationships = store.list_relationships()
 
-        # Build import-ready export (relationships already have source_name/target_name from _row_to_relationship)
+        # Resolve KG metadata (name, description from kg_metadata table)
+        kg_meta_name = ""
+        kg_meta_description = ""
+        kg_meta_database = ""
+        try:
+            km = store.get_kg_metadata()
+            if km:
+                kg_meta_name = km.get("name") or ""
+                kg_meta_description = km.get("description") or ""
+                kg_meta_database = km.get("database_name") or ""
+        except Exception:
+            pass
+
+        # Build import-ready export with full metadata
         export_data = {
-            "export_version": "1.0",
+            "export_version": "2.0",
+            "kg_id": store.kg_id,
+            "kg_name": kg_meta_name,
+            "kg_description": kg_meta_description,
+            "kg_database_name": kg_meta_database,
             "profile_id": profile_id,
             "exported_at": datetime.now(timezone.utc).isoformat(),
             "entities": entities,
@@ -130,7 +158,7 @@ async def publish_knowledge_graph(profile_id: str):
         marketplace_id = str(_uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
-        # Resolve profile name
+        # Resolve profile name for fallback
         profile_name = profile_id
         try:
             from trusted_data_agent.core.config_manager import get_config_manager
@@ -142,17 +170,20 @@ async def publish_knowledge_graph(profile_id: str):
         except Exception:
             pass
 
-        name = data.get("name", profile_name)
+        name = data.get("name") or kg_meta_name or profile_name
         tags = data.get("tags", [])
 
         # Build manifest for preview (without full entity/relationship data)
         manifest = {
             "name": name,
-            "description": data.get("description", ""),
+            "description": data.get("description", "") or kg_meta_description,
             "domain": data.get("domain", ""),
             "version": data.get("version", "1.0.0"),
             "author": data.get("author", "Unknown"),
             "source_profile_id": profile_id,
+            "kg_id": store.kg_id,
+            "kg_name": kg_meta_name,
+            "kg_database_name": kg_meta_database,
             "entity_count": stats.get("total_entities", 0),
             "relationship_count": stats.get("total_relationships", 0),
             "entity_types": entity_types,
@@ -160,31 +191,65 @@ async def publish_knowledge_graph(profile_id: str):
             "tags": tags,
         }
 
-        cursor.execute(
-            """INSERT INTO marketplace_knowledge_graphs
-               (id, source_profile_id, name, description, version, author,
-                domain, entity_count, relationship_count,
-                entity_types_json, relationship_types_json, tags_json,
-                publisher_user_id, visibility, manifest_json, content_hash,
-                download_count, install_count, published_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)""",
-            (
-                marketplace_id, profile_id,
-                name,
-                data.get("description", ""),
-                data.get("version", "1.0.0"),
-                data.get("author", "Unknown"),
-                data.get("domain", ""),
-                stats.get("total_entities", 0),
-                stats.get("total_relationships", 0),
-                json.dumps(entity_types),
-                json.dumps(relationship_types),
-                json.dumps(tags),
-                user_uuid, visibility,
-                json.dumps(manifest), content_hash,
-                now, now,
-            ),
-        )
+        # Add kg_id column if it exists in the table (safe migration check)
+        try:
+            cursor.execute("SELECT kg_id FROM marketplace_knowledge_graphs LIMIT 0")
+            has_kg_id_col = True
+        except Exception:
+            has_kg_id_col = False
+
+        if has_kg_id_col:
+            cursor.execute(
+                """INSERT INTO marketplace_knowledge_graphs
+                   (id, source_profile_id, kg_id, name, description, version, author,
+                    domain, entity_count, relationship_count,
+                    entity_types_json, relationship_types_json, tags_json,
+                    publisher_user_id, visibility, manifest_json, content_hash,
+                    download_count, install_count, published_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)""",
+                (
+                    marketplace_id, profile_id, store.kg_id,
+                    name,
+                    data.get("description", "") or kg_meta_description,
+                    data.get("version", "1.0.0"),
+                    data.get("author", "Unknown"),
+                    data.get("domain", ""),
+                    stats.get("total_entities", 0),
+                    stats.get("total_relationships", 0),
+                    json.dumps(entity_types),
+                    json.dumps(relationship_types),
+                    json.dumps(tags),
+                    user_uuid, visibility,
+                    json.dumps(manifest), content_hash,
+                    now, now,
+                ),
+            )
+        else:
+            cursor.execute(
+                """INSERT INTO marketplace_knowledge_graphs
+                   (id, source_profile_id, name, description, version, author,
+                    domain, entity_count, relationship_count,
+                    entity_types_json, relationship_types_json, tags_json,
+                    publisher_user_id, visibility, manifest_json, content_hash,
+                    download_count, install_count, published_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)""",
+                (
+                    marketplace_id, profile_id,
+                    name,
+                    data.get("description", "") or kg_meta_description,
+                    data.get("version", "1.0.0"),
+                    data.get("author", "Unknown"),
+                    data.get("domain", ""),
+                    stats.get("total_entities", 0),
+                    stats.get("total_relationships", 0),
+                    json.dumps(entity_types),
+                    json.dumps(relationship_types),
+                    json.dumps(tags),
+                    user_uuid, visibility,
+                    json.dumps(manifest), content_hash,
+                    now, now,
+                ),
+            )
 
         # Store export files
         marketplace_data = Path(__file__).resolve().parents[3] / "marketplace_data" / "knowledge_graphs" / marketplace_id
@@ -460,8 +525,32 @@ async def install_marketplace_kg(marketplace_id: str):
         relationships = export_data.get("relationships", [])
 
         # Import into target profile using GraphStore.import_bulk
+        import uuid as _uuid_inst
         from components.builtin.knowledge_graph.graph_store import GraphStore
-        store = GraphStore(target_profile_id, user_uuid)
+
+        # Always create a fresh KG — never overwrite an existing one
+        new_kg_id = str(_uuid_inst.uuid4())
+        store = GraphStore(target_profile_id, user_uuid, kg_id=new_kg_id)
+
+        # Check if the target profile already has an active KG
+        _ci = sqlite3.connect(str(_DB_PATH))
+        _ci.row_factory = sqlite3.Row
+        _has_active = _ci.execute(
+            "SELECT 1 FROM kg_metadata WHERE profile_id = ? AND user_uuid = ? AND is_active = 1 LIMIT 1",
+            (target_profile_id, user_uuid)
+        ).fetchone() is not None
+        _ci.close()
+
+        # Register KG metadata before importing so entities are scoped to new_kg_id
+        kg_name = export_data.get("kg_name") or row["name"]
+        kg_description = export_data.get("kg_description") or ""
+        kg_database_name = export_data.get("kg_database_name") or ""
+        store.set_kg_metadata(
+            name=kg_name,
+            database_name=kg_database_name,
+            description=kg_description or None,
+            is_active=not _has_active,
+        )
 
         # Set source to 'marketplace' for provenance tracking
         for ent in entities:
@@ -480,7 +569,7 @@ async def install_marketplace_kg(marketplace_id: str):
 
         app_logger.info(
             f"User {user_uuid} installed marketplace KG into profile '{target_profile_id}' "
-            f"(marketplace_id={marketplace_id}, entities={result.get('entities_added', 0)}, "
+            f"(marketplace_id={marketplace_id}, kg_id={new_kg_id}, entities={result.get('entities_added', 0)}, "
             f"relationships={result.get('relationships_added', 0)})"
         )
         return jsonify({
@@ -540,8 +629,32 @@ async def fork_marketplace_kg(marketplace_id: str):
         entities = export_data.get("entities", [])
         relationships = export_data.get("relationships", [])
 
+        import uuid as _uuid_fork
         from components.builtin.knowledge_graph.graph_store import GraphStore
-        store = GraphStore(target_profile_id, user_uuid)
+
+        # Always create a fresh KG — never overwrite an existing one
+        new_kg_id = str(_uuid_fork.uuid4())
+        store = GraphStore(target_profile_id, user_uuid, kg_id=new_kg_id)
+
+        # Check if the target profile already has an active KG
+        _cf = sqlite3.connect(str(_DB_PATH))
+        _cf.row_factory = sqlite3.Row
+        _has_active_f = _cf.execute(
+            "SELECT 1 FROM kg_metadata WHERE profile_id = ? AND user_uuid = ? AND is_active = 1 LIMIT 1",
+            (target_profile_id, user_uuid)
+        ).fetchone() is not None
+        _cf.close()
+
+        # Register KG metadata before importing
+        kg_name_f = export_data.get("kg_name") or row["name"]
+        kg_description_f = export_data.get("kg_description") or ""
+        kg_database_name_f = export_data.get("kg_database_name") or ""
+        store.set_kg_metadata(
+            name=kg_name_f,
+            database_name=kg_database_name_f,
+            description=kg_description_f or None,
+            is_active=not _has_active_f,
+        )
 
         for ent in entities:
             if ent.get("source") not in ("marketplace",):
@@ -559,7 +672,7 @@ async def fork_marketplace_kg(marketplace_id: str):
 
         app_logger.info(
             f"User {user_uuid} forked marketplace KG into profile '{target_profile_id}' "
-            f"(marketplace_id={marketplace_id})"
+            f"(marketplace_id={marketplace_id}, kg_id={new_kg_id})"
         )
         return jsonify({
             "status": "success",

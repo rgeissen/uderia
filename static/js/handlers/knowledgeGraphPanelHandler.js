@@ -106,17 +106,17 @@ function createKnowledgeGraphCard(kg, kgState) {
     if (kgState.isAvailable && !kgState.isActive) {
         activateBtn = `<button class="kg-activate-btn px-3 py-1 text-xs font-semibold rounded-md transition-colors"
                                style="background: rgba(241,95,34,0.15); color: #F15F22; border: 1px solid rgba(241,95,34,0.3);"
-                               data-kg-owner-id="${kg.profile_id}" title="Activate this KG for context enrichment">Activate</button>`;
+                               data-kg-id="${kg.kg_id || kg.profile_id}" data-kg-owner-id="${kg.profile_id}" title="Activate this KG for context enrichment">Activate</button>`;
     } else if (kgState.isActive) {
         activateBtn = `<button class="kg-deactivate-btn px-3 py-1 text-xs font-semibold rounded-md transition-colors"
                                style="background: var(--hover-bg, #4b5563); color: var(--text-muted, #9ca3af);"
-                               data-kg-owner-id="${kg.profile_id}" title="Deactivate this KG">Deactivate</button>`;
+                               data-kg-id="${kg.kg_id || kg.profile_id}" data-kg-owner-id="${kg.profile_id}" title="Deactivate this KG">Deactivate</button>`;
     }
 
     detailsEl.innerHTML = `
         <summary class="flex justify-between items-center p-3 font-semibold text-white hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer">
             <div class="flex items-center gap-2 flex-wrap min-w-0">
-                <span class="truncate">${kg.profile_name || kg.profile_id}</span>
+                <span class="truncate">${kg.kg_name || kg.profile_name || kg.profile_id}</span>
                 ${tagLabel}
                 ${ifocBadge}
                 ${ownerLabel}
@@ -142,9 +142,9 @@ function createKnowledgeGraphCard(kg, kgState) {
                         style="background: rgba(147,51,234,0.15); color: #a78bfa; border: 1px solid rgba(147,51,234,0.3);"
                         data-profile-id="${kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}" title="Inspect knowledge graph">Inspect</button>
                 <button class="kg-export-btn px-3 py-1 bg-blue-600 text-white text-xs font-semibold rounded-md hover:bg-blue-500 transition-colors"
-                        data-profile-id="${kg.profile_id}" title="Export as JSON">Export</button>
+                        data-profile-id="${kg.profile_id}" data-kg-id="${kg.kg_id || kg.profile_id}" title="Export as JSON">Export</button>
                 <button class="kg-delete-btn px-3 py-1 bg-red-600/80 text-white text-xs font-semibold rounded-md hover:bg-red-500 transition-colors"
-                        data-profile-id="${kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}" title="Delete this knowledge graph">Delete</button>
+                        data-profile-id="${kg.profile_id}" data-kg-id="${kg.kg_id || kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}" title="Delete this knowledge graph">Delete</button>
             </div>
         </div>
     `;
@@ -277,9 +277,9 @@ export function updateKnowledgeGraphActiveIndicator() {
 
 // ── Resource Panel — Action handlers ───────────────────────────────────────
 
-async function handleExport(profileId) {
+async function handleExport(profileId, kgId = null) {
     try {
-        await API.exportKnowledgeGraph(profileId);
+        await API.exportKnowledgeGraph(profileId, kgId);
         showAppBanner('Knowledge graph exported successfully', 'success');
     } catch (err) {
         console.error('Export failed:', err);
@@ -287,14 +287,14 @@ async function handleExport(profileId) {
     }
 }
 
-function handleDelete(profileId, profileName) {
+function handleDelete(kgIdOrProfileId, profileName) {
     showConfirmation(
         'Delete Knowledge Graph',
         `<p>Are you sure you want to delete the knowledge graph for <strong>${profileName}</strong>?</p>
          <p class="mt-2 text-sm text-gray-400">This will permanently remove all entities and relationships. This action cannot be undone.</p>`,
         async () => {
             try {
-                await API.deleteKnowledgeGraph(profileId);
+                await API.deleteKnowledgeGraph(null, kgIdOrProfileId);
                 showAppBanner('Knowledge graph deleted', 'success');
                 await refreshKnowledgeGraphsPanel();
             } catch (err) {
@@ -305,12 +305,12 @@ function handleDelete(profileId, profileName) {
     );
 }
 
-async function handleActivate(kgOwnerProfileId) {
+async function handleActivate(kgId) {
     const activeProfileId = state.currentResourcePanelProfileId;
     if (!activeProfileId) return;
 
     try {
-        await API.activateKgForProfile(kgOwnerProfileId, activeProfileId);
+        await API.activateKgForProfile(kgId, activeProfileId);
         showAppBanner('Knowledge graph activated', 'success');
         await refreshKnowledgeGraphsPanel();
         // Also refresh Intelligence tab if visible
@@ -344,13 +344,13 @@ async function handleDeactivate(kgOwnerProfileId) {
 export function handleKnowledgeGraphPanelClick(e) {
     const activateBtn = e.target.closest('.kg-activate-btn');
     if (activateBtn) {
-        handleActivate(activateBtn.dataset.kgOwnerId);
+        handleActivate(activateBtn.dataset.kgId || activateBtn.dataset.kgOwnerId);
         return;
     }
 
     const deactivateBtn = e.target.closest('.kg-deactivate-btn');
     if (deactivateBtn) {
-        handleDeactivate(deactivateBtn.dataset.kgOwnerId);
+        handleDeactivate(deactivateBtn.dataset.kgId || deactivateBtn.dataset.kgOwnerId);
         return;
     }
 
@@ -362,16 +362,13 @@ export function handleKnowledgeGraphPanelClick(e) {
 
     const exportBtn = e.target.closest('.kg-export-btn');
     if (exportBtn) {
-        const profileId = exportBtn.dataset.profileId;
-        handleExport(profileId);
+        handleExport(exportBtn.dataset.profileId, exportBtn.dataset.kgId);
         return;
     }
 
     const deleteBtn = e.target.closest('.kg-delete-btn');
     if (deleteBtn) {
-        const profileId = deleteBtn.dataset.profileId;
-        const profileName = deleteBtn.dataset.profileName;
-        handleDelete(profileId, profileName);
+        handleDelete(deleteBtn.dataset.kgId || deleteBtn.dataset.profileId, deleteBtn.dataset.profileName);
         return;
     }
 }
@@ -391,13 +388,13 @@ function _renderAssignedProfilesBadges(kg) {
         if (isActive) {
             return `<span class="kg-intel-activate-badge text-xs font-mono px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 transition-opacity"
                           style="color: ${aIfoc.color}; background: ${aIfoc.color}20; border: 1px solid ${aIfoc.color}50;"
-                          data-kg-owner-id="${kg.profile_id}" data-assigned-id="${ap.id}" data-is-active="1"
+                          data-kg-id="${kg.kg_id || kg.profile_id}" data-assigned-id="${ap.id}" data-is-active="1"
                           title="Active — click to deactivate">
                         <span class="inline-block w-1.5 h-1.5 rounded-full mr-1" style="background: #22c55e;"></span>@${ap.tag || ap.name}</span>`;
         } else {
             return `<span class="kg-intel-activate-badge text-xs font-mono px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 transition-opacity"
                           style="color: ${aIfoc.color}60; background: transparent; border: 1px dashed ${aIfoc.color}30;"
-                          data-kg-owner-id="${kg.profile_id}" data-assigned-id="${ap.id}" data-is-active="0"
+                          data-kg-id="${kg.kg_id || kg.profile_id}" data-assigned-id="${ap.id}" data-is-active="0"
                           title="Inactive — click to activate">@${ap.tag || ap.name}</span>`;
         }
     }).join(' ');
@@ -408,15 +405,15 @@ function createIntelligenceKGCard(kg) {
 
     const tagLabel = kg.profile_tag ? `@${kg.profile_tag}` : '';
 
-    // Owner active state
+    // Owner badge — @TAG format matching assigned-profile badges
     const ownerActive = !!kg.is_active_for_owner;
-    const ownerStatusDot = ownerActive
+    const ownerTag = kg.profile_tag || kg.profile_id;
+    const ownerBadgeStyle = ownerActive
+        ? `color: ${ifoc.color}; background: ${ifoc.color}20; border: 1px solid ${ifoc.color}50;`
+        : `color: ${ifoc.color}60; background: transparent; border: 1px dashed ${ifoc.color}30;`;
+    const ownerDot = ownerActive
         ? '<span class="inline-block w-1.5 h-1.5 rounded-full mr-1" style="background: #22c55e;"></span>'
         : '';
-    const ownerStatusLabel = ownerActive ? 'owner, active' : 'owner, inactive';
-    const ownerStatusStyle = ownerActive
-        ? 'color: #9ca3af;'
-        : 'color: #6b7280; opacity: 0.7;';
 
     // Entity type pills
     const typePills = Object.entries(kg.entity_types || {})
@@ -434,7 +431,7 @@ function createIntelligenceKGCard(kg) {
     const assignedBadges = _renderAssignedProfilesBadges(kg);
 
     return `
-        <div class="glass-panel p-4 rounded-lg hover:bg-white/5 transition-all" data-profile-id="${kg.profile_id}">
+        <div class="glass-panel p-4 rounded-lg hover:bg-white/5 transition-all" data-profile-id="${kg.profile_id}" data-kg-id="${kg.kg_id || kg.profile_id}">
             <div class="flex items-start gap-3 mb-3">
                 <div class="p-2 bg-purple-500/20 rounded-lg relative">
                     <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -444,14 +441,16 @@ function createIntelligenceKGCard(kg) {
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 class="text-base font-semibold text-white truncate">${kg.profile_name || kg.profile_id}</h3>
+                        <h3 class="kg-intel-title text-base font-semibold text-white truncate">${kg.kg_name || kg.profile_name || kg.profile_id}</h3>
                         ${tagLabel ? `<span class="text-xs font-mono text-gray-500">${tagLabel}</span>` : ''}
                         <span class="px-2 py-0.5 text-xs rounded-full font-semibold" style="color: ${ifoc.color}; background: ${ifoc.color}20; border: 1px solid ${ifoc.color}40;">${ifoc.label}</span>
-                        <span class="kg-intel-owner-toggle text-xs cursor-pointer hover:opacity-80 transition-opacity" style="${ownerStatusStyle}"
-                              data-kg-owner-id="${kg.profile_id}" data-is-active="${ownerActive ? '1' : '0'}"
-                              title="Click to ${ownerActive ? 'deactivate' : 'activate'} for owner profile">${ownerStatusDot}(${ownerStatusLabel})</span>
+                        <span class="kg-intel-owner-toggle text-xs font-mono px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 transition-opacity"
+                              style="${ownerBadgeStyle}"
+                              data-kg-id="${kg.kg_id || kg.profile_id}" data-kg-owner-id="${kg.profile_id}" data-is-active="${ownerActive ? '1' : '0'}"
+                              title="${ownerActive ? 'Active — click to deactivate for owner' : 'Inactive — click to activate for owner'}">
+                            ${ownerDot}@${ownerTag}<span class="opacity-60 font-sans ml-1">(owner)</span>
+                        </span>
                     </div>
-                    <p class="text-xs text-gray-500">Profile ID: ${kg.profile_id}</p>
                 </div>
             </div>
 
@@ -460,7 +459,7 @@ function createIntelligenceKGCard(kg) {
                 <div class="flex items-center justify-between mb-1.5">
                     <span class="text-xs text-gray-500 font-medium">Assigned to profiles</span>
                     <button class="kg-intel-assign-btn text-xs font-semibold px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors"
-                            data-profile-id="${kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}">
+                            data-profile-id="${kg.profile_id}" data-kg-id="${kg.kg_id || kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}">
                         Manage
                     </button>
                 </div>
@@ -478,26 +477,30 @@ function createIntelligenceKGCard(kg) {
             ${typePills ? `<div class="flex flex-wrap gap-1 mb-2">${typePills}</div>` : ''}
             ${relPills ? `<div class="flex flex-wrap gap-1 mb-2">${relPills}</div>` : ''}
 
-            <p class="text-xs text-gray-500 mb-3">Last updated: ${formatTimeAgo(kg.last_updated)}</p>
+            <p class="text-xs text-gray-500 ${kg.description ? 'mb-1' : 'mb-3'}">Last updated: ${formatTimeAgo(kg.last_updated)}</p>
+            ${kg.description ? `<p class="text-xs text-gray-400 mb-3">${kg.description}</p>` : ''}
 
             <div class="flex gap-2 flex-wrap">
-                <button class="kg-intel-inspect-btn card-btn card-btn--primary" data-profile-id="${kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}">
+                <button class="kg-intel-inspect-btn card-btn card-btn--primary" data-profile-id="${kg.profile_id}" data-kg-id="${kg.kg_id || kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
                     Inspect
                 </button>
-                <button class="kg-intel-export-btn card-btn card-btn--cyan" data-profile-id="${kg.profile_id}">
+                <button class="kg-intel-export-btn card-btn card-btn--cyan" data-profile-id="${kg.profile_id}" data-kg-id="${kg.kg_id || kg.profile_id}">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                     </svg>
                     Export
                 </button>
-                <button class="kg-intel-delete-btn card-btn card-btn--danger" data-profile-id="${kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}">
-                    Delete
+                <button class="kg-intel-rename-btn card-btn card-btn--info"
+                        data-kg-id="${kg.kg_id || kg.profile_id}"
+                        data-kg-name="${(kg.kg_name || kg.profile_name || '').replace(/"/g, '&quot;')}"
+                        data-description="${(kg.description || '').replace(/"/g, '&quot;')}">
+                    Edit
                 </button>
-                <button class="card-btn" disabled title="Coming soon">
-                    Promote
+                <button class="kg-intel-delete-btn card-btn card-btn--danger" data-profile-id="${kg.profile_id}" data-kg-id="${kg.kg_id || kg.profile_id}" data-profile-name="${kg.profile_name || kg.profile_id}">
+                    Delete
                 </button>
             </div>
         </div>
@@ -525,13 +528,21 @@ export async function loadKnowledgeGraphsIntelligenceTab() {
         // Also keep cached for Resource Panel
         state.resourceData.knowledgeGraphs = graphs;
 
-        // Update tab counter
+        // Update tab counter (always shows total, not filtered count)
         const tabBtn = document.getElementById('knowledge-graphs-tab');
         if (tabBtn) {
             tabBtn.textContent = `Knowledge Graphs (${graphs.length})`;
         }
 
-        if (graphs.length === 0) {
+        // Apply active-only filter if toggled
+        const activeFilter = document.getElementById('kg-active-filter')?.checked ?? false;
+        const visibleGraphs = activeFilter
+            ? graphs.filter(kg =>
+                kg.is_active_for_owner ||
+                (kg.assigned_profiles || []).some(a => a.is_active))
+            : graphs;
+
+        if (visibleGraphs.length === 0) {
             container.innerHTML = `
                 <div class="col-span-full text-center py-12">
                     <svg class="w-16 h-16 mx-auto text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -544,8 +555,14 @@ export async function loadKnowledgeGraphsIntelligenceTab() {
             return;
         }
 
-        container.innerHTML = graphs.map(kg => createIntelligenceKGCard(kg)).join('');
+        container.innerHTML = visibleGraphs.map(kg => createIntelligenceKGCard(kg)).join('');
         attachIntelligenceKGHandlers(container);
+
+        const kgFilterEl = document.getElementById('kg-active-filter');
+        if (kgFilterEl && !kgFilterEl.dataset.wired) {
+            kgFilterEl.dataset.wired = '1';
+            kgFilterEl.addEventListener('change', () => loadKnowledgeGraphsIntelligenceTab());
+        }
     } catch (err) {
         console.error('[KG Intelligence] Failed to load:', err);
         container.innerHTML = `
@@ -556,10 +573,115 @@ export async function loadKnowledgeGraphsIntelligenceTab() {
     }
 }
 
+// ── KG Edit Modal ─────────────────────────────────────────────────────────────
+
+let _kgEditOverlay = null;
+
+function _ensureKgEditModal() {
+    if (_kgEditOverlay) return;
+
+    _kgEditOverlay = document.createElement('div');
+    _kgEditOverlay.id = 'kg-edit-modal-overlay';
+    _kgEditOverlay.className = 'fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200';
+
+    _kgEditOverlay.innerHTML = `
+        <div id="kg-edit-modal-content"
+             class="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md p-6 transform scale-95 opacity-0 transition-all duration-200">
+            <div class="flex items-center justify-between mb-5">
+                <h3 class="text-lg font-bold text-white">Edit Knowledge Graph</h3>
+                <button id="kg-edit-modal-close" class="text-gray-400 hover:text-white transition-colors p-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Name</label>
+                    <input id="kg-edit-name" type="text"
+                           class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none" />
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Description <span class="text-gray-600">(optional)</span></label>
+                    <textarea id="kg-edit-description" rows="3" placeholder="Describe the purpose of this knowledge graph..."
+                           class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none resize-none"></textarea>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-5">
+                <button id="kg-edit-save" class="card-btn card-btn--primary flex-1">Save Changes</button>
+                <button id="kg-edit-cancel" class="card-btn card-btn--neutral">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(_kgEditOverlay);
+
+    const closeModal = () => {
+        const content = _kgEditOverlay.querySelector('#kg-edit-modal-content');
+        content.classList.add('scale-95', 'opacity-0');
+        content.classList.remove('scale-100', 'opacity-100');
+        _kgEditOverlay.classList.add('opacity-0');
+        setTimeout(() => _kgEditOverlay.classList.add('hidden'), 200);
+    };
+
+    _kgEditOverlay.querySelector('#kg-edit-modal-close').addEventListener('click', closeModal);
+    _kgEditOverlay.querySelector('#kg-edit-cancel').addEventListener('click', closeModal);
+    _kgEditOverlay.addEventListener('click', (e) => { if (e.target === _kgEditOverlay) closeModal(); });
+
+    _kgEditOverlay.querySelector('#kg-edit-save').addEventListener('click', async () => {
+        const kgId = _kgEditOverlay.dataset.kgId;
+        const newName = _kgEditOverlay.querySelector('#kg-edit-name').value.trim();
+        const newDesc = _kgEditOverlay.querySelector('#kg-edit-description').value.trim();
+        if (!newName) {
+            showAppBanner('Name cannot be empty.', 'error');
+            return;
+        }
+        const saveBtn = _kgEditOverlay.querySelector('#kg-edit-save');
+        saveBtn.disabled = true;
+        try {
+            await API.renameKnowledgeGraph(kgId, newName, newDesc || null);
+            showAppBanner('Knowledge graph updated.', 'success');
+            closeModal();
+            await loadKnowledgeGraphsIntelligenceTab();
+        } catch (err) {
+            showAppBanner(`Save failed: ${err.message}`, 'error');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+}
+
+function _openKgEditModal(kgId, currentName, currentDescription) {
+    _ensureKgEditModal();
+    _kgEditOverlay.dataset.kgId = kgId;
+    _kgEditOverlay.querySelector('#kg-edit-name').value = currentName || '';
+    _kgEditOverlay.querySelector('#kg-edit-description').value = currentDescription || '';
+    _kgEditOverlay.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        _kgEditOverlay.classList.remove('opacity-0');
+        const content = _kgEditOverlay.querySelector('#kg-edit-modal-content');
+        content.classList.remove('scale-95', 'opacity-0');
+        content.classList.add('scale-100', 'opacity-100');
+        _kgEditOverlay.querySelector('#kg-edit-name').focus();
+        _kgEditOverlay.querySelector('#kg-edit-name').select();
+    });
+}
+
 // ── Intelligence page — card action handlers ─────────────────────────────────
 
 function attachIntelligenceKGHandlers(container) {
     container.addEventListener('click', async (e) => {
+        // Edit modal — Edit button click
+        const renameBtn = e.target.closest('.kg-intel-rename-btn');
+        if (renameBtn) {
+            _openKgEditModal(
+                renameBtn.dataset.kgId,
+                renameBtn.dataset.kgName,
+                renameBtn.dataset.description
+            );
+            return;
+        }
+
         const inspectBtn = e.target.closest('.kg-intel-inspect-btn');
         if (inspectBtn) {
             openKnowledgeGraphInspection(inspectBtn.dataset.profileId, inspectBtn.dataset.profileName);
@@ -568,13 +690,13 @@ function attachIntelligenceKGHandlers(container) {
 
         const exportBtn = e.target.closest('.kg-intel-export-btn');
         if (exportBtn) {
-            handleExport(exportBtn.dataset.profileId);
+            handleExport(exportBtn.dataset.profileId, exportBtn.dataset.kgId);
             return;
         }
 
         const deleteBtn = e.target.closest('.kg-intel-delete-btn');
         if (deleteBtn) {
-            handleIntelligenceDelete(deleteBtn.dataset.profileId, deleteBtn.dataset.profileName);
+            handleIntelligenceDelete(deleteBtn.dataset.kgId || deleteBtn.dataset.profileId, deleteBtn.dataset.profileName);
             return;
         }
 
@@ -582,24 +704,24 @@ function attachIntelligenceKGHandlers(container) {
         if (assignBtn) {
             const ownerProfileId = assignBtn.dataset.profileId;
             const ownerName = assignBtn.dataset.profileName;
-            _openAssignmentPanel(ownerProfileId, ownerName, container);
+            const kgId = assignBtn.dataset.kgId;
+            _openAssignmentPanel(ownerProfileId, ownerName, kgId, container);
             return;
         }
 
         // Toggle activation from assigned profile badges
         const activateBadge = e.target.closest('.kg-intel-activate-badge');
         if (activateBadge) {
-            const kgOwnerId = activateBadge.dataset.kgOwnerId;
+            const kgId = activateBadge.dataset.kgId;
             const assignedId = activateBadge.dataset.assignedId;
             const isCurrentlyActive = activateBadge.dataset.isActive === '1';
 
             try {
                 if (isCurrentlyActive) {
-                    // Deactivate: pass null for kgOwnerProfileId
                     await API.activateKgForProfile(null, assignedId);
                     showAppBanner('Knowledge graph deactivated for profile', 'success');
                 } else {
-                    await API.activateKgForProfile(kgOwnerId, assignedId);
+                    await API.activateKgForProfile(kgId, assignedId);
                     showAppBanner('Knowledge graph activated for profile', 'success');
                 }
                 await loadKnowledgeGraphsIntelligenceTab();
@@ -616,7 +738,8 @@ function attachIntelligenceKGHandlers(container) {
         // Toggle owner's own activation
         const ownerToggle = e.target.closest('.kg-intel-owner-toggle');
         if (ownerToggle) {
-            const kgOwnerId = ownerToggle.dataset.kgOwnerId;
+            const kgId = ownerToggle.dataset.kgId;
+            const kgOwnerId = ownerToggle.dataset.kgOwnerId;  // profile_id for deactivation
             const isCurrentlyActive = ownerToggle.dataset.isActive === '1';
 
             try {
@@ -624,7 +747,7 @@ function attachIntelligenceKGHandlers(container) {
                     await API.activateKgForProfile(null, kgOwnerId);
                     showAppBanner('Knowledge graph deactivated for owner', 'success');
                 } else {
-                    await API.activateKgForProfile(kgOwnerId, kgOwnerId);
+                    await API.activateKgForProfile(kgId, kgOwnerId);
                     showAppBanner('Knowledge graph activated for owner', 'success');
                 }
                 await loadKnowledgeGraphsIntelligenceTab();
@@ -640,14 +763,14 @@ function attachIntelligenceKGHandlers(container) {
     });
 }
 
-function handleIntelligenceDelete(profileId, profileName) {
+function handleIntelligenceDelete(kgIdOrProfileId, profileName) {
     showConfirmation(
         'Delete Knowledge Graph',
         `<p>Are you sure you want to delete the knowledge graph for <strong>${profileName}</strong>?</p>
          <p class="mt-2 text-sm text-gray-400">This will permanently remove all entities and relationships. This action cannot be undone.</p>`,
         async () => {
             try {
-                await API.deleteKnowledgeGraph(profileId);
+                await API.deleteKnowledgeGraph(null, kgIdOrProfileId);
                 showAppBanner('Knowledge graph deleted', 'success');
                 await loadKnowledgeGraphsIntelligenceTab();
                 // Also refresh resource panel if it was loaded
@@ -666,7 +789,7 @@ function handleIntelligenceDelete(profileId, profileName) {
 
 let _assignOverlay = null;
 
-function _openAssignmentPanel(ownerProfileId, ownerName, parentContainer) {
+function _openAssignmentPanel(ownerProfileId, ownerName, kgId, parentContainer) {
     // Close any existing overlay
     if (_assignOverlay) {
         _assignOverlay.remove();
@@ -682,9 +805,10 @@ function _openAssignmentPanel(ownerProfileId, ownerName, parentContainer) {
         return;
     }
 
-    // Find currently assigned profiles from the cached data
+    // Find currently assigned profiles from the cached data — match by kg_id first
     const graphs = state.resourceData?.knowledgeGraphs || [];
-    const thisKg = graphs.find(g => g.profile_id === ownerProfileId);
+    const thisKg = graphs.find(g => (g.kg_id || g.profile_id) === kgId)
+                || graphs.find(g => g.profile_id === ownerProfileId);
     const currentlyAssigned = new Set((thisKg?.assigned_profiles || []).map(a => a.id));
 
     _assignOverlay = document.createElement('div');
@@ -771,7 +895,7 @@ function _openAssignmentPanel(ownerProfileId, ownerName, parentContainer) {
         saveBtn.textContent = 'Saving...';
 
         try {
-            await API.updateKgAssignments(ownerProfileId, assignedIds);
+            await API.updateKgAssignments(ownerProfileId, assignedIds, kgId);
             showAppBanner(`Assigned ${assignedIds.length} profile(s) to knowledge graph`, 'success');
             closePanel();
 
@@ -918,11 +1042,43 @@ export function initializeImportHandler() {
 
                 const entities = data.entities || [];
                 const relationships = data.relationships || [];
+                const meta = {
+                    kg_name: data.kg_name || '',
+                    kg_description: data.kg_description || '',
+                    kg_database_name: data.kg_database_name || '',
+                };
 
                 if (!entities.length && !relationships.length) {
                     showAppBanner('Import file contains no entities or relationships', 'error');
                     return;
                 }
+
+                // Fetch existing KGs so we can offer merge option
+                let allUserKgs = [];
+                try {
+                    const kgListData = await API.loadKnowledgeGraphList();
+                    allUserKgs = kgListData.knowledge_graphs || [];
+                } catch (_) {}
+
+                const selectStyle = `background: rgba(30, 30, 40, 0.8); border: 1px solid rgba(147, 51, 234, 0.3); background-image: url('data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22%3E%3Cpath fill=%22%239ca3af%22 d=%22M2 4l4 4 4-4%22/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 0.75rem center;`;
+
+                // Helper: build import-mode HTML for a given profile_id
+                const buildImportModeHtml = (profileId) => {
+                    const ownedKgs = allUserKgs.filter(kg => kg.profile_id === profileId);
+                    if (!ownedKgs.length) return '';
+                    const kgOptions = ownedKgs
+                        .map(kg => `<option value="${kg.kg_id || kg.profile_id}">${kg.kg_name || kg.name || kg.kg_id}</option>`)
+                        .join('');
+                    return `
+                        <div id="kg-import-mode-section">
+                            <label class="block text-xs text-gray-400 mb-1">Import mode</label>
+                            <select id="kg-import-mode-select" class="w-full p-2 text-sm text-white rounded-lg outline-none cursor-pointer appearance-none" style="${selectStyle}">
+                                <option value="">Create new Knowledge Graph</option>
+                                ${kgOptions.replace(/<option /g, '<option data-merge="1" ')}
+                            </select>
+                            <p id="kg-import-mode-hint" class="text-xs text-gray-500 mt-1">A new Knowledge Graph will be created for this profile.</p>
+                        </div>`;
+                };
 
                 // Build profile dropdown options
                 const profiles = window.configState?.profiles || [];
@@ -938,33 +1094,43 @@ export function initializeImportHandler() {
                     return `<option value="${p.id}"${selected}>${label}</option>`;
                 }).join('');
 
+                const initialProfileId = profiles.find(p => p.id === fileProfileId)?.id || profiles[0]?.id || '';
                 const summary = `<span class="text-gray-400">${entities.length} entities, ${relationships.length} relationships</span>`;
+                const kgNameLine = meta.kg_name
+                    ? `<p class="text-sm text-gray-400 mt-1">Knowledge Graph: <span class="text-white font-medium">${meta.kg_name}</span></p>`
+                    : '';
 
                 showConfirmation(
                     'Import Knowledge Graph',
                     `<div class="space-y-3">
-                        <p class="text-sm text-gray-300">File: <span class="text-white font-medium">${file.name}</span> — ${summary}</p>
                         <div>
-                            <label class="block text-xs text-gray-400 mb-1">Target Profile</label>
+                            <p class="text-sm text-gray-300">File: <span class="text-white font-medium">${file.name}</span> — ${summary}</p>
+                            ${kgNameLine}
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">Ownership Profile</label>
                             <select id="kg-import-profile-select"
                                     class="w-full p-2 text-sm text-white rounded-lg outline-none cursor-pointer appearance-none"
-                                    style="background: rgba(30, 30, 40, 0.8); border: 1px solid rgba(147, 51, 234, 0.3); background-image: url('data:image/svg+xml;charset=UTF-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22%3E%3Cpath fill=%22%239ca3af%22 d=%22M2 4l4 4 4-4%22/%3E%3C/svg%3E'); background-repeat: no-repeat; background-position: right 0.75rem center;">
+                                    style="${selectStyle}">
                                 ${optionsHtml}
                             </select>
                         </div>
+                        <div id="kg-import-mode-container">${buildImportModeHtml(initialProfileId)}</div>
                     </div>`,
                     async () => {
                         const selectedProfileId = document.getElementById('kg-import-profile-select')?.value;
                         if (!selectedProfileId) {
-                            showAppBanner('Please select a target profile', 'error');
+                            showAppBanner('Please select an ownership profile', 'error');
                             return;
                         }
+                        const modeSelect = document.getElementById('kg-import-mode-select');
+                        const targetKgId = modeSelect?.value || null;
 
                         importBtn.disabled = true;
                         importBtn.textContent = 'Importing...';
 
                         try {
-                            const result = await API.importKnowledgeGraph(selectedProfileId, entities, relationships);
+                            const result = await API.importKnowledgeGraph(selectedProfileId, entities, relationships, meta, targetKgId);
                             showAppBanner(
                                 `Imported ${result.entities_added || 0} entities and ${result.relationships_added || 0} relationships`,
                                 'success'
@@ -987,6 +1153,31 @@ export function initializeImportHandler() {
                         }
                     }
                 );
+
+                // Wire profile-change → update import mode section
+                requestAnimationFrame(() => {
+                    const profileSel = document.getElementById('kg-import-profile-select');
+                    const modeContainer = document.getElementById('kg-import-mode-container');
+                    if (profileSel && modeContainer) {
+                        profileSel.addEventListener('change', () => {
+                            modeContainer.innerHTML = buildImportModeHtml(profileSel.value);
+                            // Wire hint update for the newly rendered mode select
+                            wireImportModeHint();
+                        });
+                        wireImportModeHint();
+                    }
+
+                    function wireImportModeHint() {
+                        const modeSel = document.getElementById('kg-import-mode-select');
+                        const hint = document.getElementById('kg-import-mode-hint');
+                        if (!modeSel || !hint) return;
+                        modeSel.addEventListener('change', () => {
+                            hint.textContent = modeSel.value
+                                ? `Entities and relationships will be merged into the selected Knowledge Graph.`
+                                : `A new Knowledge Graph will be created for this profile.`;
+                        });
+                    }
+                });
             } catch (err) {
                 console.error('[KG Import] Parse failed:', err);
                 showAppBanner(`Import failed: ${err.message}`, 'error');

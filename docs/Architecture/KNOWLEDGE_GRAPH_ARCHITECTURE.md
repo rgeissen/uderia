@@ -324,6 +324,9 @@ The class manages two synchronized layers:
 | Method | Signature | Behavior |
 |--------|-----------|----------|
 | `import_bulk()` | `(entities, relationships) → {entities_added, relationships_added}` | Batch import. Entities resolved by name for relationship linking. Logs warnings on failures. |
+| `set_kg_metadata()` | `(name, database_name?, description?, is_active=True) → kg_id` | Register or update KG metadata. When `is_active=True` (default) deactivates all other KGs for the profile. When `is_active=False` inserts as inactive — used on import when the profile already has an active KG. |
+| `get_kg_metadata()` | `() → {kg_id, name, database_name, is_active, created_at, updated_at}?` | Fetch metadata for the current KG instance. |
+| `list_all_graphs()` | `(user_uuid, db_path?) → [{kg_id, profile_id, kg_name, total_entities, is_active, ...}]` | Static — returns all KGs for a user across all profiles. |
 | `clear_graph()` | `() → {entities_deleted, relationships_deleted}` | Delete all data for the profile/user scope. |
 
 **Import format:**
@@ -627,8 +630,9 @@ Knowledge graphs are managed in two UI locations:
 Location: `knowledgeGraphPanelHandler.js` → `loadKnowledgeGraphsPanel()`
 
 - Compact cards using CSS variables (`--card-bg`, `--border-primary`)
-- Active indicator for the profile whose KG matches the current session's profile
-- Export button (downloads `.json` file)
+- **Active-only filter toggle** — shows all KGs or only the active one per profile
+- Active indicator badge per card
+- Export button (downloads v2.0 `.json` file including `kg_id`, `kg_name`, metadata)
 - Delete button (styled confirmation modal)
 - IFOC badge showing profile type with color coding
 
@@ -639,9 +643,13 @@ Location: `knowledgeGraphPanelHandler.js` → `loadKnowledgeGraphsIntelligenceTa
 - Full `glass-panel` cards with `card-btn` action system
 - Entity/relationship count display
 - Entity type pills showing type breakdown
-- Import button with file picker (`.json`)
-- Export and Delete buttons
-- Promote button (placeholder for future cross-profile migration)
+- **Import dialog (two-mode)**:
+  - File picker triggers dialog with **Ownership Profile** selector and import mode:
+    - **Create new Knowledge Graph** (default) — always mints a fresh KG, activates it only if the profile has no active KG yet
+    - **Merge into existing** — appears when the selected ownership profile already has KGs; dropdown shows KG names (from `kg_name` field)
+  - "Target Profile" label renamed to **"Ownership Profile"** (reflects that the profile owns the KG)
+- Export and Delete buttons (both scoped to `kg_id`)
+- Activate button to switch the active KG per profile
 - Tab counter showing number of knowledge graphs
 - iPadOS file picker workaround (removes `accept` attribute)
 
@@ -676,27 +684,37 @@ All endpoints are JWT-authenticated and scoped to the current user. The `profile
 |----------|--------|------------|----------|
 | `/v1/knowledge-graph/subgraph` | `GET` | Query: `profile_id`, `entity_name`, `max_nodes?` | `{status, nodes, edges, node_count}` |
 | `/v1/knowledge-graph/stats` | `GET` | Query: `profile_id` | `{status, stats: {total_entities, total_relationships, entity_types, ...}}` |
-| `/v1/knowledge-graph/import` | `POST` | Body: `{profile_id, entities: [...], relationships: [...]}` | `{status, entities_added, relationships_added}` |
+| `/v1/knowledge-graph/import` | `POST` | Body: `{profile_id, entities: [...], relationships: [...], kg_name?, kg_description?, kg_database_name?, target_kg_id?}` | `{status, entities_added, relationships_added}` |
 | `/v1/knowledge-graph/clear` | `DELETE` | Query: `profile_id` | `{status, entities_deleted, relationships_deleted}` |
 | `/v1/knowledge-graph/context` | `GET` | Query: `profile_id`, `query` | `{status, context_text, entity_count}` |
 | `/v1/knowledge-graph/generate` | `POST` | Body: `{profile_id, llm_config_id?}` | `{status, structural, semantic, phase3_relationships, phase3_5_fk_relationships, phase4_relationships, total}` |
 | `/v1/knowledge-graph/discover` | `POST` | Body: `{profile_id, tools: [...]}` | `{status, entities_discovered, relationships_discovered}` (V2 stub) |
 
+**Import modes (two-mode behaviour):**
+
+When `target_kg_id` is provided, the import **merges** into the specified existing KG using `import_bulk()` upsert semantics (no new KG created). When omitted the import **creates a new KG** under a fresh `kg_id`:
+- Calls `set_kg_metadata(name, database_name, description, is_active=not has_active)` first — so the imported KG becomes the active KG only when the target profile has none yet.
+- Preserves any existing active KG on the profile (no accidental displacement).
+
 ### Management Endpoints
 
 | Endpoint | Method | Parameters | Response |
 |----------|--------|------------|----------|
-| `/v1/knowledge-graph/list` | `GET` | None (user-scoped) | `{status, knowledge_graphs: [{profile_id, total_entities, entity_types, ...}]}` |
-| `/v1/knowledge-graph/export` | `GET` | Query: `profile_id` | JSON file download (Content-Disposition: attachment) |
+| `/v1/knowledge-graph/list` | `GET` | None (user-scoped) | `{status, knowledge_graphs: [{kg_id, profile_id, kg_name, total_entities, entity_types, is_active, ...}]}` |
+| `/v1/knowledge-graph/export` | `GET` | Query: `profile_id`, `kg_id?` | JSON file download (Content-Disposition: attachment) |
+| `/v1/knowledge-graph/activate` | `POST` | Body: `{profile_id, kg_id}` | `{status}` |
 
-**Export file format:**
+**Export file format (v2.0):**
 ```json
 {
-  "knowledge_graph_export": true,
-  "version": "1.0",
+  "export_version": "2.0",
+  "kg_id": "550e8400-e29b-41d4-a716-446655440000",
+  "kg_name": "CRM Schema",
+  "kg_description": "Customer relationship management tables",
+  "kg_database_name": "crm_prod",
   "profile_id": "profile-123",
   "profile_tag": "@OPTIM",
-  "exported_at": "2026-02-27T10:30:00+00:00",
+  "exported_at": "2026-04-16T10:30:00+00:00",
   "stats": {
     "total_entities": 42,
     "total_relationships": 38
@@ -705,6 +723,8 @@ All endpoints are JWT-authenticated and scoped to the current user. The `profile
   "relationships": [...]
 }
 ```
+
+> **v1.0 exports** (pre-April 2026) remain import-compatible — they create a new unnamed KG and activate it if the profile has none.
 
 ---
 
@@ -866,7 +886,7 @@ The `MCPSchemaDiscovery` class provides a placeholder for automatic knowledge gr
 | MCP schema auto-discovery | **V2 Stub** | Parse MCP tool schemas to populate graph automatically |
 | Embedding-based semantic search | **Planned** | Replace substring matching with vector similarity |
 | Auto-enrichment during execution | **Planned** | Automatically capture discovered schema from tool results |
-| Marketplace/AgentPack integration | **Planned** | Share knowledge graphs as part of agent pack bundles |
+| Marketplace/AgentPack integration | **Shipped** | KGs exported in Agent Pack manifest v1.4 (`knowledge_graphs` array + per-profile `kg_refs`); import restores KGs after profiles are created |
 | Graph merge/conflict resolution | **Planned** | Merge two profile graphs with deduplication |
 
 ---

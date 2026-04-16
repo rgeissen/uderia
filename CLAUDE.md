@@ -1665,8 +1665,9 @@ Files: `src/trusted_data_agent/core/cost_manager.py`
 | `1.1` | Base: profiles + collections |
 | `1.2` | Adds `vector_store_configurations` array |
 | `1.3` | Adds `skills` array; profile entries include `skillsConfig` |
+| `1.4` | Adds `knowledge_graphs` array; profile entries include `kg_refs`; only the active KG per profile is exported |
 
-Version is determined automatically at export time: `1.3` if skills present, `1.2` if only VS configs, otherwise `1.1`.
+Version is determined automatically at export time: `1.4` if KGs present, `1.3` if skills, `1.2` if only VS configs, otherwise `1.1`.
 
 **Files:**
 - `src/trusted_data_agent/core/agent_pack_manager.py` - Pack creation and installation
@@ -2122,6 +2123,8 @@ Example: "Using the n8n-uderia skill, how do I configure profile override in a w
 
 ## Recent Major Changes
 
+- **Apr 2026**: Knowledge Graphs first-class Agent Pack citizens (v1.4 manifest) — active KG per profile bundled in export as `knowledge_graphs/kg_N.json`; restored on import after profiles created; `is_active=not has_active` prevents displacing an existing active KG
+- **Apr 2026**: KG import overhaul — two-mode dialog (create new vs merge), export v2.0 with `kg_id`/`kg_name`/`kg_description`/`kg_database_name`, `set_kg_metadata(is_active=)` param, marketplace publish/install/fork create named KGs with `kg_id` tracking
 - **Apr 2026**: Agent Pack skills bundling (v1.3 manifest) - auto-enabled user skills included in export/restored on import
 - **Apr 2026**: Skills support for Genie coordinator - skill content injected into coordinator system prompt and user context
 - **Apr 2026**: Genie pass-through optimisation - coordinator skips synthesis LLM call when single expert is consulted with no conversation history

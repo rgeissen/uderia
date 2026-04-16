@@ -75,11 +75,25 @@ function _ensureModalExists() {
                     </select>
                 </div>
 
+                <!-- Graph name -->
+                <div class="mb-3">
+                    <label class="block text-xs text-gray-400 mb-1">Knowledge Graph Name</label>
+                    <input id="kg-constructor-graphname" type="text" placeholder="e.g. Fitness App Data Model"
+                           class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none" />
+                </div>
+
                 <!-- Database name -->
                 <div class="mb-3">
                     <label class="block text-xs text-gray-400 mb-1">Database Name</label>
                     <input id="kg-constructor-dbname" type="text" placeholder="e.g. fitness_db"
                            class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none" />
+                </div>
+
+                <!-- Description -->
+                <div class="mb-3">
+                    <label class="block text-xs text-gray-400 mb-1">Description <span class="text-gray-600">(optional)</span></label>
+                    <textarea id="kg-constructor-description" rows="2" placeholder="Describe the purpose of this knowledge graph..."
+                              class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2 text-sm text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none resize-none"></textarea>
                 </div>
 
                 <!-- Business analysis toggle -->
@@ -90,6 +104,12 @@ function _ensureModalExists() {
                         Include business analysis
                         <span class="text-xs text-gray-500 ml-1">(business concepts, metrics, taxonomies)</span>
                     </label>
+                </div>
+
+                <!-- Multi-KG info note -->
+                <div class="mb-3 p-3 rounded-lg text-xs" style="background: rgba(147,51,234,0.08); border: 1px solid rgba(147,51,234,0.2); color: #c4b5fd;">
+                    A new knowledge graph will be created and set as active for the selected owner profile.
+                    Any existing graphs owned by that profile will be preserved but deactivated.
                 </div>
 
                 <!-- Generate KG button -->
@@ -185,6 +205,8 @@ function _populateProfileDropdown() {
 async function _handleGenerateKG() {
     const profileId = _overlay.querySelector('#kg-constructor-profile').value;
     const dbName = _overlay.querySelector('#kg-constructor-dbname').value.trim();
+    const graphName = _overlay.querySelector('#kg-constructor-graphname').value.trim() || null;
+    const description = _overlay.querySelector('#kg-constructor-description').value.trim() || null;
     const includeSemantic = _overlay.querySelector('#kg-constructor-semantic-toggle').checked;
 
     if (!profileId) {
@@ -231,7 +253,7 @@ async function _handleGenerateKG() {
             timers.push(timer);
         }
 
-        const result = await generateKnowledgeGraph(profileId, dbName, includeSemantic);
+        const result = await generateKnowledgeGraph(profileId, dbName, includeSemantic, graphName, description);
 
         // Clear timers
         timers.forEach(t => clearTimeout(t));
@@ -328,7 +350,9 @@ function _resetModalState() {
     results.classList.add('hidden');
     genStatus.classList.add('hidden');
 
-    // Reset toggle
+    // Reset inputs
+    _overlay.querySelector('#kg-constructor-graphname').value = '';
+    _overlay.querySelector('#kg-constructor-description').value = '';
     _overlay.querySelector('#kg-constructor-semantic-toggle').checked = true;
 
     // Re-enable button
