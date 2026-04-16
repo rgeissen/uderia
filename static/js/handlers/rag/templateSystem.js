@@ -290,14 +290,25 @@ export function createTemplateCard(template, index, filterType = 'planner') {
                 const initState = window.__conversationInitState || deriveInitState();
                 console.log('[Deploy] Initialization state:', initState);
                 
-                // Only proceed if explicitly initialized
-                if (!initState || !initState.initialized) {
+                // Only proceed if backend is connected (full init or silent auto-init)
+                if (!initState || (!initState.initialized && !initState.backendConnected)) {
                     console.log('[Deploy] Conversation not initialized');
                     if (window.showAppBanner) {
-                        window.showAppBanner(
-                            'Please initialize the system first. Go to Setup and click "Save & Connect", or go to Conversations and click "Start Conversation".',
-                            'info'
-                        );
+                        let msg;
+                        const cs = window.configState;
+                        if (!cs?.defaultProfileId) {
+                            msg = 'No Default Profile configured. Go to Setup → Profiles and set one as default.';
+                        } else {
+                            const dp = cs.profiles?.find(p => p.id === cs.defaultProfileId);
+                            if (dp && !dp.active_for_consumption) {
+                                msg = 'Default profile is not yet activated. Go to Setup → Profiles and run a connection test.';
+                            } else if (initState?.testFailureDetail) {
+                                msg = `Default profile connection test failed: ${initState.testFailureDetail}. Go to Setup → Profiles to fix the configuration.`;
+                            } else {
+                                msg = 'System is still initializing — please wait a moment and try again.';
+                            }
+                        }
+                        window.showAppBanner(msg, 'info');
                     }
                     return;
                 }
