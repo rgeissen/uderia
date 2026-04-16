@@ -2330,6 +2330,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('[Startup] Resource panel initialized with default profile:', window.configState.defaultProfileId);
     }
 
+    // Auto-initialize silently if a default profile is already configured and activated.
+    // This allows repository constructors to work immediately without "Save & Connect".
+    import('./conversationInitializer.js').then(({ autoInitializeIfReady }) => {
+        autoInitializeIfReady().then(result => {
+            if (!result.success) {
+                console.log('[Startup] Auto-init skipped:', result.reason, result.detail || '');
+            }
+        }).catch(err => console.warn('[Startup] Silent auto-init failed:', err));
+    });
+
     // Load activated extensions for ! autocomplete
     loadActivatedExtensions();
 

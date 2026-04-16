@@ -2509,7 +2509,7 @@ export function updateReconnectButton() {
     btn.classList.toggle('cursor-not-allowed', !canReconnect);
 }
 
-export async function reconnectAndLoad() {
+export async function reconnectAndLoad(silent = false) {
     const defaultProfile = configState.profiles.find(p => p.id === configState.defaultProfileId);
 
     if (!defaultProfile) {
@@ -2554,16 +2554,18 @@ export async function reconnectAndLoad() {
     // Credentials are now fetched from backend database during connection
     // No need to load from localStorage anymore
 
-    const btn = document.getElementById('reconnect-and-load-btn');
-    const btnText = document.getElementById('reconnect-button-text');
-    const spinner = document.getElementById('reconnect-loading-spinner');
-    const statusDiv = document.getElementById('reconnect-status');
+    const btn = silent ? null : document.getElementById('reconnect-and-load-btn');
+    const btnText = silent ? null : document.getElementById('reconnect-button-text');
+    const spinner = silent ? null : document.getElementById('reconnect-loading-spinner');
+    const statusDiv = silent ? null : document.getElementById('reconnect-status');
 
-    btn.disabled = true;
-    btnText.textContent = 'Connecting...';
-    spinner.classList.remove('hidden');
-    spinner.classList.add('animate-spin');
-    statusDiv.innerHTML = '<span class="text-gray-400">Initializing connection...</span>';
+    if (!silent) {
+        btn.disabled = true;
+        btnText.textContent = 'Connecting...';
+        spinner.classList.remove('hidden');
+        spinner.classList.add('animate-spin');
+        statusDiv.innerHTML = '<span class="text-gray-400">Initializing connection...</span>';
+    }
 
     try {
         // Build base config data
@@ -2607,8 +2609,10 @@ export async function reconnectAndLoad() {
         const result = await response.json();
 
         if (result.status === 'success') {
-            statusDiv.innerHTML = '<span class="text-green-400">✓ ' + escapeHtml(result.message) + '</span>';
-            showNotification('success', result.message);
+            if (!silent) {
+                statusDiv.innerHTML = '<span class="text-green-400">✓ ' + escapeHtml(result.message) + '</span>';
+                showNotification('success', result.message);
+            }
             
             // Don't override active profiles - they are already loaded from backend configuration
             // The active_for_consumption_profile_ids should persist from the saved config
@@ -2723,7 +2727,8 @@ export async function reconnectAndLoad() {
             UI.setExecutionState(false);
             
             // Load existing session or create new one, then switch to conversation view
-            setTimeout(async () => {
+            // Skipped in silent mode (auto-init) — no view switching, no session loading
+            if (!silent) setTimeout(async () => {
                 try {
                     const currentSessionId = state.currentSessionId;
 
@@ -2850,17 +2855,27 @@ export async function reconnectAndLoad() {
                 }
             }, 1000); // Small delay to allow user to see success message
         } else {
-            statusDiv.innerHTML = '<span class="text-red-400">✗ ' + escapeHtml(result.message) + '</span>';
-            showNotification('error', result.message);
+            if (!silent) {
+                statusDiv.innerHTML = '<span class="text-red-400">✗ ' + escapeHtml(result.message) + '</span>';
+                showNotification('error', result.message);
+            } else {
+                throw new Error(result.message);
+            }
         }
     } catch (error) {
-        statusDiv.innerHTML = '<span class="text-red-400">✗ Connection failed</span>';
-        showNotification('error', `Connection failed: ${error.message}`);
+        if (!silent) {
+            statusDiv.innerHTML = '<span class="text-red-400">✗ Connection failed</span>';
+            showNotification('error', `Connection failed: ${error.message}`);
+        } else {
+            throw error;
+        }
     } finally {
-        btn.disabled = false;
-        btnText.textContent = 'Save & Connect';
-        spinner.classList.remove('animate-spin');
-        spinner.classList.add('hidden');
+        if (!silent) {
+            btn.disabled = false;
+            btnText.textContent = 'Save & Connect';
+            spinner.classList.remove('animate-spin');
+            spinner.classList.add('hidden');
+        }
     }
 }
 

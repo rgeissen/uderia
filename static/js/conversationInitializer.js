@@ -10,10 +10,12 @@ import { showAppBanner } from './bannerSystem.js';
 
 // Initialization state tracking - make globally accessible for easy checking
 const initState = {
-    initialized: false,
+    initialized: false,    // Full init: backend connected + sessions loaded (conversation ready)
+    backendConnected: false, // Partial init: LLM/MCP connected (sufficient for repo constructors)
     inProgress: false,
     lastInitTimestamp: null,
-    errors: []
+    errors: [],
+    testFailureDetail: null
 };
 
 // Expose state globally for synchronous access (no dynamic imports needed)
@@ -27,7 +29,7 @@ window.__conversationInitState = initState;
  * 
  * @returns {Promise<boolean>} True if initialization succeeded
  */
-export async function initializeConversationMode() {
+export async function initializeConversationMode(silent = false) {
     // If already initialized recently (within last 2 seconds), skip re-initialization
     if (initState.initialized && 
         initState.lastInitTimestamp && 
@@ -61,17 +63,24 @@ export async function initializeConversationMode() {
         const { reconnectAndLoad } = await import('./handlers/configurationHandler.js');
         
         // Call the main initialization sequence
-        await reconnectAndLoad();
+        await reconnectAndLoad(silent);
         
         // Additional step: Verify knowledge repositories are loaded
         await verifyRepositoriesLoaded();
         
-        // Mark as successfully initialized
-        initState.initialized = true;
-        initState.lastInitTimestamp = Date.now();
+        // Backend is connected (LLM + MCP) — sufficient for repository constructors
+        initState.backendConnected = true;
+
+        if (!silent) {
+            // Full initialization: sessions are loaded and conversation view is ready
+            initState.initialized = true;
+            initState.lastInitTimestamp = Date.now();
+        }
         initState.inProgress = false;
-        
-        console.log('[ConversationInit] ✅ Initialization complete');
+
+        console.log(silent
+            ? '[ConversationInit] ✅ Backend connected (silent auto-init)'
+            : '[ConversationInit] ✅ Full initialization complete');
         return true;
         
     } catch (error) {
@@ -202,7 +211,69 @@ export function setInitialized() {
  */
 export function resetInitialization() {
     initState.initialized = false;
+    initState.backendConnected = false;
     initState.lastInitTimestamp = null;
     initState.errors = [];
+    initState.testFailureDetail = null;
     console.log('[ConversationInit] Initialization state reset - will re-initialize on next conversation start');
+}
+
+/**
+ * Auto-initialize silently if a default profile is already configured and activated.
+ * Called on page load so repository constructors work without manual "Save & Connect".
+ * Runs a live profile test first to catch expired credentials or unreachable servers.
+ *
+ * @returns {Promise<{success: boolean, reason: string|null, detail: string|null}>}
+ */
+export async function autoInitializeIfReady() {
+    const configState = window.configState;
+
+    if (!configState?.defaultProfileId) {
+        console.log('[AutoInit] No default profile configured — skipping auto-init');
+        return { success: false, reason: 'no_default_profile', detail: null };
+    }
+
+    const defaultProfile = configState.profiles?.find(p => p.id === configState.defaultProfileId);
+    if (!defaultProfile) {
+        console.log('[AutoInit] Default profile not found in profiles list — skipping auto-init');
+        return { success: false, reason: 'no_default_profile', detail: null };
+    }
+
+    if (!defaultProfile.active_for_consumption) {
+        console.log('[AutoInit] Default profile not yet activated — skipping auto-init');
+        return { success: false, reason: 'profile_not_activated', detail: null };
+    }
+
+    // Live-test the profile before committing to initialization.
+    // This catches expired LLM credentials, missing configs, etc.
+    console.log('[AutoInit] Testing default profile before initializing...');
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const testResp = await fetch(`/api/v1/profiles/${defaultProfile.id}/test`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const testResult = await testResp.json();
+
+        // Collect any error-level results from the test
+        const errors = Object.entries(testResult.results || {})
+            .filter(([, v]) => v.status === 'error')
+            .map(([k, v]) => `${k}: ${v.message}`);
+
+        if (errors.length > 0) {
+            const detail = errors.join(' | ');
+            console.warn('[AutoInit] Profile test failed:', detail);
+            initState.testFailureDetail = detail;
+            return { success: false, reason: 'test_failed', detail };
+        }
+    } catch (err) {
+        // Non-fatal: network glitch shouldn't block init entirely.
+        // Proceed and let /configure surface connectivity issues.
+        console.warn('[AutoInit] Could not reach profile test endpoint:', err.message);
+    }
+
+    // Profile tested OK — initialize silently (no view switch, no session loading)
+    console.log('[AutoInit] Default profile ready, auto-initializing silently...');
+    const success = await initializeConversationMode(true);
+    return { success, reason: success ? null : 'init_failed', detail: null };
 }
