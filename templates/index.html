@@ -4230,6 +4230,22 @@
                                     </div>
                                 </div>
 
+                                <!-- User Tier Pagination -->
+                                <div id="users-pagination" class="hidden mt-4 flex items-center justify-between px-2">
+                                    <div class="text-sm text-gray-400">
+                                        Showing <span id="users-showing-start">0</span>–<span id="users-showing-end">0</span> of <span id="users-total-count">0</span> users
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <button id="users-prev-page"
+                                            class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled>Previous</button>
+                                        <span id="users-page-info" class="text-sm text-gray-400">Page 1 of 1</span>
+                                        <button id="users-next-page"
+                                            class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled>Next</button>
+                                    </div>
+                                </div>
+
                                 <!-- Tier Statistics -->
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div class="glass-panel rounded-xl p-6">
