@@ -816,6 +816,14 @@ function _openAssignmentPanel(ownerProfileId, ownerName, kgId, parentContainer) 
     _assignOverlay.style.opacity = '0';
     _assignOverlay.style.transition = 'opacity 200ms';
 
+    const IFOC_ORDER = { llm_only: 0, rag_focused: 1, tool_enabled: 2, genie: 3 };
+    candidates.sort((a, b) => {
+        const ao = IFOC_ORDER[a.profile_type] ?? 99;
+        const bo = IFOC_ORDER[b.profile_type] ?? 99;
+        if (ao !== bo) return ao - bo;
+        return (a.tag || a.name || '').localeCompare(b.tag || b.name || '');
+    });
+
     const checkboxes = candidates.map(p => {
         const ifoc = IFOC_CONFIG[p.profile_type] || { label: p.profile_type || '?', color: '#6b7280' };
         const checked = currentlyAssigned.has(p.id) ? 'checked' : '';

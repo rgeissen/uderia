@@ -5983,9 +5983,14 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             return;
         }
 
+        const slaveProfileSettings = currentGenieProfile?.genieConfig?.slaveProfileSettings || {};
+
         availableProfiles.forEach(profile => {
             const isSelected = selectedSlaves.includes(profile.id);
             const isGenieType = profile.profile_type === 'genie';
+            const isOptimizer = profile.profile_type === 'tool_enabled';
+            const isPassthroughEnabled = isOptimizer &&
+                (slaveProfileSettings[profile.id]?.fullResultPassthrough === true);
 
             const profileTypeLabel = {
                 'llm_only': 'Conversation',
@@ -6016,7 +6021,34 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                     <span class="text-xs ${profileTypeColor} ml-2 ${isGenieType ? 'font-semibold' : ''}">(${profileTypeLabel})</span>
                     ${isGenieType ? '<span class="ml-2 text-xs bg-purple-600/30 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30">Nested</span>' : ''}
                 </label>
+                ${isOptimizer ? `
+                <label class="slave-passthrough-label flex items-center gap-1 cursor-pointer select-none shrink-0 ${isSelected ? '' : 'opacity-30 pointer-events-none'}"
+                       title="Pass full data rows to coordinator synthesis LLM">
+                    <input type="checkbox"
+                           class="slave-passthrough-toggle w-3 h-3 accent-orange-400"
+                           data-profile-id="${profile.id}"
+                           ${isPassthroughEnabled ? 'checked' : ''}
+                           ${isSelected ? '' : 'disabled'}>
+                    <span class="text-xs text-orange-300/80 whitespace-nowrap">Full data</span>
+                </label>` : ''}
             `;
+
+            // Keep passthrough toggle enabled/disabled in sync with the slave checkbox
+            if (isOptimizer) {
+                const slaveCheckbox = div.querySelector(`#slave-${profile.id}`);
+                const passthroughLabel = div.querySelector('.slave-passthrough-label');
+                const passthroughToggle = div.querySelector('.slave-passthrough-toggle');
+                if (slaveCheckbox && passthroughLabel && passthroughToggle) {
+                    slaveCheckbox.addEventListener('change', () => {
+                        const checked = slaveCheckbox.checked;
+                        passthroughToggle.disabled = !checked;
+                        passthroughLabel.classList.toggle('opacity-30', !checked);
+                        passthroughLabel.classList.toggle('pointer-events-none', !checked);
+                        if (!checked) passthroughToggle.checked = false;
+                    });
+                }
+            }
+
             container.appendChild(div);
         });
 
@@ -7267,9 +7299,16 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 return;  // Prevent save
             }
 
+            // Collect per-slave passthrough settings for Efficiency Focused profiles
+            const slaveProfileSettings = {};
+            modal.querySelectorAll('.slave-passthrough-toggle:checked').forEach(toggle => {
+                slaveProfileSettings[toggle.dataset.profileId] = { fullResultPassthrough: true };
+            });
+
             genieConfig = {
                 slaveProfiles: selectedSlaveProfiles,
-                maxConcurrentSlaves: 3  // Default value
+                maxConcurrentSlaves: 3,  // Default value
+                slaveProfileSettings
             };
 
             // Collect optional Genie settings (temperature, queryTimeout, maxIterations)

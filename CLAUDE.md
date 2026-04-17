@@ -378,6 +378,27 @@ When only one expert is consulted and the coordinator has no prior conversation 
 
 Implementation: `src/trusted_data_agent/agent/genie_coordinator.py` — early break inside `on_tool_end` handler. Condition: `_routing_tool_call_count == 1 and not conversation_history and not _has_uncalled_executor`.
 
+**Full Result Pass-Through (per-slave toggle):**
+
+By default the coordinator synthesis LLM only receives the slave's `final_answer_text` (a brief prose summary). For `tool_enabled` slaves whose raw data rows are needed by the coordinator (e.g. enumeration queries), a per-slave opt-in flag passes the full `collected_data` rows as a pipe-delimited text table appended to the slave's answer.
+
+Controlled via `genieConfig.slaveProfileSettings`:
+```json
+{
+  "genieConfig": {
+    "slaveProfiles": ["profile-id-1"],
+    "slaveProfileSettings": {
+      "profile-id-1": { "fullResultPassthrough": true }
+    }
+  }
+}
+```
+Absent entry = OFF (default). Only meaningful for `tool_enabled` slaves. The toggle is exposed in the coordinator profile edit dialog (Capabilities → Available Child Profiles) as an inline "Full data" checkbox next to each Optimize slave — disabled/faded when the slave is unchecked.
+
+**Agent Pack survival:** On export, `slaveProfileSettings` keys (profile IDs) are converted to profile tags (same pattern as `slaveProfiles`/`child_tags`). On import, tag keys are remapped back to the new profile IDs.
+
+Implementation files: `src/trusted_data_agent/agent/genie_coordinator.py` (`_format_collected_data_as_text` helper, `SlaveSessionTool.full_result_passthrough` field, `_execute_and_poll`), `src/trusted_data_agent/agent/execution_service.py` (stamps `full_result_passthrough` onto slave dicts), `src/trusted_data_agent/core/agent_pack_manager.py` (export tag-remap + import ID-remap), `static/js/handlers/configurationHandler.js` (toggle UI + save handler).
+
 Session data tracks:
 - `profile_id` - Current active profile
 - `profile_tag` - Current profile tag
@@ -1653,10 +1674,12 @@ Files: `src/trusted_data_agent/core/cost_manager.py`
 **Key Features:**
 - Export/import complete agent configurations as `.agentpack` files
 - Auto-bundles user skills that are **auto-enabled** (`active: true` in `skillsConfig`) on any participating profile — skills are restored on import
+- Knowledge Graphs bundled per-profile (active KG per profile exported); all cross-profile assignments to other pack profiles exported too; restored on import with full `kg_profile_assignments` wiring
 - Publish to marketplace for sharing
 - Install from marketplace with one click
-- Automatic dependency resolution (profiles, collections, MCP servers, skills)
+- Automatic dependency resolution (profiles, collections, MCP servers, skills, knowledge graphs)
 - Version management and update notifications
+- Edit installed pack metadata and profile membership via `PUT /v1/agent-packs/{id}`
 
 **Manifest Format Versions:**
 
@@ -1665,9 +1688,20 @@ Files: `src/trusted_data_agent/core/cost_manager.py`
 | `1.1` | Base: profiles + collections |
 | `1.2` | Adds `vector_store_configurations` array |
 | `1.3` | Adds `skills` array; profile entries include `skillsConfig` |
-| `1.4` | Adds `knowledge_graphs` array; profile entries include `kg_refs`; only the active KG per profile is exported |
+| `1.4` | Adds `knowledge_graphs` array; profile entries include `kg_refs`; only the active KG per profile is exported. KG entries include `owner_profile_tag` and `assigned_profiles` for full multi-profile assignment fidelity. |
 
 Version is determined automatically at export time: `1.4` if KGs present, `1.3` if skills, `1.2` if only VS configs, otherwise `1.1`.
+
+**`slaveProfileSettings` in genie coordinator profiles:** The `genieConfig.slaveProfileSettings` dict is exported with profile tag keys and imported with profile ID keys, using the same tag-remap pattern as `slaveProfiles`. This is transparent to the manifest version (no version bump — it lives inside the profile's `genieConfig` blob).
+
+**KG export/import details (v1.4):**
+- Export uses `kg_profile_assignments` as source of truth for which KG is active per profile (with legacy fallback to `kg_metadata.profile_id`)
+- Each KG manifest entry includes `owner_profile_tag` and `assigned_profiles[]` (tag + is_active per assigned profile)
+- Import resolves KG owner via: manifest `owner_profile_tag` → pack genie coordinator → active-assignment profile (legacy)
+- Import creates `kg_profile_assignments` rows for all listed `assigned_profiles`; `is_active=true` only if the target profile has no existing active KG assignment; response includes `kgs_created` count
+- Import records each KG in `agent_pack_resources` (`resource_type='knowledge_graph'`) so uninstall can cascade-delete them
+- Uninstall deletes owned KGs cascading across `kg_metadata`, `kg_entities`, `kg_relationships`, `kg_profile_assignments`; response includes `kgs_deleted` count (only KGs imported by this pack are deleted)
+- Tag conflicts on import return HTTP 409 with `status: "tag_conflict"` and `conflicting_tags` list
 
 **Files:**
 - `src/trusted_data_agent/core/agent_pack_manager.py` - Pack creation and installation
@@ -1680,6 +1714,8 @@ Version is determined automatically at export time: `1.4` if KGs present, `1.3` 
 - `POST /v1/agent-packs/create` - Create pack from resources
 - `POST /v1/agent-packs/import` - Install pack from file
 - `POST /v1/agent-packs/export` - Export pack to file
+- `PUT /v1/agent-packs/<id>` - Update pack metadata and/or profile membership
+- `DELETE /v1/agent-packs/<id>` - Uninstall pack (deletes owned profiles, collections, KGs)
 - `POST /v1/marketplace/agent-packs/<id>/publish` - Publish to marketplace
 - `GET /v1/marketplace/agent-packs` - Browse marketplace
 
@@ -2123,10 +2159,13 @@ Example: "Using the n8n-uderia skill, how do I configure profile override in a w
 
 ## Recent Major Changes
 
-- **Apr 2026**: Knowledge Graphs first-class Agent Pack citizens (v1.4 manifest) — active KG per profile bundled in export as `knowledge_graphs/kg_N.json`; restored on import after profiles created; `is_active=not has_active` prevents displacing an existing active KG
+- **Apr 2026**: Agent Pack KG export/import hardening — export queries `kg_profile_assignments` (not `kg_metadata.profile_id`) as source of truth for active KG per profile; manifest v1.4 KG entries include `owner_profile_tag` and `assigned_profiles[]` (full assignment fidelity); import uses owner resolution: manifest owner → genie coordinator → active-assignment profile; import creates `kg_profile_assignments` rows for all pack profiles; `agent_pack_resources` tracks KGs so uninstall cascade-deletes them; import/uninstall responses include `kgs_created`/`kgs_deleted`; success message shows KG count; tag conflicts return HTTP 409 `tag_conflict`
+- **Apr 2026**: Knowledge Graphs first-class Agent Pack citizens (v1.4 manifest) — active KG per profile bundled in export as `knowledge_graphs/kg_N.json`; restored on import after profiles created; new `PUT /v1/agent-packs/{id}` endpoint to edit pack metadata and profile membership
 - **Apr 2026**: KG import overhaul — two-mode dialog (create new vs merge), export v2.0 with `kg_id`/`kg_name`/`kg_description`/`kg_database_name`, `set_kg_metadata(is_active=)` param, marketplace publish/install/fork create named KGs with `kg_id` tracking
 - **Apr 2026**: Agent Pack skills bundling (v1.3 manifest) - auto-enabled user skills included in export/restored on import
 - **Apr 2026**: Skills support for Genie coordinator - skill content injected into coordinator system prompt and user context
+- **Apr 2026**: Genie full result pass-through toggle — per-slave `fullResultPassthrough` flag on coordinator profiles; when ON, coordinator synthesis LLM receives slave's full `collected_data` rows alongside `final_answer_text`; survives Agent Pack export/import via tag-remap
+- **Apr 2026**: KG "Assign Profiles" dialog sorted by IFOC order (Ideate → Focus → Optimize → Coordinate), then alphabetically by tag
 - **Apr 2026**: Genie pass-through optimisation - coordinator skips synthesis LLM call when single expert is consulted with no conversation history
 - **Apr 2026**: Skills marketplace - publish status annotation in skill list; browse filters exclude own published skills
 - **Apr 2026**: OpenRouter provider support - access 100+ models via unified OpenRouter API

@@ -760,6 +760,12 @@ async def _run_genie_execution(
             }, "error")
             return None
 
+        # Annotate each slave with per-slave settings from the coordinator profile
+        slave_profile_settings = genie_config.get("slaveProfileSettings", {})
+        for slave in slave_profiles:
+            settings = slave_profile_settings.get(slave["id"], {})
+            slave["full_result_passthrough"] = settings.get("fullResultPassthrough", False)
+
         # Note: genie_coordination_start is emitted by GenieCoordinator with slave_profiles details
 
         # Get LLM configuration for coordinator

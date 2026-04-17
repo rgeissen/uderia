@@ -72,6 +72,54 @@ def _get_slave_session_lock(session_id: str) -> asyncio.Lock:
     return _slave_session_locks[session_id]
 
 
+def _format_collected_data_as_text(collected_data: dict, max_rows: int = 50) -> str:
+    """
+    Formats structured data rows from a tool_enabled slave into plain text
+    so the coordinator synthesis LLM has access to actual retrieved data
+    when full_result_passthrough is enabled on the slave profile.
+    """
+    if not collected_data or not isinstance(collected_data, dict):
+        return ""
+
+    sections = []
+    for _key, items in collected_data.items():
+        if not isinstance(items, list) or not items:
+            continue
+
+        # Flatten: items may be row-dicts directly, or result-dicts with a
+        # "results"/"data" array (MCP tool response wrapper).
+        rows = []
+        for item in items:
+            if isinstance(item, dict):
+                nested = item.get("results") or item.get("data")
+                if isinstance(nested, list):
+                    rows.extend(r for r in nested if isinstance(r, dict))
+                elif not item.get("status"):  # plain row dict (no status wrapper)
+                    rows.append(item)
+            elif isinstance(item, list):
+                rows.extend(r for r in item if isinstance(r, dict))
+
+        if not rows:
+            continue
+
+        total = len(rows)
+        sample = rows[:max_rows]
+        cols = list(sample[0].keys())
+        header = " | ".join(cols)
+        row_lines = [" | ".join(str(r.get(c, "")) for c in cols) for r in sample]
+        truncation = f" (showing first {max_rows} of {total})" if total > max_rows else f" ({total} rows)"
+        block = (
+            f"Retrieved data{truncation}:\n"
+            + header + "\n"
+            + "-" * min(len(header), 120) + "\n"
+            + "\n".join(row_lines)
+        )
+        sections.append(block)
+
+    return "\n\n".join(sections)
+
+
+
 class SlaveSessionTool(BaseTool):
     """
     LangChain tool that wraps REST calls to a child session.
@@ -92,6 +140,7 @@ class SlaveSessionTool(BaseTool):
     auth_token: str = Field(description="Authentication token for API calls")
     query_timeout: float = Field(default=300.0, description="Timeout for query execution in seconds")
     current_nesting_level: int = Field(default=0, description="Current nesting depth in Genie hierarchy")
+    full_result_passthrough: bool = Field(default=False, description="Append full structured data rows to result for coordinator synthesis LLM")
 
     class Config:
         arbitrary_types_allowed = True
@@ -433,6 +482,13 @@ class SlaveSessionTool(BaseTool):
                         result.get("final_response") or     # Legacy field
                         result.get("final_answer", "")      # HTML formatted - fallback
                     )
+                    # When full_result_passthrough is enabled on this slave profile, append
+                    # the structured data rows so the coordinator synthesis LLM has access
+                    # to the actual retrieved data, not just TDA_FinalReport's text summary.
+                    if self.full_result_passthrough:
+                        data_text = _format_collected_data_as_text(result.get("collected_data") or {})
+                        if data_text:
+                            final_response = final_response + "\n\n" + data_text
                     # Cache the full HTML response for pass-through rendering.
                     # When synthesis is skipped, the coordinator delivers the slave's answer
                     # directly to the user — we want the rich HTML (table, charts, etc.),
@@ -654,7 +710,8 @@ class GenieCoordinator:
                 base_url=self.base_url,
                 auth_token=self.auth_token,
                 query_timeout=self.query_timeout,
-                current_nesting_level=self.current_nesting_level
+                current_nesting_level=self.current_nesting_level,
+                full_result_passthrough=profile.get("full_result_passthrough", False),
             )
 
             tools.append(tool)

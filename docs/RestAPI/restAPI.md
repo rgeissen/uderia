@@ -3788,7 +3788,7 @@ curl -X GET http://localhost:5050/api/v1/agent-packs/2/check-sessions \
 
 #### 3.14.2. Uninstall Agent Pack
 
-Uninstall an agent pack, removing all associated profiles and collections. All sessions using these resources are automatically archived.
+Uninstall an agent pack, removing all associated profiles, collections, and knowledge graphs. All sessions using these resources are automatically archived.
 
 **Endpoint:** `DELETE /api/v1/agent-packs/{installation_id}`
 **Authentication:** Required (JWT or access token)
@@ -3802,6 +3802,7 @@ Uninstall an agent pack, removing all associated profiles and collections. All s
   "status": "success",
   "profiles_deleted": 10,
   "collections_deleted": 9,
+  "kgs_deleted": 2,
   "profiles_kept": 0,
   "collections_kept": 0,
   "sessions_archived": 8
@@ -3811,12 +3812,14 @@ Uninstall an agent pack, removing all associated profiles and collections. All s
 **Response Fields:**
 - `profiles_deleted` (integer) - Number of profiles removed
 - `collections_deleted` (integer) - Number of collections removed
+- `kgs_deleted` (integer) - Number of knowledge graphs removed (v1.4+ packs)
 - `profiles_kept` (integer) - Profiles retained (shared with other packs)
 - `collections_kept` (integer) - Collections retained (shared with other packs)
 - `sessions_archived` (integer) - Number of sessions automatically archived
 
 **Behavior:**
-- All profiles and collections owned by this pack are deleted
+- All profiles, collections, and knowledge graphs owned by this pack are deleted
+- KG deletion cascades across `kg_metadata`, `kg_entities`, `kg_relationships`, and `kg_profile_assignments`
 - Resources shared with other installed packs are kept
 - All sessions using deleted resources are automatically archived
 - Archived sessions include reason and timestamp
@@ -3879,6 +3882,7 @@ Import an `.agentpack` file to install profiles and collections as a bundle.
   "pack_name": "Sales Analytics Pack",
   "profiles_imported": 4,
   "collections_imported": 3,
+  "kgs_created": 2,
   "conflicts_resolved": 1,
   "summary": {
     "profiles": ["Sales Dashboard", "Revenue Analysis", "Customer Insights", "Trend Forecasting"],
@@ -3887,10 +3891,15 @@ Import an `.agentpack` file to install profiles and collections as a bundle.
 }
 ```
 
+**Response Fields:**
+- `kgs_created` (integer) - Number of knowledge graphs created (v1.4+ packs only)
+
 **Conflict Strategies:**
 - `skip`: Skip conflicting resources (default)
 - `overwrite`: Replace existing resources with imported versions
 - `rename`: Rename imported resources to avoid conflicts (e.g., "Profile" → "Profile (2)")
+- `replace`: Delete existing conflicting profiles/collections then re-import (idempotent)
+- `expand`: Auto-rename profile tags to avoid collision (e.g., `TAG` → `TAG2`)
 
 **Error Responses:**
 ```json
@@ -3904,6 +3913,13 @@ Import an `.agentpack` file to install profiles and collections as a bundle.
 {
   "status": "error",
   "message": "File not found: /path/to/pack.agentpack"
+}
+
+// Profile tag conflict (HTTP 409)
+{
+  "status": "tag_conflict",
+  "conflicting_tags": ["VAT", "PRODUCT_SME"],
+  "message": "Tag conflict: profiles @VAT, @PRODUCT_SME already exist"
 }
 ```
 
@@ -3954,11 +3970,33 @@ Content-Disposition: attachment; filename="Sales_Analytics_Pack.agentpack"
 ```
 
 **Export Contents:**
-- `manifest.json` - Pack metadata, profiles (with `skillsConfig`), collection refs, skills refs
+- `manifest.json` - Pack metadata, profiles (with `skillsConfig`, `kg_refs`), collection refs, skills refs, knowledge graphs
 - `collections/` - All associated RAG collections as `.zip` files
 - `skills/` - User skills that are auto-enabled (`active: true`) on any exported profile, as `.skill` zip files (v1.3+ only)
+- `knowledge_graphs/` - Active KG per profile as `kg_N.json` files (v1.4+ only)
 
-**Manifest format versions:** `1.1` (base), `1.2` (+ vector store configs), `1.3` (+ skills). Version is selected automatically.
+**Manifest format versions:** `1.1` (base), `1.2` (+ vector store configs), `1.3` (+ skills), `1.4` (+ knowledge graphs). Version is selected automatically.
+
+**Knowledge Graph manifest entry (v1.4):**
+```json
+{
+  "name": "Product Knowledge Graph",
+  "kg_id": "kg-abc123",
+  "kg_database_name": "ProductDB",
+  "owner_profile_tag": "PRODUCT_SME",
+  "assigned_profiles": [
+    { "tag": "PRODUCT_SME", "is_active": true },
+    { "tag": "VAT", "is_active": false }
+  ]
+}
+```
+- `owner_profile_tag` - Tag of the profile that owns the KG on the source system (used to resolve owner on import)
+- `assigned_profiles` - All profiles assigned to this KG with their active status; on import, assignment rows are created in `kg_profile_assignments`; a profile gets `is_active=true` only if it has no existing active KG already
+
+**KG owner resolution on import (priority order):**
+1. `owner_profile_tag` from manifest (when original owner is in this pack)
+2. Genie coordinator of the pack (neutral owner for cross-pack KGs)
+3. Active-assignment profile (legacy fallback)
 
 **Error Responses:**
 ```json
@@ -4141,7 +4179,81 @@ Retrieve detailed information about a specific agent pack.
 
 ---
 
-#### 3.14.8. Publish Agent Pack to Marketplace
+#### 3.14.8. Update Agent Pack
+
+Update the editable metadata and/or profile membership of an installed agent pack.
+
+**Endpoint:** `PUT /api/v1/agent-packs/{installation_id}`
+**Authentication:** Required (JWT or access token)
+**Method:** `PUT`
+**Path Parameters:**
+- `installation_id` (integer, required) - Agent pack installation ID
+
+**Request Body:**
+```json
+{
+  "name": "VAT Agent Pack v2",
+  "description": "Updated description",
+  "version": "2.0.0",
+  "profile_ids": ["profile-abc123", "profile-def456", "profile-ghi789"]
+}
+```
+
+**Parameters:**
+- `name` (string, required) - New pack name
+- `description` (string, optional) - New description
+- `version` (string, optional) - New semantic version
+- `profile_ids` (array of strings, optional) - Replace the pack's profile membership. Genie children are auto-included; coordinator/expert/standalone roles are resolved automatically. All referenced profiles must already exist.
+
+**Success Response:**
+```json
+{
+  "status": "ok",
+  "pack": {
+    "installation_id": 3,
+    "name": "VAT Agent Pack v2",
+    "description": "Updated description",
+    "version": "2.0.0",
+    "coordinator_tag": "VAT",
+    "pack_type": "genie",
+    "profiles_count": 10,
+    "collections_count": 9
+  }
+}
+```
+
+**Response Fields (when `profile_ids` is provided):**
+- `coordinator_tag` (string | null) - Tag of the genie coordinator, if any
+- `pack_type` (string) - `"genie"` or `"standalone"`
+- `profiles_count` (integer) - Total profiles now referenced by the pack
+- `collections_count` (integer) - Total collections now referenced by the pack
+
+**Behavior:**
+- Metadata (`name`, `description`, `version`) is updated in `agent_pack_installations` and `manifest_json`
+- When `profile_ids` is provided, all existing `agent_pack_resources` rows for this pack are replaced with the new profile/collection set; genie children of any included coordinator are automatically added
+- Resources are marked `is_owned=0` (referenced, not owned) — the pack doesn't take ownership of pre-existing profiles
+
+**Error Responses:**
+- `400 Bad Request` - Missing `name` or `profile_ids` is an empty list
+- `403 Forbidden` / `404 Not Found` - Pack not found or not owned by the current user
+- `500 Internal Server Error`
+
+**Example:**
+```bash
+# Rename a pack and reassign profiles
+curl -X PUT http://localhost:5050/api/v1/agent-packs/3 \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "VAT Agent Pack v2",
+    "version": "2.0.0",
+    "profile_ids": ["profile-abc123", "profile-def456"]
+  }'
+```
+
+---
+
+#### 3.14.9. Publish Agent Pack to Marketplace
 
 Publish an installed agent pack to the marketplace for sharing.
 
@@ -4186,7 +4298,7 @@ Publish an installed agent pack to the marketplace for sharing.
 
 ---
 
-#### 3.14.9. Browse Marketplace Agent Packs
+#### 3.14.10. Browse Marketplace Agent Packs
 
 Browse available agent packs in the marketplace.
 
@@ -4232,7 +4344,7 @@ Browse available agent packs in the marketplace.
 
 ---
 
-#### 3.14.10. Install Agent Pack from Marketplace
+#### 3.14.11. Install Agent Pack from Marketplace
 
 Install an agent pack from the marketplace.
 
@@ -4265,7 +4377,7 @@ Install an agent pack from the marketplace.
 
 ---
 
-#### 3.14.11. Fork Marketplace Agent Pack
+#### 3.14.12. Fork Marketplace Agent Pack
 
 Create a personal copy of a marketplace pack for customization.
 
@@ -4299,7 +4411,7 @@ Create a personal copy of a marketplace pack for customization.
 
 ---
 
-#### 3.14.12. Rate Marketplace Agent Pack
+#### 3.14.13. Rate Marketplace Agent Pack
 
 Submit a rating for a marketplace pack.
 
@@ -4333,7 +4445,7 @@ Submit a rating for a marketplace pack.
 
 ---
 
-#### 3.14.13. Unpublish Agent Pack from Marketplace
+#### 3.14.14. Unpublish Agent Pack from Marketplace
 
 Remove an agent pack from the marketplace (pack owner only).
 
@@ -4356,7 +4468,7 @@ Remove an agent pack from the marketplace (pack owner only).
 
 ---
 
-#### 3.14.14. Get Targeted Users for Private Pack
+#### 3.14.15. Get Targeted Users for Private Pack
 
 Retrieve list of users who can access a private marketplace pack.
 
@@ -4388,7 +4500,7 @@ Retrieve list of users who can access a private marketplace pack.
 
 ---
 
-#### 3.14.15. Update Targeted Users for Private Pack
+#### 3.14.16. Update Targeted Users for Private Pack
 
 Update the list of users who can access a private marketplace pack.
 
