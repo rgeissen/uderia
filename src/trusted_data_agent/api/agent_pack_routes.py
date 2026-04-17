@@ -11,6 +11,7 @@ Endpoints:
 - POST   /v1/agent-packs/create              Create .agentpack from selected profiles
 - GET    /v1/agent-packs                     List installed packs
 - GET    /v1/agent-packs/<installation_id>   Get pack details
+- PUT    /v1/agent-packs/<installation_id>   Update pack metadata (name, description, version)
 - DELETE /v1/agent-packs/<installation_id>   Uninstall a pack
 
 Marketplace endpoints:
@@ -380,6 +381,83 @@ async def get_agent_pack_details(current_user, installation_id: int):
     except Exception as e:
         app_logger.error(f"Failed to get agent pack details: {e}", exc_info=True)
         return jsonify({"status": "error", "message": f"Failed to get details: {e}"}), 500
+
+
+# ── Update Pack Metadata ──────────────────────────────────────────────────────
+
+@agent_pack_bp.route("/v1/agent-packs/<int:installation_id>", methods=["PUT"])
+@require_auth
+async def update_agent_pack(current_user, installation_id: int):
+    """Update the editable metadata (name, description, version) of an installed pack."""
+    user_uuid = current_user.id
+
+    try:
+        data = await request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "Request body required"}), 400
+
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"status": "error", "message": "name is required"}), 400
+
+        description = (data.get("description") or "").strip()
+        version = (data.get("version") or "").strip()
+
+        conn = sqlite3.connect(str(DB_PATH))
+        try:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "SELECT id, manifest_json FROM agent_pack_installations WHERE id = ? AND owner_user_id = ?",
+                (installation_id, user_uuid)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return jsonify({"status": "error", "message": "Pack not found or access denied"}), 404
+
+            manifest_json = row[1]
+            try:
+                manifest = json.loads(manifest_json) if manifest_json else {}
+            except Exception:
+                manifest = {}
+
+            manifest["name"] = name
+            if description:
+                manifest["description"] = description
+            if version:
+                manifest["version"] = version
+
+            cursor.execute(
+                """UPDATE agent_pack_installations
+                   SET name = ?, description = ?, version = ?, manifest_json = ?
+                   WHERE id = ?""",
+                (name, description or None, version or None, json.dumps(manifest), installation_id)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Optionally update profiles
+        profile_ids = data.get("profile_ids")
+        profiles_result = None
+        if profile_ids is not None:
+            if not isinstance(profile_ids, list) or not profile_ids:
+                return jsonify({"status": "error", "message": "profile_ids must be a non-empty list"}), 400
+            manager = _manager()
+            profiles_result = await manager.update_pack_profiles(installation_id, user_uuid, profile_ids)
+
+        response = {
+            "status": "ok",
+            "pack": {"installation_id": installation_id, "name": name, "description": description, "version": version}
+        }
+        if profiles_result:
+            response["pack"].update(profiles_result)
+
+        return jsonify(response), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to update agent pack {installation_id}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"Failed to update pack: {e}"}), 500
 
 
 # ── Check Active Sessions Before Deletion ────────────────────────────────────

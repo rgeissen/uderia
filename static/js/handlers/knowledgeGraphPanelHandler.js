@@ -17,12 +17,12 @@ import * as API from '../api.js';
 import { showConfirmation } from '../ui.js';
 import { showAppBanner } from '../bannerSystem.js';
 
-// ── IFOC colour mapping (matches ifocTagConfig in configurationHandler.js) ──
+// ── IFOC colour mapping ───────────────────────────────────────────────────────
 const IFOC_CONFIG = {
     llm_only:     { label: 'Ideate',     color: '#4ade80' },
     rag_focused:  { label: 'Focus',      color: '#3b82f6' },
-    tool_enabled: { label: 'Optimize',   color: '#F15F22' },
-    genie:        { label: 'Coordinate', color: '#9333ea' },
+    tool_enabled: { label: 'Optimize',   color: '#9333ea' },
+    genie:        { label: 'Coordinate', color: '#F15F22' },
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

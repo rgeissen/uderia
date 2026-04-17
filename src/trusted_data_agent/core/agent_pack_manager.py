@@ -1432,6 +1432,156 @@ class AgentPackManager:
             "zip_path": str(zip_path),
         }
 
+    # ── Update Pack Profiles ───────────────────────────────────────────────────
+
+    async def update_pack_profiles(
+        self,
+        installation_id: int,
+        user_uuid: str,
+        profile_ids: list[str],
+    ) -> dict:
+        """Replace the profiles referenced by an installed agent pack.
+
+        Resolves coordinator/expert roles automatically (same logic as
+        create_and_install). All resources are marked is_owned=0 since
+        we reference existing profiles, not own them.
+
+        Returns: dict with updated coordinator_tag, pack_type, profile counts.
+        """
+        from trusted_data_agent.core.config_manager import get_config_manager
+
+        config_manager = get_config_manager()
+
+        # Validate ownership
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id FROM agent_pack_installations WHERE id = ? AND owner_user_id = ?",
+                (installation_id, user_uuid),
+            )
+            if not cursor.fetchone():
+                raise ValueError(f"Pack {installation_id} not found or access denied")
+        finally:
+            conn.close()
+
+        # Resolve profiles + auto-include genie children
+        selected_profiles = []
+        selected_ids = set(profile_ids)
+        for pid in profile_ids:
+            profile = config_manager.get_profile(pid, user_uuid)
+            if profile:
+                selected_profiles.append(profile)
+
+        for profile in list(selected_profiles):
+            if profile.get("profile_type") == "genie":
+                for child_id in profile.get("genieConfig", {}).get("slaveProfiles", []):
+                    if child_id not in selected_ids:
+                        child = config_manager.get_profile(child_id, user_uuid)
+                        if child:
+                            selected_profiles.append(child)
+                            selected_ids.add(child_id)
+
+        # Compute coordinator/expert roles
+        genie_child_ids: set[str] = set()
+        for profile in selected_profiles:
+            if profile.get("profile_type") == "genie":
+                genie_child_ids.update(profile.get("genieConfig", {}).get("slaveProfiles", []))
+
+        rec_profile_ids: list[str] = []
+        rec_profile_tags: list[str] = []
+        rec_profile_roles: list[str] = []
+        coordinator_tag = None
+        coordinator_profile_id = None
+
+        for profile in selected_profiles:
+            rec_profile_ids.append(profile["id"])
+            rec_profile_tags.append(profile.get("tag", ""))
+            if profile.get("profile_type") == "genie":
+                role = "coordinator"
+                coordinator_tag = profile.get("tag")
+                coordinator_profile_id = profile["id"]
+            elif profile["id"] in genie_child_ids:
+                role = "expert"
+            else:
+                role = "standalone"
+            rec_profile_roles.append(role)
+
+        # Gather collections from selected profiles
+        rec_collection_ids: list[int] = []
+        rec_collection_refs: list[str] = []
+        seen_collection_ids: set = set()
+
+        for profile in selected_profiles:
+            for kc in profile.get("knowledgeConfig", {}).get("collections", []):
+                cid = kc.get("id")
+                if cid and cid not in seen_collection_ids:
+                    seen_collection_ids.add(cid)
+                    rec_collection_ids.append(int(cid))
+                    rec_collection_refs.append(kc.get("name", f"collection_{cid}"))
+            if profile.get("profile_type") == "tool_enabled" or (
+                profile.get("profile_type") == "llm_only" and profile.get("useMcpTools")
+            ):
+                for cid in profile.get("ragCollections", []):
+                    if cid and cid != "*" and cid not in seen_collection_ids:
+                        seen_collection_ids.add(cid)
+                        rec_collection_ids.append(int(cid))
+                        rec_collection_refs.append(f"planner_{cid}")
+
+        has_genie = any(p.get("profile_type") == "genie" for p in selected_profiles)
+        pack_type = "genie" if has_genie else "standalone"
+
+        # Persist changes
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.cursor()
+
+            # Update header fields
+            cursor.execute(
+                """UPDATE agent_pack_installations
+                   SET coordinator_tag = ?, coordinator_profile_id = ?, pack_type = ?
+                   WHERE id = ?""",
+                (coordinator_tag, coordinator_profile_id, pack_type, installation_id),
+            )
+
+            # Replace all resource rows
+            cursor.execute(
+                "DELETE FROM agent_pack_resources WHERE pack_installation_id = ?",
+                (installation_id,),
+            )
+
+            for pid, tag, role in zip(rec_profile_ids, rec_profile_tags, rec_profile_roles):
+                cursor.execute(
+                    """INSERT INTO agent_pack_resources
+                       (pack_installation_id, resource_type, resource_id, resource_tag, resource_role, is_owned)
+                       VALUES (?, 'profile', ?, ?, ?, 0)""",
+                    (installation_id, pid, tag, role),
+                )
+
+            for coll_id, ref in zip(rec_collection_ids, rec_collection_refs):
+                cursor.execute(
+                    """INSERT INTO agent_pack_resources
+                       (pack_installation_id, resource_type, resource_id, resource_tag, resource_role, is_owned)
+                       VALUES (?, 'collection', ?, ?, 'collection', 0)""",
+                    (installation_id, str(coll_id), ref),
+                )
+
+            conn.commit()
+        finally:
+            conn.close()
+
+        app_logger.info(
+            f"Updated pack {installation_id} profiles: {len(rec_profile_ids)} profiles, "
+            f"{len(rec_collection_ids)} collections, coordinator=@{coordinator_tag}"
+        )
+
+        return {
+            "coordinator_tag": coordinator_tag,
+            "pack_type": pack_type,
+            "profiles_count": len(rec_profile_ids),
+            "collections_count": len(rec_collection_ids),
+        }
+
     # ── Uninstall ──────────────────────────────────────────────────────────────
 
     async def uninstall_pack(self, installation_id: int, user_uuid: str) -> dict:

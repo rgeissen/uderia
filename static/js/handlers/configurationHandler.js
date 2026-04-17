@@ -5425,8 +5425,8 @@ function collectPrimerStatements() {
 const KG_IFOC_CONFIG = {
     llm_only:     { label: 'Ideate',     color: '#4ade80' },
     rag_focused:  { label: 'Focus',      color: '#3b82f6' },
-    tool_enabled: { label: 'Optimize',   color: '#F15F22' },
-    genie:        { label: 'Coordinate', color: '#9333ea' },
+    tool_enabled: { label: 'Optimize',   color: '#9333ea' },
+    genie:        { label: 'Coordinate', color: '#F15F22' },
 };
 
 /**
@@ -5609,8 +5609,8 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     const ifocTagConfig = {
         'llm_only': { label: 'Ideate', color: '#4ade80', bgColor: 'rgba(74, 222, 128, 0.15)' },
         'rag_focused': { label: 'Focus', color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.15)' },
-        'tool_enabled': { label: 'Optimize', color: '#F15F22', bgColor: 'rgba(241, 95, 34, 0.15)' },
-        'genie': { label: 'Coordinate', color: '#9333ea', bgColor: 'rgba(147, 51, 234, 0.15)' }
+        'tool_enabled': { label: 'Optimize',   color: '#9333ea', bgColor: 'rgba(147, 51, 234, 0.15)' },
+        'genie':        { label: 'Coordinate', color: '#F15F22', bgColor: 'rgba(241, 95, 34, 0.15)' }
     };
 
     // Function to update the IFOC tag in the modal header
