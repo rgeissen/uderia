@@ -15475,6 +15475,21 @@ async def kg_assignments_activate(current_user):
                         (kg_owner_profile_id, assigned_profile_id, user_uuid),
                     )
                     activated = cursor.rowcount > 0
+                if not activated:
+                    # No existing assignment row for this (kg_id, assigned_profile_id) — insert one
+                    # so the activation is properly recorded and visible to the export.
+                    _meta = cursor.execute(
+                        "SELECT profile_id FROM kg_metadata WHERE kg_id = ? AND user_uuid = ?",
+                        (kg_id, user_uuid),
+                    ).fetchone()
+                    _owner = _meta[0] if _meta else kg_id
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO kg_profile_assignments "
+                        "(kg_id, kg_owner_profile_id, assigned_profile_id, user_uuid, is_active) "
+                        "VALUES (?, ?, ?, ?, 1)",
+                        (kg_id, _owner, assigned_profile_id, user_uuid),
+                    )
+                    activated = cursor.rowcount > 0
             else:
                 # Legacy: match by kg_owner_profile_id only
                 cursor.execute(

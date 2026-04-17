@@ -278,21 +278,41 @@ async function handleInstallAgentPack() {
         }
 
         try {
-            const formData = new FormData();
-            formData.append('file', file);
-            if (mcpServerId) formData.append('mcp_server_id', mcpServerId);
-            formData.append('llm_configuration_id', llmConfigId);
-            if (conflictStrategy) formData.append('conflict_strategy', conflictStrategy);
-            if (vectorStoreConfigId) formData.append('vector_store_config_id', vectorStoreConfigId);
-
             const token = localStorage.getItem('tda_auth_token');
-            const res = await fetch('/api/v1/agent-packs/import', {
+
+            const _buildFormData = (strategy) => {
+                const fd = new FormData();
+                fd.append('file', file);
+                if (mcpServerId) fd.append('mcp_server_id', mcpServerId);
+                fd.append('llm_configuration_id', llmConfigId);
+                if (strategy) fd.append('conflict_strategy', strategy);
+                if (vectorStoreConfigId) fd.append('vector_store_config_id', vectorStoreConfigId);
+                return fd;
+            };
+
+            const _doImport = (strategy) => fetch('/api/v1/agent-packs/import', {
                 method: 'POST',
                 headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-                body: formData,
+                body: _buildFormData(strategy),
             });
 
-            const data = await res.json();
+            let res = await _doImport(conflictStrategy);
+            let data = await res.json();
+
+            // Server-side fallback: if the client couldn't parse the ZIP (manifest was null)
+            // or configState was stale, the backend returns 409 tag_conflict with structured data.
+            if (data.status === 'tag_conflict') {
+                if (installBtn) { installBtn.disabled = false; installBtn.innerHTML = originalText; }
+                const strategy = await _showTagConflictDialog(data.conflicting_tags || []);
+                if (strategy === null) return; // User cancelled
+                if (installBtn) {
+                    installBtn.disabled = true;
+                    installBtn.innerHTML = `<svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Installing...`;
+                }
+                res = await _doImport(strategy);
+                data = await res.json();
+            }
+
             if (!res.ok || data.status === 'error') {
                 throw new Error(data.message || `Import failed (${res.status})`);
             }

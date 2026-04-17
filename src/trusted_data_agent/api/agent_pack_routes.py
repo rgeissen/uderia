@@ -138,8 +138,17 @@ async def import_agent_pack(current_user):
         return jsonify({"status": "success", **result}), 200
 
     except ValueError as e:
-        app_logger.warning(f"Agent pack import validation error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 400
+        err_msg = str(e)
+        app_logger.warning(f"Agent pack import validation error: {err_msg}")
+        if "Tag conflict" in err_msg:
+            import re as _re
+            conflicting = _re.findall(r"@(\w+)", err_msg)
+            return jsonify({
+                "status": "tag_conflict",
+                "conflicting_tags": conflicting,
+                "message": err_msg,
+            }), 409
+        return jsonify({"status": "error", "message": err_msg}), 400
     except RuntimeError as e:
         app_logger.error(f"Agent pack import runtime error: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
