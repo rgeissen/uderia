@@ -1484,6 +1484,26 @@ class AgentPackManager:
                         f"try uninstalling again."
                     )
 
+        # Master classification constraint: block if any pack profile is a master for profiles
+        # outside this pack (dependents not being deleted in this same operation)
+        pack_profile_ids = {r["resource_id"] for r in profile_resources}
+        for res in profile_resources:
+            if pack_db.is_pack_managed(res["resource_type"], res["resource_id"]):
+                continue  # still referenced by another pack, won't be deleted
+            dependent_profiles = config_manager.get_dependent_profiles(res["resource_id"], user_uuid)
+            external_dependents = [p for p in dependent_profiles if p["id"] not in pack_profile_ids]
+            if external_dependents:
+                dep_names = ", ".join(
+                    f"@{p.get('tag', '?')} ({p.get('name', p.get('id'))})"
+                    for p in external_dependents
+                )
+                raise ValueError(
+                    f"Cannot uninstall agent pack '{pack_name}': profile "
+                    f"'@{res['resource_tag']}' is the master classification profile for: "
+                    f"{dep_names}. Remove the 'Inherit Classification' setting from those "
+                    f"profiles first."
+                )
+
         # Step 1: Remove junction rows for THIS pack
         pack_db.remove_pack_resources(installation_id)
 
