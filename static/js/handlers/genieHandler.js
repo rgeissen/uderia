@@ -188,6 +188,12 @@ async function addChildSessionToList(childSessionId, parentSessionId) {
             return;
         }
 
+        // Re-check after async fetch: notifications.js may have added this session during the network round-trip
+        if (document.getElementById(`session-${childSessionId}`)) {
+            console.log('[GenieHandler] Session added by notifications during fetch, skipping duplicate:', childSessionId);
+            return;
+        }
+
         console.log('[GenieHandler] Found child session with metadata:', {
             id: childSessionId,
             parent: newSession.genie_metadata.parent_session_id,
