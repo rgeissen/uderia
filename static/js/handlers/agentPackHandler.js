@@ -317,7 +317,9 @@ async function handleInstallAgentPack() {
                 throw new Error(data.message || `Import failed (${res.status})`);
             }
 
-            let successMsg = `Agent pack installed: ${data.name || 'Unknown'} (${data.profiles_created || data.experts_created || 0} profiles, ${data.collections_created} collections)`;
+            const _kgCount = data.kgs_created || 0;
+            const _kgPart = _kgCount > 0 ? `, ${_kgCount} knowledge graph${_kgCount !== 1 ? 's' : ''}` : '';
+            let successMsg = `Agent pack installed: ${data.name || 'Unknown'} (${data.profiles_created || data.experts_created || 0} profiles, ${data.collections_created} collections${_kgPart})`;
             if (data.tag_remap && Object.keys(data.tag_remap).length > 0) {
                 const remapList = Object.entries(data.tag_remap)
                     .map(([old, nw]) => `@${old} → @${nw}`)
