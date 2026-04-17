@@ -710,6 +710,8 @@ class AgentPackManager:
             # Step 6c: Import Knowledge Graphs (needs profile IDs from Step 6)
             pack_kgs = manifest.get("knowledge_graphs", [])
             _kgs_imported = 0
+            _imported_kg_ids: list[str] = []
+            _imported_kg_names: list[str] = []
             if pack_kgs:
                 import uuid as _uuid_kg
                 import sqlite3 as _sq_kg
@@ -733,19 +735,34 @@ class AgentPackManager:
                     _kg_data = json.loads(_kg_file_path.read_text())
                     _new_kg_id = str(_uuid_kg.uuid4())
 
-                    # Check if profile already has an active KG — don't displace it
+                    # Determine the KG owner on this system.
+                    # Preference order:
+                    #   1. owner_profile_tag from manifest (when original owner is in this pack)
+                    #   2. Genie coordinator of this pack (neutral owner for cross-pack KGs)
+                    #   3. Active-assignment profile (fallback, current behaviour for single profiles)
+                    _owner_profile_tag = _kg_entry.get("owner_profile_tag")
+                    _actual_owner_pid = tag_to_profile_id.get(_owner_profile_tag) if _owner_profile_tag else None
+                    if not _actual_owner_pid:
+                        _coord_tag = next(
+                            (p["tag"] for p in genie_profiles if p.get("role") == "coordinator"), None
+                        )
+                        _actual_owner_pid = tag_to_profile_id.get(_coord_tag) if _coord_tag else None
+                    if not _actual_owner_pid:
+                        _actual_owner_pid = _kg_target_profile_id
+
+                    # Check if the owner already has an active KG — don't displace it
                     _sq_conn = _sq_kg.connect(self.db_path)
                     try:
                         _has_active = _sq_conn.execute(
                             "SELECT 1 FROM kg_metadata WHERE profile_id = ? AND user_uuid = ? AND is_active = 1 LIMIT 1",
-                            (_kg_target_profile_id, user_uuid),
+                            (_actual_owner_pid, user_uuid),
                         ).fetchone() is not None
                     finally:
                         _sq_conn.close()
 
                     try:
                         _store = _GS_import(
-                            profile_id=_kg_target_profile_id,
+                            profile_id=_actual_owner_pid,
                             user_uuid=user_uuid,
                             kg_id=_new_kg_id,
                         )
@@ -766,6 +783,8 @@ class AgentPackManager:
                             f"rels={_bulk_result['relationships_added']})"
                         )
                         _kgs_imported += 1
+                        _imported_kg_ids.append(_new_kg_id)
+                        _imported_kg_names.append(_kg_entry.get("name", ""))
 
                         # Create kg_profile_assignments rows for all assigned pack profiles
                         _assigned_profiles_manifest = _kg_entry.get("assigned_profiles", [])
@@ -791,7 +810,7 @@ class AgentPackManager:
                                         "INSERT OR IGNORE INTO kg_profile_assignments "
                                         "(kg_id, kg_owner_profile_id, assigned_profile_id, user_uuid, is_active) "
                                         "VALUES (?, ?, ?, ?, ?)",
-                                        (_new_kg_id, _kg_target_profile_id, _ap_pid, user_uuid,
+                                        (_new_kg_id, _actual_owner_pid, _ap_pid, user_uuid,
                                          1 if _ap_activate else 0),
                                     )
                                 _sq_assign.commit()
@@ -844,6 +863,8 @@ class AgentPackManager:
                 profile_roles=profile_roles,
                 collection_ids=[info["id"] for info in ref_to_collection_id.values()],
                 collection_refs=list(ref_to_collection_id.keys()),
+                kg_ids=_imported_kg_ids,
+                kg_names=_imported_kg_names,
                 user_uuid=user_uuid,
             )
 
@@ -1236,9 +1257,11 @@ class AgentPackManager:
                             json.dumps(_kg_json, indent=2, ensure_ascii=False)
                         )
 
+                        _pack_pid_to_tag = {p["id"]: p.get("tag") for p in selected_profiles}
+                        _kg_owner_tag = _pack_pid_to_tag.get(_kg_meta.get("profile_id"))
+
                         _kg_assigned_profiles = []
                         try:
-                            _pack_pid_to_tag = {p["id"]: p.get("tag") for p in selected_profiles}
                             _assign_rows = _kg_db.execute(
                                 "SELECT assigned_profile_id, is_active FROM kg_profile_assignments "
                                 "WHERE kg_id = ? AND user_uuid = ?",
@@ -1257,6 +1280,7 @@ class AgentPackManager:
                             "ref": _kg_ref,
                             "file": f"knowledge_graphs/{_kg_file_name}",
                             "profile_tag": _kg_profile.get("tag"),
+                            "owner_profile_tag": _kg_owner_tag,
                             "name": _kg_meta.get("kg_name", ""),
                             "database_name": _kg_meta.get("database_name", ""),
                             "description": _kg_meta.get("description", ""),
@@ -1754,9 +1778,10 @@ class AgentPackManager:
         collections_kept = 0
         total_sessions_archived = 0
 
-        # Separate profiles and collections; process profiles first
+        # Separate profiles, collections, and knowledge graphs; process profiles first
         profile_resources = [r for r in resources if r["resource_type"] == "profile"]
         collection_resources = [r for r in resources if r["resource_type"] == "collection"]
+        kg_resources = [r for r in resources if r["resource_type"] == "knowledge_graph"]
 
         # Sort profiles: coordinator first, then others
         coordinators = [r for r in profile_resources if r["resource_role"] == "coordinator"]
@@ -1822,6 +1847,25 @@ class AgentPackManager:
                 collections_kept += 1
                 app_logger.info(f"  Kept collection {res['resource_id']} (still referenced by another pack)")
 
+        # Delete knowledge graphs
+        kgs_deleted = 0
+        for res in kg_resources:
+            kg_id = res["resource_id"]
+            try:
+                conn_kg = sqlite3.connect(self.db_path)
+                try:
+                    conn_kg.execute("DELETE FROM kg_relationships WHERE kg_id = ?", (kg_id,))
+                    conn_kg.execute("DELETE FROM kg_entities WHERE kg_id = ?", (kg_id,))
+                    conn_kg.execute("DELETE FROM kg_metadata WHERE kg_id = ?", (kg_id,))
+                    conn_kg.execute("DELETE FROM kg_profile_assignments WHERE kg_id = ?", (kg_id,))
+                    conn_kg.commit()
+                finally:
+                    conn_kg.close()
+                kgs_deleted += 1
+                app_logger.info(f"  Deleted KG id={kg_id} ('{res['resource_tag']}')")
+            except Exception as e:
+                app_logger.warning(f"  Failed to delete KG id={kg_id}: {e}")
+
         # Step 3: Delete installation record
         conn = sqlite3.connect(self.db_path)
         try:
@@ -1834,11 +1878,13 @@ class AgentPackManager:
         app_logger.info(f"Uninstalled agent pack '{pack_name}' (id={installation_id}): "
                        f"{profiles_deleted} profiles deleted, {profiles_kept} kept, "
                        f"{collections_deleted} collections deleted, {collections_kept} kept, "
+                       f"{kgs_deleted} KGs deleted, "
                        f"{total_sessions_archived} sessions archived")
 
         return {
             "profiles_deleted": profiles_deleted,
             "collections_deleted": collections_deleted,
+            "kgs_deleted": kgs_deleted,
             "profiles_kept": profiles_kept,
             "collections_kept": collections_kept,
             "sessions_archived": total_sessions_archived,
@@ -2169,6 +2215,8 @@ class AgentPackManager:
         collection_refs: list[str],
         user_uuid: str,
         is_owned: bool = True,
+        kg_ids: list[str] | None = None,
+        kg_names: list[str] | None = None,
     ) -> int:
         """Record the agent pack installation in the database."""
         conn = sqlite3.connect(self.db_path)
@@ -2212,6 +2260,14 @@ class AgentPackManager:
                     (pack_installation_id, resource_type, resource_id, resource_tag, resource_role, is_owned)
                     VALUES (?, 'collection', ?, ?, 'collection', ?)
                 """, (installation_id, str(coll_id), ref, owned_int))
+
+            # Record knowledge graphs
+            for kg_id, kg_name in zip(kg_ids or [], kg_names or []):
+                cursor.execute("""
+                    INSERT INTO agent_pack_resources
+                    (pack_installation_id, resource_type, resource_id, resource_tag, resource_role, is_owned)
+                    VALUES (?, 'knowledge_graph', ?, ?, 'knowledge_graph', ?)
+                """, (installation_id, kg_id, kg_name, owned_int))
 
             conn.commit()
             return installation_id
