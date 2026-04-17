@@ -709,6 +709,7 @@ class AgentPackManager:
 
             # Step 6c: Import Knowledge Graphs (needs profile IDs from Step 6)
             pack_kgs = manifest.get("knowledge_graphs", [])
+            _kgs_imported = 0
             if pack_kgs:
                 import uuid as _uuid_kg
                 import sqlite3 as _sq_kg
@@ -764,6 +765,42 @@ class AgentPackManager:
                             f"entities={_bulk_result['entities_added']}, "
                             f"rels={_bulk_result['relationships_added']})"
                         )
+                        _kgs_imported += 1
+
+                        # Create kg_profile_assignments rows for all assigned pack profiles
+                        _assigned_profiles_manifest = _kg_entry.get("assigned_profiles", [])
+                        if _assigned_profiles_manifest:
+                            _sq_assign = _sq_kg.connect(self.db_path)
+                            try:
+                                for _ap in _assigned_profiles_manifest:
+                                    _ap_tag = _ap.get("tag")
+                                    _ap_active_src = bool(_ap.get("is_active", False))
+                                    _ap_pid = tag_to_profile_id.get(_ap_tag)
+                                    if not _ap_pid:
+                                        continue
+                                    if _ap_active_src:
+                                        _ap_already_active = _sq_assign.execute(
+                                            "SELECT 1 FROM kg_profile_assignments "
+                                            "WHERE assigned_profile_id=? AND user_uuid=? AND is_active=1 LIMIT 1",
+                                            (_ap_pid, user_uuid),
+                                        ).fetchone() is not None
+                                        _ap_activate = not _ap_already_active
+                                    else:
+                                        _ap_activate = False
+                                    _sq_assign.execute(
+                                        "INSERT OR IGNORE INTO kg_profile_assignments "
+                                        "(kg_id, kg_owner_profile_id, assigned_profile_id, user_uuid, is_active) "
+                                        "VALUES (?, ?, ?, ?, ?)",
+                                        (_new_kg_id, _kg_target_profile_id, _ap_pid, user_uuid,
+                                         1 if _ap_activate else 0),
+                                    )
+                                _sq_assign.commit()
+                            except Exception as _ae:
+                                app_logger.warning(
+                                    f"  Failed to create KG assignments for '{_kg_entry.get('name')}': {_ae}"
+                                )
+                            finally:
+                                _sq_assign.close()
                     except Exception as _e:
                         app_logger.warning(f"  Failed to import KG '{_kg_entry.get('name')}': {_e}")
 
@@ -817,6 +854,7 @@ class AgentPackManager:
                 "coordinator_profile_id": coordinator_profile_id,
                 "profiles_created": len(created_profile_ids),
                 "collections_created": len(ref_to_collection_id),
+                "kgs_created": _kgs_imported,
                 # Legacy compat
                 "experts_created": len(non_genie),
                 "tag_remap": tag_remap if tag_remap else None,
@@ -1198,6 +1236,23 @@ class AgentPackManager:
                             json.dumps(_kg_json, indent=2, ensure_ascii=False)
                         )
 
+                        _kg_assigned_profiles = []
+                        try:
+                            _pack_pid_to_tag = {p["id"]: p.get("tag") for p in selected_profiles}
+                            _assign_rows = _kg_db.execute(
+                                "SELECT assigned_profile_id, is_active FROM kg_profile_assignments "
+                                "WHERE kg_id = ? AND user_uuid = ?",
+                                (_kg_meta["kg_id"], user_uuid),
+                            ).fetchall()
+                            for _ar in _assign_rows:
+                                _atag = _pack_pid_to_tag.get(_ar["assigned_profile_id"])
+                                if _atag:
+                                    _kg_assigned_profiles.append(
+                                        {"tag": _atag, "is_active": bool(_ar["is_active"])}
+                                    )
+                        except Exception:
+                            pass
+
                         manifest_kgs.append({
                             "ref": _kg_ref,
                             "file": f"knowledge_graphs/{_kg_file_name}",
@@ -1205,6 +1260,7 @@ class AgentPackManager:
                             "name": _kg_meta.get("kg_name", ""),
                             "database_name": _kg_meta.get("database_name", ""),
                             "description": _kg_meta.get("description", ""),
+                            "assigned_profiles": _kg_assigned_profiles,
                         })
                         _kg_refs_for_profile.append(_kg_ref)
                         exported_kg_ids.add(_kg_meta["kg_id"])
