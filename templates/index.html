@@ -10713,6 +10713,68 @@
     </div>
 
     <!-- Publish Agent Pack Modal -->
+    <!-- Edit Agent Pack Modal -->
+    <div id="edit-pack-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-start justify-center z-50 hidden opacity-0 overflow-y-auto py-8 px-4">
+        <div id="edit-pack-modal-content" class="glass-panel rounded-xl shadow-2xl w-full max-w-xl p-6 transform scale-95 opacity-0 my-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold text-white">Edit Agent Pack</h2>
+                <button type="button" id="edit-pack-modal-close" class="p-2 rounded-full text-gray-400 hover:bg-white/10 hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <form id="edit-pack-form" class="space-y-4">
+                <input type="hidden" id="edit-pack-installation-id">
+
+                <!-- Metadata fields -->
+                <div>
+                    <label for="edit-pack-name" class="block text-sm font-medium text-gray-300 mb-1">
+                        Name <span class="text-red-400">*</span>
+                    </label>
+                    <input type="text" id="edit-pack-name" required placeholder="Agent pack name"
+                           class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none text-white">
+                </div>
+                <div>
+                    <label for="edit-pack-description" class="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                    <textarea id="edit-pack-description" rows="2" placeholder="Brief description of this pack"
+                              class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none text-white resize-none"></textarea>
+                </div>
+                <div>
+                    <label for="edit-pack-version" class="block text-sm font-medium text-gray-300 mb-1">Version</label>
+                    <input type="text" id="edit-pack-version" placeholder="e.g. 1.0.0"
+                           class="w-full p-3 bg-gray-700 border border-gray-600 rounded-md focus:ring-2 focus:ring-[#F15F22] focus:border-[#F15F22] outline-none text-white">
+                </div>
+
+                <!-- Profiles section -->
+                <div class="border-t border-gray-600 pt-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <label class="block text-sm font-medium text-gray-300">Profiles</label>
+                        <span id="edit-pack-profiles-loading" class="text-xs text-gray-500 hidden">Loading...</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-3">Select profiles for this pack. Choosing a Coordinate (Genie) profile automatically includes its experts.</p>
+
+                    <!-- Profile type tabs -->
+                    <div id="edit-pack-profile-tabs" class="flex gap-1 mb-2 flex-wrap"></div>
+
+                    <!-- Profile list -->
+                    <div id="edit-pack-profile-list" class="max-h-52 overflow-y-auto space-y-1 bg-white/5 rounded-lg p-2 border border-white/10 text-sm text-gray-400">
+                        <p class="text-center py-2">Loading profiles…</p>
+                    </div>
+
+                    <!-- Auto-include note -->
+                    <p id="edit-pack-auto-note" class="text-xs text-blue-400 mt-1 hidden"></p>
+                </div>
+
+                <p id="edit-pack-error" class="text-red-400 text-sm hidden"></p>
+                <div class="flex justify-end gap-3 pt-4 border-t border-gray-600">
+                    <button type="button" id="edit-pack-cancel" class="card-btn card-btn--neutral">Cancel</button>
+                    <button type="submit" id="edit-pack-submit" class="card-btn card-btn--primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="publish-pack-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden opacity-0">
         <div id="publish-pack-modal-content" class="glass-panel rounded-xl shadow-2xl w-full max-w-lg p-6 transform scale-95 opacity-0">
             <!-- Modal Header -->

@@ -32,10 +32,10 @@ let installedPacks = [];
 // ── Profile type display config ──────────────────────────────────────────────
 
 const PROFILE_CLASS_CONFIG = {
-    genie:        { label: 'Coordinator', color: '#F15F22', bgClass: 'bg-orange-500/10', textClass: 'text-orange-400' },
-    tool_enabled: { label: 'Optimizer',   color: '#9333ea', bgClass: 'bg-purple-500/10', textClass: 'text-purple-400' },
-    rag_focused:  { label: 'Knowledge',   color: '#3b82f6', bgClass: 'bg-blue-500/10',   textClass: 'text-blue-400'   },
-    llm_only:     { label: 'Conversation',color: '#4ade80', bgClass: 'bg-green-500/10',  textClass: 'text-green-400'  },
+    genie:        { label: 'Coordinate', color: '#F15F22', bgClass: 'bg-orange-500/10', textClass: 'text-orange-400' },
+    tool_enabled: { label: 'Optimize',   color: '#9333ea', bgClass: 'bg-purple-500/10', textClass: 'text-purple-400' },
+    rag_focused:  { label: 'Focus',      color: '#3b82f6', bgClass: 'bg-blue-500/10',   textClass: 'text-blue-400'   },
+    llm_only:     { label: 'Ideate',     color: '#4ade80', bgClass: 'bg-green-500/10',  textClass: 'text-green-400'  },
 };
 
 const PACK_TYPE_BADGES = {
@@ -94,6 +94,10 @@ function renderAgentPacks() {
                             class="card-btn card-btn--sm card-btn--cyan">
                         Export
                     </button>
+                    <button onclick="window.agentPackHandler.openEditPackModal(${pack.installation_id}, '${_esc(pack.name)}', '${_esc(pack.description || '')}', '${_esc(pack.version || '')}')"
+                            class="card-btn card-btn--sm card-btn--neutral">
+                        Edit
+                    </button>
                     ${pack.marketplace_pack_id
                         ? `<span class="px-3 py-1.5 text-xs rounded-lg bg-green-500/10 text-green-400 flex items-center gap-1">
                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
@@ -101,7 +105,7 @@ function renderAgentPacks() {
                            </span>
                            <button onclick="window.agentPackHandler.openPublishPackModal(${pack.installation_id}, '${_esc(pack.name)}')"
                                    class="card-btn card-btn--sm card-btn--neutral">
-                               Edit
+                               Marketplace
                            </button>
                            <button onclick="window.agentPackHandler.handleUnpublishFromMyAssets('${pack.marketplace_pack_id}')"
                                    class="card-btn card-btn--sm card-btn--secondary">
@@ -1512,6 +1516,267 @@ async function handleUnsubscribeAgentPack(marketplacePackId, packName) {
     );
 }
 
+// ── Edit Pack ─────────────────────────────────────────────────────────────────
+
+let _editPackModalInitialized = false;
+let _editPackInstallationId = null;
+let _editPackActiveTab = null;  // currently visible profile type tab
+
+function _initEditPackModal() {
+    if (_editPackModalInitialized) return;
+    _editPackModalInitialized = true;
+
+    const modal = document.getElementById('edit-pack-modal-overlay');
+    const closeBtn = document.getElementById('edit-pack-modal-close');
+    const cancelBtn = document.getElementById('edit-pack-cancel');
+    const form = document.getElementById('edit-pack-form');
+
+    if (closeBtn) closeBtn.addEventListener('click', _closeEditPackModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', _closeEditPackModal);
+    if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) _closeEditPackModal(); });
+    if (form) form.addEventListener('submit', async (e) => { e.preventDefault(); await _handleEditPackSave(); });
+}
+
+/**
+ * Open the edit modal and load the current pack's profiles.
+ * Fetches GET /api/v1/agent-packs/<id> to get resource profile IDs.
+ */
+async function openEditPackModal(installationId, name, description, version) {
+    _initEditPackModal();
+    _editPackInstallationId = installationId;
+
+    document.getElementById('edit-pack-installation-id').value = installationId;
+    document.getElementById('edit-pack-name').value = name || '';
+    document.getElementById('edit-pack-description').value = description || '';
+    document.getElementById('edit-pack-version').value = version || '';
+
+    const errorEl = document.getElementById('edit-pack-error');
+    if (errorEl) { errorEl.textContent = ''; errorEl.classList.add('hidden'); }
+
+    // Show modal immediately
+    const modal = document.getElementById('edit-pack-modal-overlay');
+    const content = document.getElementById('edit-pack-modal-content');
+    if (!modal || !content) return;
+
+    modal.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        modal.classList.add('opacity-100');
+        content.classList.remove('scale-95', 'opacity-0');
+        content.classList.add('scale-100', 'opacity-100');
+    });
+
+    // Load profiles asynchronously
+    _renderEditPackProfiles(installationId);
+}
+
+/**
+ * Fetch pack details + all profiles, then render the checkbox picker.
+ */
+async function _renderEditPackProfiles(installationId) {
+    const listEl = document.getElementById('edit-pack-profile-list');
+    const tabsEl = document.getElementById('edit-pack-profile-tabs');
+    const loadingEl = document.getElementById('edit-pack-profiles-loading');
+
+    if (loadingEl) loadingEl.classList.remove('hidden');
+    if (listEl) listEl.innerHTML = '<p class="text-center py-2 text-gray-500">Loading…</p>';
+    if (tabsEl) tabsEl.innerHTML = '';
+
+    try {
+        // Fetch current pack resources
+        const detailsRes = await fetch(`/api/v1/agent-packs/${installationId}`, { headers: _headers(false) });
+        const detailsData = await detailsRes.json();
+        const currentProfileIds = new Set(
+            (detailsData.resources || [])
+                .filter(r => r.resource_type === 'profile')
+                .map(r => r.resource_id)
+        );
+
+        // All available profiles
+        const allProfiles = configState?.profiles || [];
+        if (allProfiles.length === 0) {
+            if (listEl) listEl.innerHTML = '<p class="text-center py-2 text-gray-400">No profiles available.</p>';
+            return;
+        }
+
+        // Group by profile_type — IFOC order: Ideate → Focus → Optimize → Coordinate
+        const typeOrder = ['llm_only', 'rag_focused', 'tool_enabled', 'genie'];
+        const groups = {};
+        for (const p of allProfiles) {
+            const pt = p.profile_type || 'llm_only';
+            if (!groups[pt]) groups[pt] = [];
+            groups[pt].push(p);
+        }
+
+        // Sort each group by name
+        for (const pt of typeOrder) {
+            if (groups[pt]) groups[pt].sort((a, b) => (a.name || a.tag || '').localeCompare(b.name || b.tag || ''));
+        }
+
+        const activeTypes = typeOrder.filter(t => groups[t]?.length);
+        _editPackActiveTab = activeTypes[0] || 'llm_only';
+
+        // Render tabs
+        if (tabsEl) {
+            tabsEl.innerHTML = activeTypes.map(pt => {
+                const cfg = PROFILE_CLASS_CONFIG[pt] || { label: pt, bgClass: 'bg-white/10', textClass: 'text-gray-300' };
+                const isActive = pt === _editPackActiveTab;
+                return `<button type="button"
+                    data-pt="${pt}"
+                    onclick="window.agentPackHandler._switchEditPackTab('${pt}')"
+                    class="edit-pack-tab px-3 py-1 text-xs rounded-full border transition-colors
+                           ${isActive
+                               ? `${cfg.bgClass} text-white border-current`
+                               : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10'
+                           }">
+                    ${cfg.label}
+                </button>`;
+            }).join('');
+        }
+
+        // Render profile checkboxes for each tab, show active tab
+        if (listEl) {
+            listEl.innerHTML = activeTypes.map(pt => {
+                const cfg = PROFILE_CLASS_CONFIG[pt] || { label: pt, textClass: 'text-gray-300' };
+                const profiles = groups[pt] || [];
+                return `<div class="edit-pack-tab-panel" data-panel="${pt}" ${pt !== _editPackActiveTab ? 'style="display:none"' : ''}>
+                    ${profiles.map(p => {
+                        const checked = currentProfileIds.has(p.id) ? 'checked' : '';
+                        const tag = p.tag ? `@${p.tag}` : p.id;
+                        return `<label class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5 cursor-pointer">
+                            <input type="checkbox" class="edit-pack-profile-cb accent-[#F15F22]"
+                                   value="${p.id}" data-type="${pt}" data-tag="${tag}" ${checked}>
+                            <span class="flex-1 text-white text-sm truncate">${_esc(p.name || tag)}</span>
+                            <span class="text-xs ${cfg.textClass} shrink-0">${tag}</span>
+                        </label>`;
+                    }).join('')}
+                </div>`;
+            }).join('');
+        }
+
+        _updateEditPackAutoNote();
+
+        // Update auto-note on any checkbox change
+        listEl?.addEventListener('change', _updateEditPackAutoNote);
+
+    } catch (err) {
+        if (listEl) listEl.innerHTML = `<p class="text-center py-2 text-red-400">Failed to load profiles.</p>`;
+        console.error('Edit pack profile load failed:', err);
+    } finally {
+        if (loadingEl) loadingEl.classList.add('hidden');
+    }
+}
+
+function _switchEditPackTab(pt) {
+    _editPackActiveTab = pt;
+
+    // Update tab button styles
+    document.querySelectorAll('.edit-pack-tab').forEach(btn => {
+        const bpt = btn.dataset.pt;
+        const cfg = PROFILE_CLASS_CONFIG[bpt] || { bgClass: 'bg-white/10', textClass: 'text-gray-300' };
+        if (bpt === pt) {
+            btn.className = `edit-pack-tab px-3 py-1 text-xs rounded-full border transition-colors ${cfg.bgClass} text-white border-current`;
+        } else {
+            btn.className = 'edit-pack-tab px-3 py-1 text-xs rounded-full border transition-colors bg-white/5 text-gray-400 border-white/10 hover:bg-white/10';
+        }
+    });
+
+    // Show/hide panels
+    document.querySelectorAll('.edit-pack-tab-panel').forEach(panel => {
+        panel.style.display = panel.dataset.panel === pt ? '' : 'none';
+    });
+}
+
+/**
+ * Show note listing genie children that will be auto-included.
+ */
+function _updateEditPackAutoNote() {
+    const noteEl = document.getElementById('edit-pack-auto-note');
+    if (!noteEl) return;
+
+    const checkedIds = new Set(
+        [...document.querySelectorAll('.edit-pack-profile-cb:checked')].map(cb => cb.value)
+    );
+
+    const allProfiles = configState?.profiles || [];
+    const profileById = Object.fromEntries(allProfiles.map(p => [p.id, p]));
+
+    const autoChildren = [];
+    for (const id of checkedIds) {
+        const prof = profileById[id];
+        if (!prof || prof.profile_type !== 'genie') continue;
+        for (const cid of prof.genieConfig?.slaveProfiles || []) {
+            if (!checkedIds.has(cid)) {
+                const child = profileById[cid];
+                if (child) autoChildren.push(child.tag ? `@${child.tag}` : cid);
+            }
+        }
+    }
+
+    if (autoChildren.length) {
+        noteEl.textContent = `Auto-includes: ${autoChildren.join(', ')}`;
+        noteEl.classList.remove('hidden');
+    } else {
+        noteEl.classList.add('hidden');
+    }
+}
+
+function _closeEditPackModal() {
+    const modal = document.getElementById('edit-pack-modal-overlay');
+    const content = document.getElementById('edit-pack-modal-content');
+    if (!modal || !content) return;
+
+    modal.classList.remove('opacity-100');
+    content.classList.remove('scale-100', 'opacity-100');
+    content.classList.add('scale-95', 'opacity-0');
+
+    setTimeout(() => { modal.classList.add('hidden'); }, 300);
+}
+
+async function _handleEditPackSave() {
+    const installationId = _editPackInstallationId;
+    const name = (document.getElementById('edit-pack-name')?.value || '').trim();
+    const description = (document.getElementById('edit-pack-description')?.value || '').trim();
+    const version = (document.getElementById('edit-pack-version')?.value || '').trim();
+    const errorEl = document.getElementById('edit-pack-error');
+    const submitBtn = document.getElementById('edit-pack-submit');
+
+    if (!name) {
+        if (errorEl) { errorEl.textContent = 'Name is required.'; errorEl.classList.remove('hidden'); }
+        return;
+    }
+
+    // Collect selected profile IDs (only if the picker has loaded)
+    const checkedBoxes = document.querySelectorAll('.edit-pack-profile-cb:checked');
+    const profile_ids = checkedBoxes.length > 0
+        ? [...checkedBoxes].map(cb => cb.value)
+        : undefined;
+
+    const originalText = submitBtn?.textContent || 'Save Changes';
+    if (submitBtn) { submitBtn.textContent = 'Saving...'; submitBtn.disabled = true; }
+
+    try {
+        const body = { name, description, version };
+        if (profile_ids !== undefined) body.profile_ids = profile_ids;
+
+        const res = await fetch(`/api/v1/agent-packs/${installationId}`, {
+            method: 'PUT',
+            headers: _headers(true),
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'ok') {
+            throw new Error(data.message || `Update failed (${res.status})`);
+        }
+        _closeEditPackModal();
+        _notify('success', 'Agent pack updated');
+        await loadAgentPacks();
+    } catch (err) {
+        if (errorEl) { errorEl.textContent = err.message; errorEl.classList.remove('hidden'); }
+    } finally {
+        if (submitBtn) { submitBtn.textContent = originalText; submitBtn.disabled = false; }
+    }
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 window.agentPackHandler = {
@@ -1525,6 +1790,8 @@ window.agentPackHandler = {
     handleUnpublishFromMyAssets,
     openPublishPackModal,
     initializePublishPackModal,
+    openEditPackModal,
+    _switchEditPackTab,
     // Exposed for marketplace install flow reuse
     showMcpServerPicker: _showMcpServerPicker,
     showLlmConfigPicker: _showLlmConfigPicker,
