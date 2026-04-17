@@ -1126,23 +1126,37 @@ class ConfigManager:
     def remove_profile(self, profile_id: str, user_uuid: Optional[str] = None) -> bool:
         """
         Remove a profile configuration.
-        
+
         Args:
             profile_id: Unique ID of the profile to remove
             user_uuid: Optional user UUID for per-user configuration isolation
-            
+
         Returns:
             True if successful, False otherwise
         """
-        profiles = self.get_profiles(user_uuid)
+        config = self.load_config(user_uuid)
+        profiles = config.get("profiles", [])
         original_count = len(profiles)
-        profiles = [p for p in profiles if p.get("id") != profile_id]
-        
-        if len(profiles) == original_count:
+        config["profiles"] = [p for p in profiles if p.get("id") != profile_id]
+
+        if len(config["profiles"]) == original_count:
             app_logger.warning(f"Profile with ID {profile_id} not found for removal")
             return False
-        
-        return self.save_profiles(profiles, user_uuid)
+
+        # Clean up per-server master classification references
+        master_ids = config.get("master_classification_profile_ids", {})
+        stale = [sid for sid, pid in master_ids.items() if pid == profile_id]
+        for sid in stale:
+            del master_ids[sid]
+            app_logger.info(f"Cleared master classification reference for MCP server {sid} (profile {profile_id} deleted)")
+        config["master_classification_profile_ids"] = master_ids
+
+        # Clean up legacy single master reference
+        if config.get("master_classification_profile_id") == profile_id:
+            config["master_classification_profile_id"] = None
+            app_logger.info(f"Cleared legacy master_classification_profile_id (profile {profile_id} deleted)")
+
+        return self.save_config(config, user_uuid)
 
     def validate_profile(self, profile: Dict[str, Any], user_uuid: Optional[str] = None) -> tuple[bool, str]:
         """
@@ -1448,6 +1462,26 @@ class ConfigManager:
 
         app_logger.warning(f"No tool_enabled profiles found for user {user_uuid} - cannot determine master classification profile")
         return None
+
+    def get_dependent_profiles(self, master_profile_id: str, user_uuid: Optional[str] = None) -> list:
+        """Returns profiles that inherit classification from the given master profile."""
+        config = self.load_config(user_uuid)
+        master_ids = config.get("master_classification_profile_ids", {})
+        legacy_master = config.get("master_classification_profile_id")
+
+        affected_servers = {sid for sid, pid in master_ids.items() if pid == master_profile_id}
+
+        dependents = []
+        for p in config.get("profiles", []):
+            if not p.get("inherit_classification"):
+                continue
+            p_mcp = p.get("mcpServerId")
+            if p_mcp in affected_servers:
+                dependents.append(p)
+            elif legacy_master == master_profile_id and p.get("id") != master_profile_id:
+                if p not in dependents:
+                    dependents.append(p)
+        return dependents
 
     def set_master_classification_profile_id(
         self,

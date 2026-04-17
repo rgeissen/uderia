@@ -7997,6 +7997,20 @@ async def delete_profile(profile_id: str):
                            "Please change the default profile first."
             }), 400
 
+        # Master classification constraint: block if this profile is a master with dependents
+        dependent_profiles = config_manager.get_dependent_profiles(profile_id, user_uuid)
+        if dependent_profiles:
+            dep_names = ", ".join(
+                f"@{p.get('tag', '?')} ({p.get('name', p.get('id'))})"
+                for p in dependent_profiles
+            )
+            return jsonify({
+                "status": "error",
+                "message": f"Cannot delete this profile — it is the master classification profile "
+                           f"for: {dep_names}. Remove the 'Inherit Classification' setting from "
+                           f"those profiles first, or delete them first."
+            }), 409
+
         # Archive sessions using this profile BEFORE deletion
         from trusted_data_agent.core import session_manager
         archive_result = await session_manager.archive_sessions_by_profile(profile_id, user_uuid)
