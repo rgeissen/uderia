@@ -438,12 +438,18 @@ async def manage_users():
                     'failed_login_attempts': user.failed_login_attempts
                 })
             
+            from sqlalchemy import func
+            tier_counts = {'user': 0, 'developer': 0, 'admin': 0}
+            for tier, count in session.query(User.profile_tier, func.count(User.id)).group_by(User.profile_tier).all():
+                tier_counts[tier] = count
+
             return jsonify({
                 "status": "success",
                 "users": user_list,
                 "total": total,
                 "limit": limit,
-                "offset": offset
+                "offset": offset,
+                "tier_counts": tier_counts,
             }), 200
             
     except Exception as e:

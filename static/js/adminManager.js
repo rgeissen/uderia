@@ -11,6 +11,9 @@ const AdminManager = {
     consumptionSortColumn: 'username',
     consumptionSortDirection: 'asc',
     featureChanges: {},
+    userPage: 1,
+    userPageSize: 25,
+    userTotal: 0,
 
     // Dirty state tracking for settings tabs
     optimizerSettingsOriginal: {},  // Original values loaded from server
@@ -56,6 +59,14 @@ const AdminManager = {
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => this.loadUsers());
         }
+
+        document.getElementById('users-prev-page')?.addEventListener('click', () => {
+            if (this.userPage > 1) { this.userPage--; this.loadUsers(); }
+        });
+        document.getElementById('users-next-page')?.addEventListener('click', () => {
+            const totalPages = Math.ceil(this.userTotal / this.userPageSize);
+            if (this.userPage < totalPages) { this.userPage++; this.loadUsers(); }
+        });
         
         // User modal handlers
         const userModalClose = document.getElementById('user-modal-close');
@@ -542,7 +553,8 @@ const AdminManager = {
      */
     filterUsersByStatus(status) {
         this.currentUserStatusFilter = status;
-        
+        this.userPage = 1;
+
         // Update button styles
         document.querySelectorAll('.user-status-filter-btn').forEach(btn => {
             if (btn.dataset.status === status) {
@@ -553,7 +565,7 @@ const AdminManager = {
                 btn.classList.add('bg-gray-800', 'text-gray-400', 'hover:bg-gray-700');
             }
         });
-        
+
         this.loadUsers();
     },
 
@@ -568,8 +580,9 @@ const AdminManager = {
             }
 
             const token = localStorage.getItem('tda_auth_token');
-            const apiUrl = `/api/v1/admin/users?status=${this.currentUserStatusFilter}`;
-            
+            const offset = (this.userPage - 1) * this.userPageSize;
+            const apiUrl = `/api/v1/admin/users?status=${this.currentUserStatusFilter}&limit=${this.userPageSize}&offset=${offset}`;
+
             const response = await fetch(apiUrl, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -577,17 +590,19 @@ const AdminManager = {
                 }
             });
             const data = await response.json();
-            
+
             if (data.status === 'success') {
                 this.currentUsers = data.users;
+                this.userTotal = data.total;
                 this.renderUsers();
-                this.updateUserStats();
+                this.updateUserStats(data.tier_counts);
+                this.updateUsersPaginationUI();
             } else {
                 window.showNotification('error', data.message || 'Failed to load users');
-                // Clear loading state even on error
                 this.currentUsers = [];
                 this.renderUsers();
                 this.updateUserStats();
+                this.updateUsersPaginationUI();
             }
         } catch (error) {
             console.error('[AdminManager] Error loading users:', error);
@@ -758,20 +773,37 @@ const AdminManager = {
     /**
      * Update user statistics
      */
-    updateUserStats() {
-        const tierCounts = {
-            user: 0,
-            developer: 0,
-            admin: 0
-        };
+    updateUserStats(tierCounts) {
+        const counts = tierCounts || { user: 0, developer: 0, admin: 0 };
+        document.getElementById('user-tier-count').textContent = counts.user || 0;
+        document.getElementById('developer-tier-count').textContent = counts.developer || 0;
+        document.getElementById('admin-tier-count').textContent = counts.admin || 0;
+    },
 
-        this.currentUsers.forEach(user => {
-            tierCounts[user.profile_tier] = (tierCounts[user.profile_tier] || 0) + 1;
-        });
+    updateUsersPaginationUI() {
+        const paginationEl = document.getElementById('users-pagination');
+        const prevBtn = document.getElementById('users-prev-page');
+        const nextBtn = document.getElementById('users-next-page');
+        const pageInfo = document.getElementById('users-page-info');
+        const showingStart = document.getElementById('users-showing-start');
+        const showingEnd = document.getElementById('users-showing-end');
+        const totalCount = document.getElementById('users-total-count');
 
-        document.getElementById('user-tier-count').textContent = tierCounts.user;
-        document.getElementById('developer-tier-count').textContent = tierCounts.developer;
-        document.getElementById('admin-tier-count').textContent = tierCounts.admin;
+        const totalPages = Math.ceil(this.userTotal / this.userPageSize) || 1;
+        const start = this.userTotal === 0 ? 0 : (this.userPage - 1) * this.userPageSize + 1;
+        const end = Math.min(this.userPage * this.userPageSize, this.userTotal);
+
+        if (showingStart) showingStart.textContent = start;
+        if (showingEnd) showingEnd.textContent = end;
+        if (totalCount) totalCount.textContent = this.userTotal;
+        if (pageInfo) pageInfo.textContent = `Page ${this.userPage} of ${totalPages}`;
+        if (prevBtn) prevBtn.disabled = this.userPage <= 1;
+        if (nextBtn) nextBtn.disabled = this.userPage >= totalPages;
+
+        if (paginationEl) {
+            if (totalPages > 1) paginationEl.classList.remove('hidden');
+            else paginationEl.classList.add('hidden');
+        }
     },
 
     /**
