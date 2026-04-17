@@ -1118,15 +1118,48 @@ class AgentPackManager:
 
             try:
                 from components.builtin.knowledge_graph.graph_store import GraphStore as _GS_export
+                import sqlite3 as _sqlite3_kg
                 all_user_kgs = _GS_export.list_all_graphs(user_uuid)
+
+                try:
+                    from trusted_data_agent.core.config import APP_CONFIG
+                    _kg_db_path = APP_CONFIG.AUTH_DB_PATH.replace("sqlite:///", "")
+                except Exception:
+                    _kg_db_path = str(self.db_path)
+                _kg_db = _sqlite3_kg.connect(_kg_db_path)
+                _kg_db.row_factory = _sqlite3_kg.Row
 
                 for _kg_profile in selected_profiles:
                     _pid = _kg_profile["id"]
-                    # Only the single active KG per profile
-                    _profile_kgs = [
-                        kg for kg in all_user_kgs
-                        if kg.get("profile_id") == _pid and kg.get("is_active")
-                    ]
+                    # Primary: use kg_profile_assignments as source of truth for active KG per profile.
+                    # kg_metadata.profile_id is the KG's owner profile which may differ from the
+                    # assigned profile (e.g. after profile IDs change).
+                    _profile_kgs = []
+                    try:
+                        _arows = _kg_db.execute(
+                            "SELECT kg_id FROM kg_profile_assignments "
+                            "WHERE assigned_profile_id = ? AND user_uuid = ? AND is_active = 1",
+                            (_pid, user_uuid),
+                        ).fetchall()
+                        for _arow in _arows:
+                            _akg = next(
+                                (kg for kg in all_user_kgs
+                                 if kg["kg_id"] == _arow[0] and _arow[0] not in exported_kg_ids),
+                                None,
+                            )
+                            if _akg:
+                                _profile_kgs.append(_akg)
+                    except Exception:
+                        pass  # kg_profile_assignments may not exist on very old installs
+
+                    # Fallback: legacy kg_metadata ownership match (KGs created before
+                    # kg_profile_assignments existed, or freshly created with no assignment row yet)
+                    if not _profile_kgs:
+                        _profile_kgs = [
+                            kg for kg in all_user_kgs
+                            if kg.get("profile_id") == _pid and kg.get("is_active")
+                            and kg["kg_id"] not in exported_kg_ids
+                        ]
                     _kg_refs_for_profile = []
 
                     for _kg_meta in _profile_kgs:
@@ -1186,6 +1219,7 @@ class AgentPackManager:
                                 _mp["kg_refs"] = _kg_refs_for_profile
                                 break
 
+                _kg_db.close()
             except Exception as e:
                 app_logger.warning(f"Could not collect knowledge graphs for agent pack export: {e}")
 
