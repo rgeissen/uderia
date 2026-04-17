@@ -12,8 +12,5 @@
   "keywords": [],
   "use_cases": [],
   "main_file": "teradata-coordinator.md",
-  "last_updated": "2026-04-13",
-  "uderia": {
-    "injection_target": "system_prompt"
-  }
+  "last_updated": "2026-04-17"
 }

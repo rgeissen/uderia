@@ -1123,7 +1123,19 @@ class AgentPackManager:
                     prof_entry["child_tags"] = child_tags
 
                     genie_config = profile.get("genieConfig", {})
-                    gc_copy = {k: v for k, v in genie_config.items() if k != "slaveProfiles"}
+                    gc_copy = {k: v for k, v in genie_config.items()
+                               if k not in ("slaveProfiles", "slaveProfileSettings")}
+                    # Remap slaveProfileSettings keys from profile IDs → profile tags
+                    # so they survive export/import without being tied to runtime IDs.
+                    slave_settings = genie_config.get("slaveProfileSettings", {})
+                    if slave_settings:
+                        settings_by_tag = {}
+                        for pid, settings in slave_settings.items():
+                            child_prof = next((p for p in selected_profiles if p["id"] == pid), None)
+                            if child_prof:
+                                settings_by_tag[child_prof.get("tag")] = settings
+                        if settings_by_tag:
+                            gc_copy["slaveProfileSettings"] = settings_by_tag
                     if gc_copy:
                         prof_entry["genieConfig"] = gc_copy
 
@@ -2146,6 +2158,15 @@ class AgentPackManager:
             if tag_to_profile_id:
                 slave_ids = [tag_to_profile_id[ct] for ct in child_tags if ct in tag_to_profile_id]
                 genie_config["slaveProfiles"] = slave_ids
+
+                # Remap slaveProfileSettings keys from profile tags → new profile IDs
+                settings_by_tag = genie_config.get("slaveProfileSettings", {})
+                if settings_by_tag:
+                    genie_config["slaveProfileSettings"] = {
+                        tag_to_profile_id[tag]: settings
+                        for tag, settings in settings_by_tag.items()
+                        if tag in tag_to_profile_id
+                    }
 
             profile_data["genieConfig"] = genie_config
 
