@@ -415,7 +415,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
         
         # Fall back to environment variables if no credentials in config or store
         import os
-        if not credentials.get("apiKey") and not credentials.get("friendli_token") and not credentials.get("aws_access_key_id"):
+        if not credentials.get("apiKey") and not credentials.get("friendli_token") and not credentials.get("aws_access_key_id") and not credentials.get("openrouter_api_key"):
             app_logger.info(f"No credentials in config/store, checking environment variables for {provider}")
             if provider == "Google":
                 env_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
@@ -453,6 +453,11 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             elif provider == "Ollama":
                 credentials["ollama_host"] = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
                 app_logger.info("Using Ollama host from environment")
+            elif provider == "OpenRouter":
+                env_key = os.environ.get("OPENROUTER_API_KEY")
+                if env_key:
+                    credentials["openrouter_api_key"] = env_key
+                    app_logger.info("Loaded OpenRouter API key from environment")
         
         # Initialize and optionally validate LLM client
         temp_llm_instance = None
@@ -545,6 +550,22 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                         temp_llm_instance = llm_handler.OllamaClient(host=host)
                         if validate_llm:
                             await temp_llm_instance.list_models()
+
+                    elif provider == "OpenRouter":
+                        openrouter_api_key = credentials.get("openrouter_api_key")
+                        if not openrouter_api_key:
+                            raise ValueError("OpenRouter API key is required but not provided")
+                        temp_llm_instance = AsyncOpenAI(
+                            api_key=openrouter_api_key,
+                            base_url="https://openrouter.ai/api/v1",
+                            timeout=30.0
+                        )
+                        if validate_llm:
+                            await temp_llm_instance.chat.completions.create(
+                                model=model,
+                                messages=[{"role": "user", "content": "test"}],
+                                max_tokens=1
+                            )
 
                     else:
                         raise ValueError(f"Unsupported provider: {provider}")
