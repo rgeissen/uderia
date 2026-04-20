@@ -262,8 +262,8 @@ async function loadCodeMirror() {
             const oceanicLightTheme = EditorView.theme({
                 '&': { backgroundColor: '#ffffff', color: '#1e293b' },
                 '.cm-gutters': {
-                    backgroundColor: '#f8fafc',
-                    color: '#94a3b8',
+                    backgroundColor: '#f1f5f9',
+                    color: '#475569',
                     borderRight: '1px solid rgba(148,163,184,0.2)',
                 },
                 '.cm-activeLineGutter': { backgroundColor: 'rgba(148,163,184,0.1)' },
@@ -491,6 +491,11 @@ const CANVAS_STYLES = `
 .canvas-body .cm-editor .cm-gutters {
     background: rgba(0,0,0,0.2);
     border-right: 1px solid var(--border-primary, rgba(255,255,255,0.1));
+}
+.canvas-light .canvas-body .cm-editor .cm-gutters,
+.canvas-light.canvas-body .cm-editor .cm-gutters {
+    background: #f1f5f9;
+    border-right: 1px solid rgba(148,163,184,0.2);
 }
 /* Prism.js fallback */
 .canvas-fallback-code {
