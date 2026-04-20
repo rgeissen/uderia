@@ -1125,7 +1125,15 @@ After gathering information from profiles, provide a synthesized answer that:
                         for msg in reversed(chain_output["messages"]):
                             if hasattr(msg, 'content') and hasattr(msg, 'type'):
                                 if msg.type == 'ai' and msg.content:
-                                    output = msg.content
+                                    content = msg.content
+                                    if isinstance(content, list):
+                                        # Some providers (e.g. Gemma via OpenRouter) return
+                                        # content as [{type:text, text:...}] instead of a plain str
+                                        content = "".join(
+                                            p.get("text", "") if isinstance(p, dict) else str(p)
+                                            for p in content
+                                        )
+                                    output = content
                                     break
                                 # Track tool calls
                                 if hasattr(msg, 'tool_calls') and msg.tool_calls:

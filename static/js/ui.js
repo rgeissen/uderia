@@ -4052,10 +4052,23 @@ export function updateStatusWindow(eventData, isFinal = false, source = 'interac
             state.isGenieCoordinationActive = true;
             state.isRestTaskActive = false;
             updateTaskIdDisplay(null);
+            // Re-assert cancel button visibility: if the SSE stream ended early (e.g. reconnect)
+            // and setExecutionState(false) was already called, genie events arriving via the
+            // notification channel must restore the button so the user can still cancel.
+            setExecutionState(true);
         }
         statusTitle.textContent = _formatStatusTitle('genie');
         // Render genie events using custom renderer
         _renderGenieStep(eventData, DOM.statusWindowContent, isFinal);
+        if (isFinal) {
+            // genie_coordination_complete: mark coordination done
+            state.isGenieCoordinationActive = false;
+            // Only hide the cancel button here when there is NO active SSE stream — the
+            // processStream path will call setExecutionState(false) on final_answer instead.
+            if (!state.activeStreamSessions || !state.activeStreamSessions.has(state.currentSessionId)) {
+                setExecutionState(false);
+            }
+        }
         if (!state.isMouseOverStatus && !state.isViewingHistoricalTurn) {
             DOM.statusWindowContent.scrollTop = DOM.statusWindowContent.scrollHeight;
         }

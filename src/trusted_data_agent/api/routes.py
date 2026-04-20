@@ -2791,6 +2791,43 @@ async def invoke_prompt_stream():
 
     return Response(stream_generator(), mimetype="text/event-stream")
 
+async def _cancel_genie_slaves_recursive(user_uuid: str, parent_session_id: str, _depth: int = 0):
+    """Cancel all slave sessions for a genie coordinator, depth-first recursively."""
+    if _depth > 5:
+        return
+    slaves = await session_manager.get_genie_slave_sessions(parent_session_id, user_uuid)
+    if not slaves:
+        return
+
+    active_tasks = APP_STATE.get("active_tasks", {})
+    background_tasks = APP_STATE.get("background_tasks", {})
+    cancellation_flags = APP_STATE.setdefault("cancellation_flags", {})
+
+    for slave in slaves:
+        slave_session_id = slave["slave_session_id"]
+
+        # Recurse first so deepest slaves are cancelled before their parents
+        await _cancel_genie_slaves_recursive(user_uuid, slave_session_id, _depth + 1)
+
+        # Cancel interactive SSE task (key = "{user_uuid}_{session_id}")
+        sse_key = f"{user_uuid}_{slave_session_id}"
+        cancellation_flags[sse_key] = True
+        sse_task = active_tasks.get(sse_key)
+        if sse_task and not sse_task.done():
+            sse_task.cancel()
+            app_logger.info(f"[cancel_stream] Cancelled SSE slave task for session {slave_session_id}")
+
+        # Cancel REST background task (key = task_id UUID) — scan background_tasks by session_id
+        for task_id, meta in list(background_tasks.items()):
+            if meta.get("session_id") == slave_session_id and meta.get("user_uuid") == user_uuid:
+                rest_task = active_tasks.get(task_id)
+                if rest_task and not rest_task.done():
+                    rest_task.cancel()
+                    meta["status"] = "cancelling"
+                    app_logger.info(f"[cancel_stream] Cancelled REST slave task {task_id} for session {slave_session_id}")
+                break
+
+
 @api_bp.route("/api/session/<session_id>/cancel_stream", methods=["POST"])
 async def cancel_stream(session_id: str):
     """Cancels the active execution task for a given session."""
@@ -2836,6 +2873,9 @@ async def cancel_stream(session_id: str):
             app_logger.info(f"Cleaned up cancelled task for session {session_id}")
 
         asyncio.create_task(delayed_cleanup())
+
+        # Propagate cancellation to genie slave sessions (fire-and-forget, handles nesting)
+        asyncio.create_task(_cancel_genie_slaves_recursive(user_uuid, session_id))
 
         return jsonify({"status": "success", "message": "Cancellation request sent."}), 200
     elif task and task.done():
