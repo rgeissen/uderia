@@ -399,8 +399,37 @@ async def _generate_via_executor(
         "Database Query"
     )
 
-    # Use profile-specific LLM instance when available (profile uses different provider than default)
-    llm_to_use = profile_llm_instance if profile_llm_instance else dependencies['STATE']['llm']
+    # Use profile-specific LLM instance when available.
+    # If not pre-built (e.g. because current_provider_by_user was already updated to match
+    # this profile's provider, bypassing the profile_llm_instance creation guard), build one
+    # directly from the profile's LLM config so we get the right client type.
+    llm_to_use = profile_llm_instance
+    if not llm_to_use and active_profile_id:
+        try:
+            from trusted_data_agent.core.config_manager import get_config_manager
+            from trusted_data_agent.llm.client_factory import get_or_create_llm_client
+            from trusted_data_agent.core.configuration_service import retrieve_credentials_for_provider
+            config_manager = get_config_manager()
+            profiles = config_manager.get_profiles(user_uuid)
+            active_profile = next((p for p in profiles if p.get("id") == active_profile_id), None)
+            if active_profile:
+                llm_config_id = active_profile.get('llmConfigurationId')
+                if llm_config_id:
+                    llm_configs = config_manager.get_llm_configurations(user_uuid)
+                    llm_config = next((cfg for cfg in llm_configs if cfg['id'] == llm_config_id), None)
+                    if llm_config:
+                        creds_result = await retrieve_credentials_for_provider(user_uuid, llm_config.get('provider', ''))
+                        creds = creds_result.get("credentials", {}) or {}
+                        if llm_config.get('credentials'):
+                            creds = {**creds, **llm_config['credentials']}
+                        if creds:
+                            llm_to_use = await get_or_create_llm_client(
+                                llm_config.get('provider'), llm_config.get('model'), creds
+                            )
+        except Exception as _e:
+            logger.debug(f"Could not build profile LLM instance for session naming: {_e}")
+    if not llm_to_use:
+        llm_to_use = dependencies['STATE']['llm']
     name_text, input_tokens, output_tokens, _, _ = await llm_handler.call_llm_api(
         llm_to_use,
         prompt,
