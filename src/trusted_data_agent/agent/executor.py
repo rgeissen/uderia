@@ -2776,26 +2776,27 @@ Response:"""
                 from trusted_data_agent.core.configuration_service import retrieve_credentials_for_provider
 
                 credentials_result = await retrieve_credentials_for_provider(self.user_uuid, self.current_provider)
-                credentials = credentials_result.get("credentials", {})
+                credentials = credentials_result.get("credentials", {}) or {}
+
+                # Always merge LLM config credentials — providers like OpenRouter store their
+                # API key only in the LLM config, not in the global credential store.
+                try:
+                    from trusted_data_agent.core.config_manager import get_config_manager
+                    config_manager = get_config_manager()
+                    if self.active_profile_id:
+                        profiles = config_manager.get_profiles(self.user_uuid)
+                        active_profile = next((p for p in profiles if p.get("id") == self.active_profile_id), None)
+                        if active_profile:
+                            llm_config_id = active_profile.get('llmConfigurationId')
+                            if llm_config_id:
+                                llm_configs = config_manager.get_llm_configurations(self.user_uuid)
+                                llm_config = next((cfg for cfg in llm_configs if cfg['id'] == llm_config_id), None)
+                                if llm_config and llm_config.get('credentials'):
+                                    credentials = {**credentials, **llm_config['credentials']}
+                except Exception as e:
+                    app_logger.debug(f"Could not merge profile LLM config credentials: {e}")
 
                 if credentials:
-                    # Merge with profile LLM config credentials if available
-                    try:
-                        from trusted_data_agent.core.config_manager import get_config_manager
-                        config_manager = get_config_manager()
-                        if self.active_profile_id:
-                            profiles = config_manager.get_profiles(self.user_uuid)
-                            active_profile = next((p for p in profiles if p.get("id") == self.active_profile_id), None)
-                            if active_profile:
-                                llm_config_id = active_profile.get('llmConfigurationId')
-                                if llm_config_id:
-                                    llm_configs = config_manager.get_llm_configurations(self.user_uuid)
-                                    llm_config = next((cfg for cfg in llm_configs if cfg['id'] == llm_config_id), None)
-                                    if llm_config and llm_config.get('credentials'):
-                                        credentials = {**credentials, **llm_config['credentials']}
-                    except Exception as e:
-                        app_logger.debug(f"Could not merge profile LLM config credentials: {e}")
-
                     self.profile_llm_instance = await get_or_create_llm_client(self.current_provider, self.current_model, credentials)
                     app_logger.info(f"✅ Created profile-specific LLM instance: {self.current_provider}/{self.current_model}")
                 else:
