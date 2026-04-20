@@ -421,7 +421,8 @@ class CollectionDatabase:
                    kd.created_at, c.collection_name
             FROM knowledge_documents kd
             JOIN collections c ON c.id = kd.collection_id
-            WHERE kd.file_size = 0 OR kd.content_hash = ''
+            WHERE (kd.file_size = 0 OR kd.content_hash = '')
+              AND kd.source = 'upload'
             ORDER BY kd.collection_id, kd.created_at
         """)
         rows = cursor.fetchall()

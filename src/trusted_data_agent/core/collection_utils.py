@@ -484,7 +484,7 @@ def _populate_knowledge_documents(collection_id: int, all_metadatas: list) -> in
                     meta.get("document_type", "json"),
                     meta.get("title", meta.get("filename", "")),
                     meta.get("author", ""),
-                    meta.get("source", "import"),
+                    "import",
                     meta.get("category", ""),
                     meta.get("tags", ""),
                     0,
