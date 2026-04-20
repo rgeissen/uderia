@@ -718,6 +718,7 @@ const CANVAS_STYLES = `
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    height: 100%;
     background: var(--card-bg, rgba(15,23,42,0.6));
     border-left: 1px solid var(--border-primary, rgba(255,255,255,0.1));
     transition: width 0.3s ease, min-width 0.3s ease;
@@ -796,15 +797,20 @@ const CANVAS_STYLES = `
 .canvas-split-render-target .canvas-header {
     flex: 0 0 auto;
 }
-/* Canvas body (holds CodeMirror): fills container below header */
+/* Canvas body: flex column so panel children can use flex:1 to fill height.
+   overflow:hidden here; preview elements and .cm-scroller handle their own scroll. */
 .canvas-split-render-target .canvas-body {
     flex: 1;
     min-height: 0;
     max-height: none;
-    overflow: auto;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
-/* CodeMirror: no max-height cap so it fills its parent */
+/* CodeMirror: flex:1 fills the panel; scroller handles internal overflow */
 .canvas-split-render-target .cm-editor {
+    flex: 1;
+    min-height: 0;
     max-height: none;
 }
 /* Console / result panel: direct child of .canvas-split-body (sibling of
@@ -816,6 +822,46 @@ const CANVAS_STYLES = `
     flex: 3;
     min-height: 120px;
     max-height: none;
+    overflow: auto;
+}
+/* Active tab panel: flex:1 fills canvas-body (now a flex column); column layout for children */
+.canvas-split-render-target .canvas-panel--active {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+/* Markdown preview: fill available height, scroll when content overflows */
+.canvas-split-render-target .canvas-md-preview {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+/* SVG preview: same treatment */
+.canvas-split-render-target .canvas-svg-preview {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+/* Diff view: flex column fills height */
+.canvas-split-render-target .canvas-diff-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+/* Diff panels row: fills space below diff stats header; override 560px cap */
+.canvas-split-render-target .canvas-diff-panels {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow: hidden;
+    display: flex;
+}
+/* Individual old/new diff columns scroll independently */
+.canvas-split-render-target .canvas-diff-panel--old,
+.canvas-split-render-target .canvas-diff-panel--new {
     overflow: auto;
 }
 /* Version history dropdown */
@@ -2243,9 +2289,11 @@ async function autoPopOutCanvas(spec) {
     // Clear previous content
     contentArea.innerHTML = '';
 
-    // Create render target
+    // Create render target — MUST have canvas-split-render-target class so that
+    // all scoped CSS overrides (flex layout, max-height:none, etc.) apply.
     const renderTarget = document.createElement('div');
     renderTarget.id = `canvas-split-render-${Date.now()}`;
+    renderTarget.classList.add('canvas-split-render-target');
     contentArea.appendChild(renderTarget);
 
     // Apply light theme class to split panel
@@ -2255,6 +2303,29 @@ async function autoPopOutCanvas(spec) {
     panel.style.display = 'flex';
     panel.offsetHeight; // Force reflow
     panel.classList.add('canvas-split--open');
+
+    // Set explicit pixel height so CodeMirror initialises with a definite container.
+    const chatSplit = document.getElementById('chat-canvas-split');
+    if (chatSplit) {
+        panel.style.height = chatSplit.clientHeight + 'px';
+        if (!panel._heightUpdateFn) {
+            const _updatePanelHeight = () => {
+                if (panel.classList.contains('canvas-split--open')) {
+                    panel.style.height = chatSplit.clientHeight + 'px';
+                }
+            };
+            window.addEventListener('resize', _updatePanelHeight);
+            panel._heightUpdateFn = _updatePanelHeight;
+        }
+    }
+
+    // Wait for the CSS width transition (0 → 50%, 0.3s) to complete before
+    // creating CodeMirror — rendering during the transition triggers the
+    // "Measure loop restarted >5 times" warning and leaves the editor at
+    // content height instead of filling the panel.
+    await new Promise(resolve => {
+        panel.addEventListener('transitionend', resolve, { once: true });
+    });
 
     // Render a full canvas into the split panel
     const splitCanvasState = await renderCanvasFull(renderTarget.id, spec);
@@ -3528,6 +3599,30 @@ async function popOutCanvas(state) {
     panel.offsetHeight; // eslint-disable-line no-unused-expressions
     panel.classList.add('canvas-split--open');
 
+    // Set explicit pixel height so CodeMirror initialises with a definite container
+    // height rather than growing from 0 (live-insertion mode starts the editor empty).
+    // CSS height:100% alone is insufficient because the flex-allocated parent height
+    // is not a "definite" value for percentage resolution in all browsers.
+    const chatSplit = document.getElementById('chat-canvas-split');
+    if (chatSplit) {
+        panel.style.height = chatSplit.clientHeight + 'px';
+        const _updatePanelHeight = () => {
+            if (panel.classList.contains('canvas-split--open')) {
+                panel.style.height = chatSplit.clientHeight + 'px';
+            }
+        };
+        window.addEventListener('resize', _updatePanelHeight);
+        panel._heightUpdateFn = _updatePanelHeight;
+    }
+
+    // Wait for the CSS width transition (0 → 50%, 0.3s) to complete before
+    // creating CodeMirror. Rendering during the transition fires a resize event
+    // on every animation frame → CodeMirror "Measure loop restarted >5 times"
+    // → editor height never settles at the correct value.
+    await new Promise(resolve => {
+        panel.addEventListener('transitionend', resolve, { once: true });
+    });
+
     // Render a full canvas into the split panel
     const spec = {
         content: state.getContent(),
@@ -3662,6 +3757,13 @@ export function closeSplitPanel() {
     document.querySelectorAll('.canvas-inline-card-action').forEach(el => {
         el.textContent = 'View in Canvas \u2192';
     });
+
+    // Clean up resize listener and explicit height
+    if (panel._heightUpdateFn) {
+        window.removeEventListener('resize', panel._heightUpdateFn);
+        panel._heightUpdateFn = null;
+    }
+    panel.style.height = '';
 
     panel.classList.remove('canvas-split--open');
 
