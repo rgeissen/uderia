@@ -7678,12 +7678,21 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 renderProfiles();
                 renderLLMProviders(); // Re-render to update default/active badges
                 renderMCPServers(); // Re-render to update default/active badges
+                updateReconnectButton();
                 modal.classList.add('hidden');
-                
+
                 if (flagWasNewlySet) {
                     showNotification('warning', 'Profile updated - Reclassification recommended. Please test the profile before activating.');
                 } else {
                     showNotification('success', 'Profile updated successfully. Please test the profile before activating.');
+                }
+
+                // Profile data is already persisted — clear dirty state so navigation isn't blocked.
+                // Only clear if no other connection-level changes (MCP/LLM dropdowns) are pending.
+                const { getConfigDirtyState, markConfigClean } = await import('../configDirtyState.js');
+                const { changedFields } = getConfigDirtyState();
+                if (changedFields.every(f => f.startsWith('profile-'))) {
+                    markConfigClean();
                 }
             } else {
                 await configState.addProfile(profileData);
@@ -7713,8 +7722,16 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                 renderProfiles();
                 renderLLMProviders(); // Re-render to update default/active badges
                 renderMCPServers(); // Re-render to update default/active badges
+                updateReconnectButton();
                 modal.classList.add('hidden');
                 showNotification('success', 'Profile added successfully');
+
+                // Profile data is already persisted — clear dirty state so navigation isn't blocked.
+                const { getConfigDirtyState, markConfigClean: markClean } = await import('../configDirtyState.js');
+                const { changedFields: addedFields } = getConfigDirtyState();
+                if (addedFields.every(f => f.startsWith('profile-'))) {
+                    markClean();
+                }
             }
         } catch (error) {
             showNotification('error', error.message);

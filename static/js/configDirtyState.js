@@ -189,6 +189,7 @@ export function markConfigClean() {
     if (wasDirty) {
         console.log('[ConfigDirty] ✅ Configuration marked as CLEAN');
         updateUIIndicators(false);
+        hideDiscardButton();
     }
     
     // If there was a pending navigation, execute it now
