@@ -2613,9 +2613,10 @@ async function renderCanvasFull(containerId, spec) {
         toolbar.appendChild(closeBtn);
     }
 
-    // Activate default tab (code_editor)
+    // Activate default tab — prefer preview over code_editor when available
     if (tabCaps.length > 0) {
-        const defaultTab = tabCaps[0].id;
+        const previewTab = tabCaps.find(c => c.id.endsWith('_preview'));
+        const defaultTab = (previewTab || tabCaps[0]).id;
         switchTab(canvasState, defaultTab, tabCaps);
     }
 
