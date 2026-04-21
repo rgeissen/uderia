@@ -2018,6 +2018,14 @@ function renderMarkdownToHtml(md) {
 
     // Code blocks (``` ... ```)
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+        if (lang === 'mermaid') {
+            // Unescape HTML entities — Mermaid parses raw DSL text, not HTML
+            const raw = code.trim()
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>');
+            return `<div class="mermaid-pending">${raw}</div>`;
+        }
         return `<pre><code class="language-${lang || 'text'}">${code.trim()}</code></pre>`;
     });
 
@@ -2046,6 +2054,22 @@ function renderMarkdownToHtml(md) {
     // Blockquotes
     html = html.replace(/^&gt;\s+(.+)$/gm, '<blockquote>$1</blockquote>');
 
+    // Tables (GFM pipe tables: header | separator | body rows)
+    html = html.replace(
+        /^(\|[^\n]+\|\n)\|[-: |]+\|\n((?:\|[^\n]+\|\n?)*)/gm,
+        (_, headerLine, bodyLines) => {
+            const parseRow = (line, tag) =>
+                line.trim().replace(/^\||\|$/g, '').split('|')
+                    .map(cell => `<${tag}>${cell.trim()}</${tag}>`).join('');
+            const thead = `<thead><tr>${parseRow(headerLine, 'th')}</tr></thead>`;
+            const tbody = bodyLines.trim()
+                ? `<tbody>${bodyLines.trim().split('\n').filter(Boolean)
+                    .map(r => `<tr>${parseRow(r, 'td')}</tr>`).join('')}</tbody>`
+                : '';
+            return `<table>${thead}${tbody}</table>\n`;
+        }
+    );
+
     // Unordered lists
     html = html.replace(/^[\s]*[-*]\s+(.+)$/gm, '<li>$1</li>');
     html = html.replace(/(<li>.*<\/li>(\n|$))+/g, (match) => `<ul>${match}</ul>`);
@@ -2054,12 +2078,31 @@ function renderMarkdownToHtml(md) {
     html = html.replace(/^[\s]*\d+\.\s+(.+)$/gm, '<li>$1</li>');
 
     // Paragraphs (lines not already wrapped in block elements)
-    html = html.replace(/^(?!<[hupboa]|<li|<hr|<pre|<bl)(.+)$/gm, '<p>$1</p>');
+    html = html.replace(/^(?!<[hupboat]|<li|<hr|<pre|<bl)(.+)$/gm, '<p>$1</p>');
 
     // Clean up empty paragraphs
     html = html.replace(/<p>\s*<\/p>/g, '');
 
     return html;
+}
+
+// ─── Mermaid Renderer ────────────────────────────────────────────────────────
+
+async function renderMermaidInElement(container) {
+    const nodes = container.querySelectorAll('.mermaid-pending');
+    if (!nodes.length) return;
+    if (!window._mermaid) {
+        const m = await import('https://esm.sh/mermaid@11');
+        window._mermaid = m.default;
+        window._mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+    }
+    nodes.forEach(node => {
+        node.classList.remove('mermaid-pending');
+        node.classList.add('mermaid');
+        // Mermaid 11 requires lowercase pk/fk/uk — normalize LLM-generated uppercase
+        node.textContent = node.textContent.replace(/\b(PK|FK|UK)\b/g, m => m.toLowerCase());
+    });
+    await window._mermaid.run({ nodes: Array.from(container.querySelectorAll('.mermaid')) });
 }
 
 // ─── Canvas Split Mode Rendering ─────────────────────────────────────────────
@@ -3176,6 +3219,35 @@ registerCapability({
         div.className = 'canvas-md-preview';
         div.innerHTML = renderMarkdownToHtml(content);
         panel.appendChild(div);
+        renderMermaidInElement(div);
+    },
+
+    refresh(panel, content) {
+        panel.innerHTML = '';
+        panel.dataset.rendered = '';
+        this.render(panel, content);
+        panel.dataset.rendered = 'true';
+    },
+
+    destroy() {},
+});
+
+// ─── Capability: MermaidPreview ──────────────────────────────────────────────
+
+registerCapability({
+    id: 'mermaid_preview',
+    label: 'Preview',
+    type: 'tab',
+    languages: ['mermaid'],
+
+    init() {},
+
+    render(panel, content) {
+        const div = document.createElement('div');
+        div.className = 'canvas-md-preview mermaid-pending';
+        div.textContent = content;
+        panel.appendChild(div);
+        renderMermaidInElement(panel);
     },
 
     refresh(panel, content) {
