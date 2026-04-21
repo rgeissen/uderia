@@ -103,7 +103,35 @@ def _skill_cfg(param=None):
     }
 
 
-def build_manifest():
+def _slave_profile(tag, name, description, module, allowed_tools, slave_type="ideate"):
+    """Return a slave profile dict for the given slave_type ('ideate' or 'optimize')."""
+    if slave_type == "optimize":
+        return {
+            "tag": tag,
+            "name": name,
+            "description": description,
+            "profile_type": "tool_enabled",
+            "role": "expert",
+            "requires_mcp": True,
+            "classification_mode": "full",
+            "allowed_tools": allowed_tools,
+            "skillsConfig": _skill_cfg(module),
+        }
+    else:  # ideate (default)
+        return {
+            "tag": tag,
+            "name": name,
+            "description": description,
+            "profile_type": "llm_only",
+            "role": "expert",
+            "requires_mcp": True,
+            "useMcpTools": True,
+            "allowed_tools": allowed_tools,
+            "skillsConfig": _skill_cfg(module),
+        }
+
+
+def build_manifest(slave_type="ideate"):
     profiles = [
         {
             "tag": "ANDP",
@@ -125,74 +153,67 @@ def build_manifest():
             },
             "skillsConfig": _skill_cfg()          # no param → base content only
         },
-        {
-            "tag": "ANDP-DOMAIN",
-            "name": "Domain Module Designer",
-            "description": (
-                "Designs Domain module DDL: entity history tables (_H), reference tables (_R), "
-                "surrogate key strategy via Keymap pattern, bi-temporal tracking, standard views."
-            ),
-            "profile_type": "llm_only",
-            "role": "expert",
-            "skillsConfig": _skill_cfg("domain")
-        },
-        {
-            "tag": "ANDP-SEMANTIC",
-            "name": "Semantic Module Designer",
-            "description": (
-                "Designs Semantic module: entity_metadata, column_metadata, table_relationship, "
-                "v_relationship_paths recursive CTE, data_product_map, agent discovery protocol."
-            ),
-            "profile_type": "llm_only",
-            "role": "expert",
-            "skillsConfig": _skill_cfg("semantic")
-        },
-        {
-            "tag": "ANDP-SEARCH",
-            "name": "Search Module Designer",
-            "description": (
-                "Designs Search module: entity_embedding with VECTOR datatype, "
-                "TD_VectorDistance patterns, KMEANS/HNSW index strategy, RAG integration."
-            ),
-            "profile_type": "llm_only",
-            "role": "expert",
-            "skillsConfig": _skill_cfg("search")
-        },
-        {
-            "tag": "ANDP-PREDICTION",
-            "name": "Prediction Module Designer",
-            "description": (
-                "Designs Prediction module: feature store (wide/tall formats), model_prediction, "
-                "point-in-time feature reconstruction for ML training datasets."
-            ),
-            "profile_type": "llm_only",
-            "role": "expert",
-            "skillsConfig": _skill_cfg("prediction")
-        },
-        {
-            "tag": "ANDP-OBSERVABILITY",
-            "name": "Observability Module Designer",
-            "description": (
-                "Designs Observability module: change_event (table-level), "
-                "data_lineage/lineage_run split, data_quality_metric, model_performance, "
-                "OpenLineage alignment."
-            ),
-            "profile_type": "llm_only",
-            "role": "expert",
-            "skillsConfig": _skill_cfg("observability")
-        },
-        {
-            "tag": "ANDP-MEMORY",
-            "name": "Memory Module Designer",
-            "description": (
-                "Designs Memory module: runtime agent state tables + full Documentation "
-                "Sub-Module (Module_Registry, Design_Decision, Business_Glossary, "
-                "Query_Cookbook, Implementation_Note, Change_Log)."
-            ),
-            "profile_type": "llm_only",
-            "role": "expert",
-            "skillsConfig": _skill_cfg("memory")
-        }
+        _slave_profile(
+            "ANDP-DOMAIN", "Domain Module Designer",
+            "Designs Domain module DDL: entity history tables (_H), reference tables (_R), "
+            "surrogate key strategy via Keymap pattern, bi-temporal tracking, standard views.",
+            "domain",
+            ["base_readQuery", "base_tableList", "base_tableDDL",
+             "base_databaseList", "base_columnDescription", "base_tableUsage"],
+            slave_type,
+        ),
+        _slave_profile(
+            "ANDP-SEMANTIC", "Semantic Module Designer",
+            "Designs Semantic module: entity_metadata, column_metadata, table_relationship, "
+            "v_relationship_paths recursive CTE, data_product_map, agent discovery protocol.",
+            "semantic",
+            ["base_readQuery", "base_tableList", "base_tableDDL",
+             "base_databaseList", "base_columnDescription", "base_tableUsage",
+             "base_tableAffinity"],
+            slave_type,
+        ),
+        _slave_profile(
+            "ANDP-SEARCH", "Search Module Designer",
+            "Designs Search module: entity_embedding with VECTOR datatype, "
+            "TD_VectorDistance patterns, KMEANS/HNSW index strategy, RAG integration.",
+            "search",
+            ["base_readQuery", "base_tableList", "base_tableDDL",
+             "base_databaseList", "base_columnDescription", "base_tablePreview",
+             "rag_Execute_Workflow"],
+            slave_type,
+        ),
+        _slave_profile(
+            "ANDP-PREDICTION", "Prediction Module Designer",
+            "Designs Prediction module: feature store (wide/tall formats), model_prediction, "
+            "point-in-time feature reconstruction for ML training datasets.",
+            "prediction",
+            ["base_readQuery", "base_tableList", "base_tableDDL",
+             "base_databaseList", "base_columnDescription", "base_tablePreview",
+             "qlty_columnSummary", "qlty_univariateStatistics", "qlty_missingValues"],
+            slave_type,
+        ),
+        _slave_profile(
+            "ANDP-OBSERVABILITY", "Observability Module Designer",
+            "Designs Observability module: change_event (table-level), "
+            "data_lineage/lineage_run split, data_quality_metric, model_performance, "
+            "OpenLineage alignment.",
+            "observability",
+            ["base_readQuery", "base_tableList", "base_tableDDL",
+             "base_databaseList", "base_columnDescription", "base_tableUsage",
+             "qlty_columnSummary", "qlty_missingValues", "qlty_negativeValues",
+             "dba_tableSqlList"],
+            slave_type,
+        ),
+        _slave_profile(
+            "ANDP-MEMORY", "Memory Module Designer",
+            "Designs Memory module: runtime agent state tables + full Documentation "
+            "Sub-Module (Module_Registry, Design_Decision, Business_Glossary, "
+            "Query_Cookbook, Implementation_Note, Change_Log).",
+            "memory",
+            ["base_readQuery", "base_tableList", "base_tableDDL",
+             "base_databaseList", "base_columnDescription"],
+            slave_type,
+        )
     ]
 
     return {
@@ -301,7 +322,7 @@ def build_skill_md(compressed=False):
         _step(f"  <!-- param:{module_name} -->  ({lines:,} lines)")
 
 
-def generate_skill_files():
+def generate_skill_files(slave_type="ideate"):
     _head("3/6  Generate skill.json + manifest.json")
 
     os.makedirs(SKILL_DIR, exist_ok=True)
@@ -311,10 +332,11 @@ def generate_skill_files():
     _ok(f"skill.json  (last_updated: {skill_data['last_updated']})")
 
     os.makedirs(PACK_DIR, exist_ok=True)
-    manifest_data = build_manifest()
+    manifest_data = build_manifest(slave_type=slave_type)
     with open(MANIFEST_PATH, "w") as f:
         json.dump(manifest_data, f, indent=2)
-    _ok(f"manifest.json  ({len(manifest_data['profiles'])} profiles)")
+    label = "Ideate / llm_only" if slave_type == "ideate" else "Optimize / tool_enabled"
+    _ok(f"manifest.json  ({len(manifest_data['profiles'])} profiles, slaves: {label})")
 
 
 def package_skill():
@@ -340,7 +362,7 @@ def package_agentpack():
     _ok(f"andp.agentpack  ({size_kb:.1f} KB)")
 
 
-def import_pack(uderia_url, username, password):
+def import_pack(uderia_url, username, password, mcp_server_id=None):
     _head("6/6  Import to Uderia")
 
     try:
@@ -367,13 +389,37 @@ def import_pack(uderia_url, username, password):
         sys.exit(1)
     _ok("Authenticated")
 
+    # Auto-detect active MCP server (override with --mcp-server-id if needed)
+    try:
+        r2 = requests.get(
+            f"{uderia_url}/api/v1/mcp/servers",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
+        r2.raise_for_status()
+        mcp_data = r2.json()
+    except Exception as exc:
+        _err(f"Failed to fetch MCP servers: {exc}")
+        sys.exit(1)
+
+    resolved_mcp_id = mcp_server_id or mcp_data.get("active_server_id")
+    if not resolved_mcp_id:
+        _err("No active MCP server found — configure a Teradata MCP server in Uderia first")
+        sys.exit(1)
+
+    server_name = next(
+        (s["name"] for s in mcp_data.get("servers", []) if s["id"] == resolved_mcp_id),
+        resolved_mcp_id
+    )
+    _ok(f"MCP server: {server_name} ({resolved_mcp_id})")
+
     _step("Importing andp.agentpack (conflict_strategy=replace) ...")
     with open(AGENTPACK_PATH, "rb") as f:
         r = requests.post(
             f"{uderia_url}/api/v1/agent-packs/import",
             headers={"Authorization": f"Bearer {token}"},
             files={"file": ("andp.agentpack", f, "application/octet-stream")},
-            data={"conflict_strategy": "replace"},
+            data={"conflict_strategy": "replace", "mcp_server_id": resolved_mcp_id},
             timeout=30
         )
 
@@ -391,9 +437,10 @@ def import_pack(uderia_url, username, password):
         sys.exit(1)
 
 
-def skip_import(uderia_url, username, password):
+def skip_import(uderia_url, username, password, mcp_server_id=None):
     _head("6/6  Import to Uderia")
     _step("Skipped (pass --import to enable)")
+    mcp_flag = f' -F "mcp_server_id={mcp_server_id}"' if mcp_server_id else ""
     print(f"""
   To import manually:
 
@@ -404,7 +451,7 @@ def skip_import(uderia_url, username, password):
     curl -s -X POST {uderia_url}/api/v1/agent-packs/import \\
       -H "Authorization: Bearer $JWT" \\
       -F "file=@{AGENTPACK_PATH}" \\
-      -F "conflict_strategy=replace" | jq '.'
+      -F "conflict_strategy=replace"{mcp_flag} | jq '.'
 """)
 
 
@@ -431,21 +478,30 @@ def main():
             "instead of verbatim source documents"
         )
     )
+    parser.add_argument(
+        "--mcp-server-id", dest="mcp_server_id", default=None,
+        help="MCP server ID to assign to slave profiles (default: auto-detect active server)"
+    )
+    parser.add_argument(
+        "--slave-type", dest="slave_type", choices=["ideate", "optimize"], default="ideate",
+        help="Slave profile class: 'ideate' (llm_only + useMcpTools, default) or 'optimize' (tool_enabled + planner)"
+    )
     args = parser.parse_args()
 
     mode = "compressed" if args.compressed else "verbatim"
-    print(f"\n══ ANDP Agent Pack Build ({mode}) ══════════════════════════════")
+    slave_label = "Ideate" if args.slave_type == "ideate" else "Optimize"
+    print(f"\n══ ANDP Agent Pack Build ({mode}, slaves: {slave_label}) ══════════════════════════════")
 
     preflight(compressed=args.compressed)
     build_skill_md(compressed=args.compressed)
-    generate_skill_files()
+    generate_skill_files(slave_type=args.slave_type)
     package_skill()
     package_agentpack()
 
     if args.do_import:
-        import_pack(args.url, args.username, args.password)
+        import_pack(args.url, args.username, args.password, mcp_server_id=args.mcp_server_id)
     else:
-        skip_import(args.url, args.username, args.password)
+        skip_import(args.url, args.username, args.password, mcp_server_id=args.mcp_server_id)
 
     print("\n══ Done ═══════════════════════════════════════════════\n")
 

@@ -1,6 +1,6 @@
 ---
 name: andp-agent-pack
-description: Build and deploy the AI-Native Data Product Uderia Agent Pack. Assembles ai-native-data-product.md programmatically from design standard documents, packages a 7-profile agent pack (1 Genie coordinator + 6 llm_only module specialists), and imports to Uderia.
+description: Build and deploy the AI-Native Data Product Uderia Agent Pack. Assembles ai-native-data-product.md programmatically from design standard documents, packages a 7-profile agent pack (1 Genie coordinator + 6 tool_enabled module specialists with pre-qualified MCP tool sets), and imports to Uderia.
 user-invocable: true
 ---
 
@@ -62,21 +62,37 @@ Run this check when the user asks "is the skill up to date with the conversion p
 Run this check when the user asks whether an update is needed.
 
 1. Read `skills/user/ai-native-data-product/skill.json` → note the `last_updated` date
-2. For each source document and `base_content.md`, check git modification date:
+
+2. Read the metadata header at the top of `agent_packs/andp/base_content.md` (HTML comment block).
+   It contains two tables:
+   - **DISTILLATION HISTORY** — when the file was last regenerated from each source document and which version
+   - **DIRECT EDIT HISTORY** — when the ANDP-specific sections (Operating Rules, Routing Table) were last edited and why
+
+3. Check git modification dates for all source documents:
    ```bash
-   git log --format="%ai" -1 -- agent_packs/andp/base_content.md
+   git -C ../ai-native-data-products log --format="%ai" -1 -- design-standards/AI_Native_Data_Product_Master_Design.md
+   git -C ../ai-native-data-products log --format="%ai" -1 -- design-standards/Advocated_Data_Management_Standards.md
    git -C ../ai-native-data-products log --format="%ai" -1 -- design-standards/Memory_Module_Design_Standard.md
    # (repeat for each module)
    ```
-3. Report a table:
 
-   | File | Last modified | Newer than installed skill? |
-   |------|-------------|----------------------------|
-   | base_content.md | ... | yes / no |
-   | Memory_Module_Design_Standard.md | ... | yes / no |
-   | ... | ... | ... |
+4. Report a table:
 
-4. Conclude: **"Update recommended"** (any source newer than `last_updated`) or **"Up to date"**
+   | File | Role | Last modified | Last distilled/edited | Action needed? |
+   |------|------|-------------|-----------------------|----------------|
+   | AI_Native_Data_Product_Master_Design.md | Source for base_content.md | ... | (from DISTILLATION HISTORY) | yes / no |
+   | Advocated_Data_Management_Standards.md | Source for base_content.md | ... | (from DISTILLATION HISTORY) | yes / no |
+   | Memory_Module_Design_Standard.md | Source for param:memory | ... | (from skill.json last_updated) | yes / no |
+   | ... | ... | ... | ... | ... |
+
+5. Conclude:
+   - **"base_content.md regeneration needed"** — if any source document is newer than its distillation date in the header
+   - **"Module update needed"** — if any module design standard is newer than `skill.json` `last_updated`
+   - **"Up to date"** — all sources older than their respective tracked dates
+
+   > **When updating base_content.md:** Add a new row to the DISTILLATION HISTORY table in the
+   > header with today's date, the source document name, and its current version.
+   > When making direct edits to Operating Rules or Routing Table, add a row to DIRECT EDIT HISTORY.
 
 **Optional deeper check** — compare deployed content against what build.py would produce:
 ```bash
@@ -88,7 +104,18 @@ diff skills/user/ai-native-data-product/ai-native-data-product.md <previous>
 
 ## §5 Normal Operation
 
-### Step 1 — Choose content mode
+### Step 1 — Choose slave profile class
+
+Ask the user:
+
+> "Should the 6 ANDP module specialist profiles be deployed as **Ideate** (`llm_only` + LangChain MCP tools, no planner overhead) or **Optimize** (`tool_enabled`, full Planner/Executor pipeline)?"
+
+| Class | `--slave-type` | profile_type | When to choose |
+|-------|---------------|-------------|----------------|
+| **Ideate** (default) | `ideate` | `llm_only` + `useMcpTools` | Direct LLM conversation with optional tool calls — lower latency, no strategic planning |
+| **Optimize** | `optimize` | `tool_enabled` | Full Planner/Executor pipeline — multi-phase strategic planning, better for complex multi-step design tasks |
+
+### Step 2 — Choose content mode
 
 Ask the user:
 
@@ -98,31 +125,38 @@ Ask the user:
 
 **Verbatim** is the default. **Compressed** requires that `agent_packs/andp/compressed_modules/{module}.md` files exist (LLM-generated; see §6 compressed workflow).
 
-### Step 2 — Run build.py
+### Step 3 — Run build.py
 
-**Verbatim (local server):**
+The active Teradata MCP server is auto-detected from Uderia on import (`GET /api/v1/mcp/servers` → `active_server_id`). Override with `--mcp-server-id <id>` only if you need to use a specific non-default server.
+
+**Ideate + verbatim (local server):**
 ```bash
 python agent_packs/andp/build.py --import
 ```
 
-**Verbatim (remote server):**
-```bash
-python agent_packs/andp/build.py --import --url http://192.168.0.46:5050 --password '><your-password>'
-```
-
-**Compressed (local server):**
+**Ideate + compressed (local server):**
 ```bash
 python agent_packs/andp/build.py --compressed --import
 ```
 
-**Compressed (remote server):**
+**Optimize + compressed (local server):**
 ```bash
-python agent_packs/andp/build.py --compressed --import --url http://192.168.0.46:5050 --password '><your-password>'
+python agent_packs/andp/build.py --compressed --slave-type optimize --import
+```
+
+**Remote server (append to any command above):**
+```bash
+--url http://192.168.0.46:5050 --password '><your-password>'
 ```
 
 **Build only (no import):**
 ```bash
-python agent_packs/andp/build.py [--compressed]
+python agent_packs/andp/build.py [--compressed] [--slave-type ideate|optimize]
+```
+
+**Override MCP server (non-default):**
+```bash
+python agent_packs/andp/build.py --import --mcp-server-id <server-id>
 ```
 
 ### Compressed mode — cache check and regeneration
@@ -201,14 +235,15 @@ Compressed module files are committed to the repo.
 [3/6  Generate manifests]  — skill.json + manifest.json from embedded templates
 [4/6  Package .skill]      — flat ZIP: skill.json + ai-native-data-product.md
 [5/6  Package .agentpack]  — ZIP: manifest.json + skills/ai-native-data-product.skill
-[6/6  Import to Uderia]    — POST /api/v1/agent-packs/import with conflict_strategy=replace
+[6/6  Import to Uderia]    — authenticate → GET /api/v1/mcp/servers (auto-detect active server) →
+                             POST /api/v1/agent-packs/import with conflict_strategy=replace + mcp_server_id
 ```
 
 **Source documents** (from `../ai-native-data-products/design-standards/`):
 
 | param block | Source file | Lines |
 |-------------|-------------|-------|
-| base (always loaded) | `agent_packs/andp/base_content.md` | ~130 |
+| base (always loaded) | `agent_packs/andp/base_content.md` | ~150 |
 | `memory` | `Memory_Module_Design_Standard.md` | 1,789 |
 | `semantic` | `Semantic_Module_Design_Standard.md` | 696 |
 | `domain` | `Domain_Module_Design_Standard.md` | 1,001 |
@@ -233,6 +268,8 @@ Compressed module files are committed to the repo.
 [5/6  Package .agentpack zip]
   ✓ andp.agentpack  (69.7 KB)
 [6/6  Import to Uderia]
+  ✓ Authenticated
+  ✓ MCP server: Teradata MCP (1763483266562-a6kulj4xc)
   ✓ Import successful  (profiles: 7)
 ```
 
@@ -242,33 +279,63 @@ Compressed module files are committed to the repo.
 
 ## §7 When to Update base_content.md
 
-`base_content.md` is the only LLM-authored piece that ships in both verbatim and compressed modes. It is loaded by the coordinator and by all 6 slave profiles as their base context.
+`base_content.md` is a coordinator-optimised distillation of two source documents:
+- `AI_Native_Data_Product_Master_Design.md` — six-module architecture, deployment order, integration patterns
+- `Advocated_Data_Management_Standards.md` — universal DDL conventions (booleans, timestamps, surrogate keys)
 
-**Update `base_content.md` only when:**
+It also contains two ANDP-specific sections **not derived from any source document**:
+- **Coordinator Operating Rules** (PROHIBITED/PERMITTED lists)
+- **Coordinator Routing Table** (query-pattern → slave mapping)
+
+It is loaded by the coordinator and by all 6 slave profiles as their base context.
+
+**Regenerate `base_content.md` when:**
+- `AI_Native_Data_Product_Master_Design.md` is updated (new modules, changed deployment order, revised integration patterns)
+- `Advocated_Data_Management_Standards.md` is updated (DDL convention changes)
 - A new module is added to the architecture
 - A slave profile tag is renamed
+
+**Edit `base_content.md` directly (do not regenerate) when:**
 - The routing logic changes (a query pattern should go to a different slave)
-- A universal DDL convention changes
-- A documentation capture protocol rule changes
+- The coordinator operating constraints change (PROHIBITED/PERMITTED rules)
+
+**When regenerating:** Read both source documents, produce new base content following the same structure, then copy the existing **Coordinator Operating Rules** and **Routing Table** sections back in verbatim — these are not derived from any source document. Add a new row to the **DISTILLATION HISTORY** table in the file's metadata header with today's date, the source document, and its version.
+
+**When making a direct edit:** Add a row to the **DIRECT EDIT HISTORY** table in the file's metadata header with today's date, the section name, and a one-line summary of the change.
 
 **Do NOT update `base_content.md` when:**
-- Module design standard documents are updated — those changes flow through automatically via build.py (verbatim mode) or via compressed module regeneration (compressed mode)
+- Individual module design standard documents are updated — those flow through build.py automatically
 
-After editing `base_content.md`, run build.py to regenerate and reimport.
+After any change, run build.py to regenerate and reimport.
 
 ---
 
 ## §8 Profile Architecture
 
-| Tag | profile_type | role | Skill context loaded |
-|-----|-------------|------|---------------------|
-| `ANDP` | `genie` | coordinator | base content only (routing table + architecture overview) |
-| `ANDP-DOMAIN` | `llm_only` | expert | base + full `Domain_Module_Design_Standard.md` |
-| `ANDP-SEMANTIC` | `llm_only` | expert | base + full `Semantic_Module_Design_Standard.md` |
-| `ANDP-SEARCH` | `llm_only` | expert | base + full `Search_Module_Design_Standard.md` |
-| `ANDP-PREDICTION` | `llm_only` | expert | base + full `Prediction_Module_Design_Standard.md` |
-| `ANDP-OBSERVABILITY` | `llm_only` | expert | base + full `Observability_Module_Design_Standard.md` |
-| `ANDP-MEMORY` | `llm_only` | expert | base + full `Memory_Module_Design_Standard.md` |
+| Tag | profile_type | IFOC label | role | Tools | Skill context loaded |
+|-----|-------------|-----------|------|-------|---------------------|
+| `ANDP` | `genie` | Coordinate | coordinator | — | base content only (routing table + architecture overview) |
+| `ANDP-DOMAIN` | `llm_only` | Ideate | expert | 6 | base + full `Domain_Module_Design_Standard.md` |
+| `ANDP-SEMANTIC` | `llm_only` | Ideate | expert | 7 | base + full `Semantic_Module_Design_Standard.md` |
+| `ANDP-SEARCH` | `llm_only` | Ideate | expert | 7 | base + full `Search_Module_Design_Standard.md` |
+| `ANDP-PREDICTION` | `llm_only` | Ideate | expert | 9 | base + full `Prediction_Module_Design_Standard.md` |
+| `ANDP-OBSERVABILITY` | `llm_only` | Ideate | expert | 10 | base + full `Observability_Module_Design_Standard.md` |
+| `ANDP-MEMORY` | `llm_only` | Ideate | expert | 5 | base + full `Memory_Module_Design_Standard.md` |
+
+Slave `profile_type` is controlled by `--slave-type` at build time (default: `ideate`).
+- **Ideate**: `llm_only` + `useMcpTools: true` — LangChain tool access, no planner overhead
+- **Optimize**: `tool_enabled` + `classification_mode: full` — full Planner/Executor pipeline
+
+**Per-slave tool sets (pre-qualified — only these appear in system prompt):**
+
+| Tag | Tools |
+|-----|-------|
+| ANDP-DOMAIN | `base_readQuery`, `base_tableList`, `base_tableDDL`, `base_databaseList`, `base_columnDescription`, `base_tableUsage` |
+| ANDP-SEMANTIC | same as DOMAIN + `base_tableAffinity` |
+| ANDP-SEARCH | `base_readQuery`, `base_tableList`, `base_tableDDL`, `base_databaseList`, `base_columnDescription`, `base_tablePreview`, `rag_Execute_Workflow` |
+| ANDP-PREDICTION | `base_readQuery`, `base_tableList`, `base_tableDDL`, `base_databaseList`, `base_columnDescription`, `base_tablePreview`, `qlty_columnSummary`, `qlty_univariateStatistics`, `qlty_missingValues` |
+| ANDP-OBSERVABILITY | `base_readQuery`, `base_tableList`, `base_tableDDL`, `base_databaseList`, `base_columnDescription`, `base_tableUsage`, `qlty_columnSummary`, `qlty_missingValues`, `qlty_negativeValues`, `dba_tableSqlList` |
+| ANDP-MEMORY | `base_readQuery`, `base_tableList`, `base_tableDDL`, `base_databaseList`, `base_columnDescription` |
 
 **Coordinator genieConfig:** `temperature: 0.3`, `queryTimeout: 600`, `maxIterations: 12`
 
@@ -294,7 +361,11 @@ After editing `base_content.md`, run build.py to regenerate and reimport.
 **For base_content.md changes:**
 - [ ] Architecture table covers all 6 modules with correct database pattern
 - [ ] Deployment order correct: Phase 1 = Memory+Semantic, Phase 2 = Domain+Observability, Phase 3 = Search+Prediction
+- [ ] Coordinator Operating Rules section present with PROHIBITED and PERMITTED lists
+- [ ] PROHIBITED list covers: DDL generation, seed INSERTs, ERDs, schema design, single-module answers
+- [ ] PERMITTED list covers: requirements scoping, cross-module synthesis, deployment sign-off
 - [ ] Coordinator routing table covers all 6 modules — each query pattern maps to exactly one slave (or "both" for cross-module)
+- [ ] Routing table includes both **design-query patterns** ("Design X module DDL") and **usage-query patterns** ("How do I join X to Y?") for every module
 - [ ] No DDL templates or SQL code blocks in base_content.md (coordinator gets routing intelligence, not DDL)
 - [ ] Documentation capture protocol includes all record types: MOD-, DD-, CL-, BG-, QC-, IN-
 - [ ] After editing: run build.py and verify `profiles_created: 7`
@@ -318,6 +389,11 @@ After editing `base_content.md`, run build.py to regenerate and reimport.
 - [ ] `.agentpack` contains `manifest.json` + `skills/ai-native-data-product.skill`
 - [ ] Coordinator `skillsConfig` has `"params": {}` (not `"param": "..."`)
 - [ ] All 6 slave profiles have `"params": {"param": "<module>"}` in `skillsConfig`
+- [ ] All 6 slave profiles have `"profile_type": "llm_only"`, `"useMcpTools": True`, and `"requires_mcp": True`
+- [ ] All 6 slave profiles have `"allowed_tools": [...]` with the correct pre-qualified list (see §8)
+- [ ] Import step prints `✓ MCP server: <name> (<id>)` before import (confirms auto-detection)
+- [ ] After import, verify profile `tools` field in DB: `python3 -c "import sqlite3,json; conn=sqlite3.connect('tda_auth.db'); [print(p.get('tag'), len(p.get('tools',[])), 'tools') for prefs in conn.execute('SELECT preferences_json FROM user_preferences').fetchall() for p in json.loads(prefs[0]).get('profiles',[]) if p.get('tag','').startswith('ANDP-')]"` — ANDP-DOMAIN must show 6, ANDP-MEMORY must show 5
+- [ ] **If `tools` count is 0 for all slaves**: restart the Uderia server (code change requires restart) then reimport
 
 ---
 

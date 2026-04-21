@@ -4,7 +4,7 @@
   "description": "Genie coordinator + 6 module specialist slaves for designing AI-native data products on Teradata. Each slave has deep expertise in one module; the coordinator routes queries based on topic.",
   "author": "Teradata Worldwide Data Architecture Team",
   "version": "1.0.0",
-  "created_at": "2026-04-21T12:36:33Z",
+  "created_at": "2026-04-21T16:29:14Z",
   "tags": [
     "teradata",
     "data-product",
@@ -49,6 +49,16 @@
       "description": "Designs Domain module DDL: entity history tables (_H), reference tables (_R), surrogate key strategy via Keymap pattern, bi-temporal tracking, standard views.",
       "profile_type": "llm_only",
       "role": "expert",
+      "requires_mcp": true,
+      "useMcpTools": true,
+      "allowed_tools": [
+        "base_readQuery",
+        "base_tableList",
+        "base_tableDDL",
+        "base_databaseList",
+        "base_columnDescription",
+        "base_tableUsage"
+      ],
       "skillsConfig": {
         "skills": [
           {
@@ -66,6 +76,17 @@
       "description": "Designs Semantic module: entity_metadata, column_metadata, table_relationship, v_relationship_paths recursive CTE, data_product_map, agent discovery protocol.",
       "profile_type": "llm_only",
       "role": "expert",
+      "requires_mcp": true,
+      "useMcpTools": true,
+      "allowed_tools": [
+        "base_readQuery",
+        "base_tableList",
+        "base_tableDDL",
+        "base_databaseList",
+        "base_columnDescription",
+        "base_tableUsage",
+        "base_tableAffinity"
+      ],
       "skillsConfig": {
         "skills": [
           {
@@ -83,6 +104,17 @@
       "description": "Designs Search module: entity_embedding with VECTOR datatype, TD_VectorDistance patterns, KMEANS/HNSW index strategy, RAG integration.",
       "profile_type": "llm_only",
       "role": "expert",
+      "requires_mcp": true,
+      "useMcpTools": true,
+      "allowed_tools": [
+        "base_readQuery",
+        "base_tableList",
+        "base_tableDDL",
+        "base_databaseList",
+        "base_columnDescription",
+        "base_tablePreview",
+        "rag_Execute_Workflow"
+      ],
       "skillsConfig": {
         "skills": [
           {
@@ -100,6 +132,19 @@
       "description": "Designs Prediction module: feature store (wide/tall formats), model_prediction, point-in-time feature reconstruction for ML training datasets.",
       "profile_type": "llm_only",
       "role": "expert",
+      "requires_mcp": true,
+      "useMcpTools": true,
+      "allowed_tools": [
+        "base_readQuery",
+        "base_tableList",
+        "base_tableDDL",
+        "base_databaseList",
+        "base_columnDescription",
+        "base_tablePreview",
+        "qlty_columnSummary",
+        "qlty_univariateStatistics",
+        "qlty_missingValues"
+      ],
       "skillsConfig": {
         "skills": [
           {
@@ -117,6 +162,20 @@
       "description": "Designs Observability module: change_event (table-level), data_lineage/lineage_run split, data_quality_metric, model_performance, OpenLineage alignment.",
       "profile_type": "llm_only",
       "role": "expert",
+      "requires_mcp": true,
+      "useMcpTools": true,
+      "allowed_tools": [
+        "base_readQuery",
+        "base_tableList",
+        "base_tableDDL",
+        "base_databaseList",
+        "base_columnDescription",
+        "base_tableUsage",
+        "qlty_columnSummary",
+        "qlty_missingValues",
+        "qlty_negativeValues",
+        "dba_tableSqlList"
+      ],
       "skillsConfig": {
         "skills": [
           {
@@ -134,6 +193,15 @@
       "description": "Designs Memory module: runtime agent state tables + full Documentation Sub-Module (Module_Registry, Design_Decision, Business_Glossary, Query_Cookbook, Implementation_Note, Change_Log).",
       "profile_type": "llm_only",
       "role": "expert",
+      "requires_mcp": true,
+      "useMcpTools": true,
+      "allowed_tools": [
+        "base_readQuery",
+        "base_tableList",
+        "base_tableDDL",
+        "base_databaseList",
+        "base_columnDescription"
+      ],
       "skillsConfig": {
         "skills": [
           {

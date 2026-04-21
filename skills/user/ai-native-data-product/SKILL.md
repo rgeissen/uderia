@@ -4,6 +4,22 @@ description: Design standards for AI-native data products on Teradata. Six-modul
 user-invokable: true
 ---
 
+<!--
+  base_content.md — ANDP Coordinator Context
+
+  DISTILLATION HISTORY (derived from source documents):
+  | Date       | Source document                              | Version | Notes                        |
+  |------------|----------------------------------------------|---------|------------------------------|
+  | 2026-04-21 | AI_Native_Data_Product_Master_Design.md      | 1.9     | Initial distillation         |
+  | 2026-04-21 | Advocated_Data_Management_Standards.md       | —       | DDL conventions section      |
+
+  DIRECT EDIT HISTORY (ANDP-specific sections — not derived from source docs):
+  | Date       | Section                        | Change                                                              |
+  |------------|--------------------------------|---------------------------------------------------------------------|
+  | 2026-04-21 | Coordinator Operating Rules    | Added PROHIBITED/PERMITTED constraints to force slave invocation    |
+  | 2026-04-21 | Coordinator Routing Table      | Added design-query patterns alongside usage-query patterns          |
+-->
+
 # AI-Native Data Product Design Standards — Coordinator Context
 
 This content is loaded for ALL profiles in the ANDP agent pack, including the coordinator.
@@ -99,24 +115,55 @@ Module abbreviations: DOMAIN, SEMANTIC, SEARCH, PREDICTION, OBSERVABILITY, MEMOR
 
 ---
 
+## Coordinator Operating Rules
+
+**These are hard constraints, not guidelines.**
+
+**PROHIBITED — never do these yourself:**
+- Generate DDL (CREATE DATABASE, CREATE TABLE, CREATE VIEW)
+- Write seed INSERT statements for any module table
+- Produce ERDs or logical data models
+- Design module schemas or table structures
+- Answer any question that belongs to a single module specialist
+
+**PERMITTED — coordinator handles these directly:**
+- Requirements scoping and entity-to-module mapping (D1-type questions)
+- Cross-module synthesis when multiple slaves have already responded
+- Deployment sequence and deviations summary (D7-type sign-off)
+- Clarifying questions before routing
+
+**RULE: If a request involves designing, creating, or producing output for a specific module — invoke the slave. Do not produce the output yourself, even if you could.**
+
+When you invoke a slave, pass the full product context (database name, entity names and columns, modules in scope) so the slave has everything it needs without asking the user to repeat it.
+
+---
+
 ## Coordinator Routing Table
 
 The ANDP coordinator uses this table to determine which slave profile(s) to invoke:
 
 | Query pattern | Route to | Why exclusive |
 |---------------|----------|---------------|
+| **Design** Domain module DDL, tables, history tables, Keymap | ANDP-DOMAIN | Only ANDP-DOMAIN has the Domain design standard |
+| Logical data model, entity definitions, ERD, entity attributes | ANDP-DOMAIN | Entity structure is Domain module territory |
 | Entity state, current/historical entity records | ANDP-DOMAIN | Source of truth for entity instances; temporal history lives in `_H` tables |
 | Point-in-time queries, SCD history, bi-temporal | ANDP-DOMAIN | Valid/transaction time tracking owned by Domain |
 | Surrogate key assignment, Keymap pattern | ANDP-DOMAIN | Keymap is the surrogate allocation authority |
+| **Design** Semantic module DDL, metadata tables, seed INSERTs | ANDP-SEMANTIC | Only ANDP-SEMANTIC has the Semantic design standard |
 | "How do I join X to Y?", schema structure, multi-hop paths | ANDP-SEMANTIC | `table_relationship` and `v_relationship_paths` authority |
 | "What does column X mean?", PII flags, column metadata | ANDP-SEMANTIC | `column_metadata` authority |
 | "What entities/modules exist?", agent discovery bootstrap | ANDP-SEMANTIC | `data_product_map` and `entity_metadata` authority |
+| Integration patterns, agent consumption sequence, data flow | ANDP-SEMANTIC | Discovery protocol and path traversal authority |
+| **Design** Search module DDL, embedding tables | ANDP-SEARCH | Only ANDP-SEARCH has the Search design standard |
 | Semantic similarity search, embeddings, RAG retrieval | ANDP-SEARCH | `entity_embedding` + `TD_VectorDistance` authority |
 | Vector index strategy (KMEANS, HNSW) | ANDP-SEARCH | ANN index expertise lives here |
+| **Design** Prediction module DDL, feature store tables | ANDP-PREDICTION | Only ANDP-PREDICTION has the Prediction design standard |
 | Engineered features, feature values, ML model scores | ANDP-PREDICTION | Feature store authority |
 | Point-in-time training datasets, no-leakage reconstruction | ANDP-PREDICTION | Temporal feature reconstruction expertise |
+| **Design** Observability module DDL, lineage tables | ANDP-OBSERVABILITY | Only ANDP-OBSERVABILITY has the Observability design standard |
 | Data quality scores, change events, ETL status/duration | ANDP-OBSERVABILITY | `change_event` and `lineage_run` authority |
 | Pipeline lineage, data lineage graph, model performance SLA | ANDP-OBSERVABILITY | `data_lineage` / `lineage_run` split authority |
+| **Design** Memory module DDL, documentation tables, seed INSERTs | ANDP-MEMORY | Only ANDP-MEMORY has the Memory design standard |
 | Agent session context, learned strategies, user preferences | ANDP-MEMORY | Runtime memory tables authority |
 | "Why was X designed this way?", architecture decisions | ANDP-MEMORY | `Design_Decision` (ADR) authority |
 | Business glossary terms, proven query patterns, cookbooks | ANDP-MEMORY | Documentation Sub-Module authority |

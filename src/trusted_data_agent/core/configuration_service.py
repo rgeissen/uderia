@@ -736,7 +736,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                     # After first classification, initialize profile's enabled tools/prompts with ALL discovered capabilities
                     # This makes all capabilities enabled by default, simplifying the selection process
                     profile = config_manager.get_profile(profile_id, user_uuid)
-                    if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
+                    if profile and profile.get("tools") is None:
                         # Get all discovered tools from APP_STATE
                         all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
                         all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())
@@ -763,7 +763,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                     # This fixes the bug where cached profiles had all resources deactivated
                     app_logger.debug(f"Using cached classification for profile {profile_id}, checking profile initialization...")
                     profile = config_manager.get_profile(profile_id, user_uuid)
-                    if profile and (not profile.get("tools") or len(profile.get("tools", [])) == 0):
+                    if profile and profile.get("tools") is None:
                         # Profile doesn't have tools list yet - initialize with all discovered tools from cache
                         all_tools = list(APP_STATE.get('mcp_tools', {}).keys())
                         all_prompts = list(APP_STATE.get('mcp_prompts', {}).keys())

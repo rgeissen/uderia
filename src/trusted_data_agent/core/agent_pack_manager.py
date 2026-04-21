@@ -2211,10 +2211,18 @@ class AgentPackManager:
 
         elif profile_type == "llm_only":
             # llm_only profiles can optionally use MCP tools via LangChain
-            if mcp_server_id and prof.get("mcpServerName"):
-                profile_data["mcpServerId"] = mcp_server_id
             if prof.get("useMcpTools"):
                 profile_data["useMcpTools"] = True
+                if mcp_server_id:
+                    profile_data["mcpServerId"] = mcp_server_id
+            elif mcp_server_id and prof.get("mcpServerName"):
+                profile_data["mcpServerId"] = mcp_server_id
+
+        # Pre-qualify tool set — non-empty list prevents auto-init to all MCP tools
+        # Applies to both tool_enabled and llm_only (useMcpTools) profiles
+        allowed_tools = prof.get("allowed_tools")
+        if allowed_tools:
+            profile_data["tools"] = allowed_tools
 
         # Restore skillsConfig (auto-enabled skill assignments)
         skills_config = prof.get("skillsConfig")

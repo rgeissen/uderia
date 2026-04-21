@@ -380,6 +380,11 @@ class ComponentManager:
             if not db_path:
                 return
 
+            # AUTH_DB_PATH may be a SQLAlchemy URL (e.g. "sqlite:////abs/path/tda_auth.db").
+            # sqlite3.connect() requires a plain file path, so strip the protocol prefix.
+            if isinstance(db_path, str) and db_path.startswith("sqlite:///"):
+                db_path = db_path[len("sqlite:///"):]
+
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
 
