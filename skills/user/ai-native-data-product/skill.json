@@ -1,0 +1,51 @@
+{
+  "name": "ai-native-data-product",
+  "version": "1.0.0",
+  "description": "Design standards for AI-native data products on Teradata. Six-module architecture with DDL patterns, agent discovery protocol, and routing intelligence for the ANDP coordinator.",
+  "author": "Teradata Worldwide Data Architecture Team",
+  "tags": [
+    "teradata",
+    "data-product",
+    "design",
+    "architecture",
+    "ddl"
+  ],
+  "keywords": [
+    "ai-native",
+    "domain",
+    "semantic",
+    "search",
+    "prediction",
+    "observability",
+    "memory",
+    "andp"
+  ],
+  "use_cases": [
+    "Design a new data product module with production-ready DDL",
+    "Generate Semantic module registration INSERTs for agent discovery",
+    "Design the Memory module Documentation Sub-Module",
+    "Route design queries to the correct module specialist"
+  ],
+  "main_file": "ai-native-data-product.md",
+  "last_updated": "2026-04-21",
+  "uderia": {
+    "injection_target": "user_context",
+    "icon": "database",
+    "allowed_params": [
+      "domain",
+      "semantic",
+      "search",
+      "prediction",
+      "observability",
+      "memory"
+    ],
+    "param_descriptions": {
+      "domain": "Domain module: entity tables (_H, _R), temporal patterns, surrogate key strategy, standard views",
+      "semantic": "Semantic module: metadata tables, agent discovery queries, v_relationship_paths, data_product_map registration",
+      "search": "Search module: entity_embedding table, TD_VectorDistance patterns, index strategy, RAG integration",
+      "prediction": "Prediction module: feature store tables (wide/tall), model_prediction, point-in-time feature reconstruction",
+      "observability": "Observability module: change_event, data_lineage/lineage_run split, data_quality_metric, model_performance",
+      "memory": "Memory module: agent state tables + Documentation Sub-Module (Module_Registry, Design_Decision, Query_Cookbook, etc.)"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "andp-agent-pack",
+  "version": "1.0.0",
+  "description": "Generate the AI-Native Data Product Uderia Agent Pack from design standard documents. Produces a param-based Uderia skill + 7-profile agent pack (1 Genie coordinator + 6 llm_only module specialists) as a ready-to-import .agentpack file.",
+  "author": "Rainer Geissendörfer, Worldwide Data Architecture Team, Teradata",
+  "tags": ["uderia", "agent-pack", "andp", "teradata", "data-product", "design"],
+  "keywords": [
+    "ai-native data product",
+    "ANDP",
+    "agent pack",
+    "genie coordinator",
+    "module specialist",
+    "domain module",
+    "semantic module",
+    "search module",
+    "prediction module",
+    "observability module",
+    "memory module",
+    "DDL generation",
+    "skill packaging",
+    "agentpack"
+  ],
+  "use_cases": [
+    "Generate the ANDP agent pack from design standard documents",
+    "Regenerate the pack after design standard documents are updated",
+    "Package AI-native data product design knowledge as a Uderia skill",
+    "Create the 7-profile ANDP agent pack for import into Uderia"
+  ],
+  "main_file": "SKILL.md",
+  "last_updated": "2026-04-21"
+}

@@ -4916,7 +4916,9 @@ function _collectSkillsConfig(modal) {
         const isActive = activeCb?.checked || false;
         // Only include skills that are at least enabled; active implies enabled
         if (isEnabled || isActive) {
-            skills.push({ id: skillId, enabled: true, active: isActive, param: null });
+            const paramSel = row.querySelector('select[data-role="param"]');
+            const paramVal = paramSel ? (paramSel.value || null) : null;
+            skills.push({ id: skillId, enabled: true, active: isActive, param: paramVal });
         }
     }
     return { skills };
@@ -4957,16 +4959,41 @@ async function _populateSkillsTab(modal, profile) {
             assignedMap[entry.id] = entry;
         }
 
+        // Determine whether any skill in the list has allowed_params
+        const anyHasParams = allSkills.some(s => s.allowed_params?.length > 0);
+        // Default: show param column only if at least one assigned skill already has a param set
+        const showParams = anyHasParams && allSkills.some(s => assignedMap[s.skill_id]?.param);
+        container.dataset.paramsVisible = showParams ? '1' : '0';
+        // Remove any portaled panels left over from a previous render of this container
+        document.querySelectorAll('[data-skill-param-panel]').forEach(p => p.remove());
+
+        const PARAM_TOGGLE_SVG = `<svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>`;
+
         // Column headers
         container.innerHTML = `
             <div class="flex items-center justify-between px-4 py-2 bg-gray-800/50 rounded-lg border-b border-gray-700/40 mb-1">
-                <span class="text-xs text-gray-300 font-medium flex-1">Skill</span>
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                    <span class="text-xs text-gray-300 font-medium">Skill</span>
+                    ${anyHasParams ? `<button type="button" data-role="param-toggle"
+                        class="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-md border transition-all ${showParams ? 'text-blue-400 border-blue-500/40 bg-blue-500/10' : 'text-gray-500 border-gray-600/30 hover:text-gray-400 hover:border-gray-500/50'}">
+                        ${PARAM_TOGGLE_SVG}
+                        Parameter Assignment
+                    </button>` : ''}
+                </div>
                 <div class="flex items-center gap-6 flex-shrink-0">
+                    ${anyHasParams ? `<span data-role="param-header" class="text-xs text-gray-300 font-medium w-28 text-center"${showParams ? '' : ' style="display:none"'}>Param</span>` : ''}
                     <span class="text-xs text-gray-300 font-medium w-16 text-center">Enabled</span>
                     <span class="text-xs text-gray-300 font-medium w-16 text-center">Auto</span>
                 </div>
             </div>
         `;
+
+        // One document-level handler to close all param panels on outside click (re-registered each render)
+        if (container._closeParamPanels) document.removeEventListener('click', container._closeParamPanels);
+        container._closeParamPanels = () => document.querySelectorAll('[data-skill-param-panel]').forEach(p => p.classList.add('hidden'));
+        document.addEventListener('click', container._closeParamPanels);
+
+        const CHECK_SVG = `<svg class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>`;
 
         for (const skill of allSkills) {
             const entry = assignedMap[skill.skill_id];
@@ -4974,6 +5001,38 @@ async function _populateSkillsTab(modal, profile) {
             const isEnabled = entry ? (entry.enabled !== false) : !profile;
             const isActive = entry ? !!entry.active : false;
             const injTarget = INJECTION_LABELS[skill.injection_target] || INJECTION_LABELS.system_prompt;
+
+            // Build custom param dropdown HTML (avoids un-styleable native select popup)
+            let paramCellHtml = '';
+            if (anyHasParams) {
+                if (skill.allowed_params?.length > 0) {
+                    const curParam = entry?.param || '';
+                    const opts = ['', ...(skill.allowed_params)].map(p => {
+                        const sel = curParam === p;
+                        return `<div data-param-opt="${p}"
+                            class="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer select-none transition-colors ${sel ? 'text-blue-400 bg-blue-500/10' : 'text-gray-400 hover:bg-gray-700/60 hover:text-gray-200'}">
+                            <span class="w-3 flex-shrink-0 text-blue-400">${sel ? CHECK_SVG : ''}</span>
+                            <span>${p || '— none —'}</span>
+                        </div>`;
+                    }).join('');
+                    paramCellHtml = `<div class="w-28 flex justify-center" data-param-col${showParams ? '' : ' style="display:none"'}>
+                        <div class="relative w-full" data-param-wrapper>
+                            <button type="button" data-role="param-btn"
+                                class="flex items-center justify-between gap-2 w-full text-xs bg-gray-800/80 border border-gray-600/40 text-gray-300 rounded-md px-2.5 py-1.5 hover:bg-gray-700/50 hover:border-gray-500/60 focus:outline-none focus:border-blue-500/40 transition-all">
+                                <span data-role="param-label" class="truncate">${curParam || '— none —'}</span>
+                                <svg class="w-3 h-3 flex-shrink-0 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            <input type="hidden" data-role="param" value="${curParam}">
+                            <div data-role="param-panel" data-skill-param-panel
+                                class="hidden fixed w-36 bg-gray-800 border border-gray-600/40 rounded-lg shadow-2xl z-[500] py-1 overflow-y-auto max-h-52">
+                                ${opts}
+                            </div>
+                        </div>
+                    </div>`;
+                } else {
+                    paramCellHtml = `<div class="w-28 flex justify-center" data-param-col${showParams ? '' : ' style="display:none"'}><span class="text-xs text-gray-600">—</span></div>`;
+                }
+            }
 
             const row = document.createElement('div');
             row.className = 'flex items-center justify-between px-4 py-2.5 bg-gray-800/30 hover:bg-gray-800/50 rounded-lg border border-gray-700/30 hover:border-gray-600/50 transition-all';
@@ -4987,6 +5046,7 @@ async function _populateSkillsTab(modal, profile) {
                     </div>
                 </div>
                 <div class="flex items-center gap-6 flex-shrink-0">
+                    ${paramCellHtml}
                     <div class="w-16 flex justify-center">
                         <label class="profile-toggle">
                             <input type="checkbox" data-role="enabled" ${isEnabled ? 'checked' : ''}>
@@ -5005,14 +5065,76 @@ async function _populateSkillsTab(modal, profile) {
             // Constraint: active implies enabled; enabled off → active off
             const enabledCb = row.querySelector('input[data-role="enabled"]');
             const activeCb = row.querySelector('input[data-role="active"]');
-            enabledCb.addEventListener('change', () => {
-                if (!enabledCb.checked) activeCb.checked = false;
-            });
-            activeCb.addEventListener('change', () => {
-                if (activeCb.checked) enabledCb.checked = true;
-            });
+            enabledCb.addEventListener('change', () => { if (!enabledCb.checked) activeCb.checked = false; });
+            activeCb.addEventListener('change', () => { if (activeCb.checked) enabledCb.checked = true; });
+
+            // Wire custom param dropdown
+            const paramWrapper = row.querySelector('[data-param-wrapper]');
+            if (paramWrapper) {
+                const btn    = paramWrapper.querySelector('[data-role="param-btn"]');
+                const label  = paramWrapper.querySelector('[data-role="param-label"]');
+                const hidden = paramWrapper.querySelector('[data-role="param"]');
+                const panel  = paramWrapper.querySelector('[data-role="param-panel"]');
+
+                // Portal: move panel to document.body so it has no scrollable ancestors
+                document.body.appendChild(panel);
+
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const opening = panel.classList.contains('hidden');
+                    document.querySelectorAll('[data-skill-param-panel]').forEach(p => p.classList.add('hidden'));
+                    if (opening) {
+                        const rect = btn.getBoundingClientRect();
+                        panel.style.top  = `${rect.bottom + 4}px`;
+                        panel.style.left = `${rect.left}px`;
+                        panel.style.minWidth = `${rect.width}px`;
+                        panel.classList.remove('hidden');
+                    }
+                });
+
+                panel.querySelectorAll('[data-param-opt]').forEach(opt => {
+                    opt.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const val = opt.dataset.paramOpt;
+                        hidden.value = val;
+                        label.textContent = val || '— none —';
+                        panel.querySelectorAll('[data-param-opt]').forEach(o => {
+                            const sel = o.dataset.paramOpt === val;
+                            o.classList.toggle('text-blue-400',     sel);
+                            o.classList.toggle('bg-blue-500/10',    sel);
+                            o.classList.toggle('text-gray-400',     !sel);
+                            o.classList.toggle('hover:bg-gray-700/60', !sel);
+                            o.classList.toggle('hover:text-gray-200',  !sel);
+                            const chk = o.querySelector('span');
+                            if (chk) chk.innerHTML = sel ? CHECK_SVG : '';
+                        });
+                        panel.classList.add('hidden');
+                    });
+                });
+            }
 
             container.appendChild(row);
+        }
+
+        // Wire the "Parameter Assignment" toggle button
+        const paramToggleBtn = container.querySelector('[data-role="param-toggle"]');
+        if (paramToggleBtn) {
+            paramToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const nowVisible = container.dataset.paramsVisible === '1';
+                const nextVisible = !nowVisible;
+                container.dataset.paramsVisible = nextVisible ? '1' : '0';
+                container.querySelectorAll('[data-param-col]').forEach(el => el.style.display = nextVisible ? '' : 'none');
+                const hdr = container.querySelector('[data-role="param-header"]');
+                if (hdr) hdr.style.display = nextVisible ? '' : 'none';
+                if (nextVisible) {
+                    paramToggleBtn.classList.add('text-blue-400', 'border-blue-500/40', 'bg-blue-500/10');
+                    paramToggleBtn.classList.remove('text-gray-500', 'border-gray-600/30', 'hover:text-gray-400', 'hover:border-gray-500/50');
+                } else {
+                    paramToggleBtn.classList.remove('text-blue-400', 'border-blue-500/40', 'bg-blue-500/10');
+                    paramToggleBtn.classList.add('text-gray-500', 'border-gray-600/30');
+                }
+            });
         }
     } catch (err) {
         console.error('[Profile Modal] Failed to load skills:', err);
