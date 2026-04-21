@@ -2253,6 +2253,9 @@ function hideWelcomeScreen() {
         document.querySelectorAll('[data-requires-config="true"]').forEach(panel => {
             panel.style.display = '';  // Reset to default (CSS will control visibility)
         });
+
+        const conversationHeader = document.getElementById('conversation-header');
+        if (conversationHeader) conversationHeader.classList.remove('hidden');
     }
 }
 
@@ -2729,6 +2732,9 @@ async function showWelcomeScreen() {
         document.querySelectorAll('[data-requires-config="true"]').forEach(panel => {
             panel.style.display = 'none';
         });
+
+        const conversationHeader = document.getElementById('conversation-header');
+        if (conversationHeader) conversationHeader.classList.add('hidden');
     }
     
     // Check if user has previously saved configurations
