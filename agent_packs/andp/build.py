@@ -9,7 +9,7 @@ the .skill and .agentpack ZIPs, and optionally imports to a running Uderia serve
 Run from the uderia project root (or any directory — script resolves paths):
     python agent_packs/andp/build.py
     python agent_packs/andp/build.py --import
-    python agent_packs/andp/build.py --import --url http://192.168.0.46:5050 --password ><your-password>
+    python agent_packs/andp/build.py --import --url http://localhost:5050 --password <your-password>
 """
 
 import argparse
