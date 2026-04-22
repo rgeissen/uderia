@@ -6717,6 +6717,46 @@ async def get_session_context_analytics(session_id: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@rest_api_bp.route("/v1/admin/session-stores/cleanup-orphans", methods=["POST"])
+async def cleanup_orphan_session_stores():
+    """
+    Maintenance endpoint: delete external vector store collections whose sessions
+    no longer exist (guard against cleanup failures during process termination).
+
+    Only acts on external backends (in-memory stores are process-scoped and
+    auto-cleaned). No-op when no external session stores are active.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        from components.builtin.context_window.session_vector_store import _SESSION_STORES
+        from trusted_data_agent.core.session_manager import get_all_sessions
+
+        sessions_result = await get_all_sessions(user_uuid, include_archived=False)
+        active_set = {s["id"] for s in sessions_result.get("sessions", [])}
+
+        deleted_collections = []
+        for session_id, store in list(_SESSION_STORES.items()):
+            if session_id not in active_set and store.is_external:
+                try:
+                    await store.destroy()
+                    _SESSION_STORES.pop(session_id, None)
+                    deleted_collections.append(session_id)
+                except Exception as e:
+                    app_logger.warning(
+                        f"Orphan cleanup failed for session {session_id}: {e}"
+                    )
+
+        return jsonify({
+            "status": "success",
+            "orphaned_sessions_cleaned": len(deleted_collections),
+            "session_ids": deleted_collections,
+        }), 200
+
+    except Exception as e:
+        app_logger.error(f"Error cleaning up orphan session stores: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ============================================================================
 # PROFILE CONFIGURATION ENDPOINTS
 # ============================================================================

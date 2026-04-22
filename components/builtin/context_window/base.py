@@ -134,6 +134,11 @@ class ContextModule(ABC):
     or the ~/.tda/context_modules/ directory.
     """
 
+    # Set to True in subclasses that override condense_rag().
+    # The handler checks this before dispatching to condense_rag() so modules
+    # that don't support RAG condensation never receive unexpected calls.
+    supports_rag_condensation: bool = False
+
     @property
     @abstractmethod
     def module_id(self) -> str:
@@ -212,6 +217,46 @@ class ContextModule(ABC):
             content=content,
             tokens_used=estimate_tokens(content),
             metadata={"condensed": False, "reason": "not condensable"},
+        )
+
+    async def condense_rag(
+        self,
+        content: str,
+        target_tokens: int,
+        query: str,
+        ctx: "AssemblyContext",
+        session_store: Any,
+        floor_pct: int,
+    ) -> "Contribution":
+        """
+        RAG-based condensation: keep a floor of recent content via condense()
+        and fill the remaining budget with semantically relevant chunks retrieved
+        from the session vector store.
+
+        Only called when:
+          - condensation_strategy == "rag_offload" in the CWT module config
+          - supports_rag_condensation == True on the module
+          - session_store.has_data(self.module_id) is True (warm store)
+
+        If the store is cold or retrieval fails, the handler falls back to condense().
+
+        Args:
+            content:       Current full content from contribute().
+            target_tokens: Total token budget for the condensed output.
+            query:         Retrieval query (typically the current user message).
+            ctx:           Assembly context.
+            session_store: SessionVectorStore instance for this session.
+            floor_pct:     Percentage of target_tokens to keep via existing condense().
+                           0 = replace entirely with RAG retrieval.
+
+        Returns:
+            Contribution with two labelled sections:
+              "--- Recent Context ---"   (from condense() floor)
+              "--- Relevant Earlier Context ---"  (from RAG retrieval)
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} declared supports_rag_condensation=True "
+            "but did not override condense_rag()"
         )
 
     async def purge(

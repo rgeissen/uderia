@@ -370,6 +370,82 @@ def rebuild_tools_and_prompts_context(tool_to_exclude: str = None) -> Tuple[str,
     return tools_context, prompts_context
 
 
+async def _ingest_documents_to_session_store(
+    session_store: Any,
+    session_id: str,
+    user_uuid: str,
+    session_data: dict,
+) -> None:
+    """Ingest uploaded documents into the session vector store for RAG condensation.
+
+    Chunks extracted text from each attachment into ~200-token paragraph blocks.
+    Idempotent: session_store.ingest() skips already-indexed chunk IDs.
+    Called before handler.assemble() so the store is warm during Pass 4 condensation.
+    """
+    try:
+        from pathlib import Path as _Path
+        from trusted_data_agent.vectorstore.types import VectorDocument
+
+        attachments = session_data.get("attachments", [])
+        if not attachments:
+            return
+
+        manifest_path = _Path(f"tda_sessions/{user_uuid}/uploads/{session_id}/manifest.json")
+        if not manifest_path.exists():
+            return
+
+        with open(manifest_path) as _f:
+            manifest = json.load(_f)
+
+        CHUNK_CHARS = 800  # ~200 tokens per chunk
+
+        for attachment in attachments:
+            file_id = attachment.get("file_id", "")
+            filename = attachment.get("filename", "unknown")
+            file_info = manifest.get(file_id, {})
+            extracted_text = file_info.get("extracted_text", "")
+            if not extracted_text:
+                continue
+
+            # Split into paragraphs, group into ~200-token chunks
+            paragraphs = [p.strip() for p in extracted_text.split("\n\n") if p.strip()]
+            chunks: list = []
+            current: list = []
+            current_len = 0
+            chunk_idx = 0
+
+            for para in paragraphs:
+                if current_len + len(para) > CHUNK_CHARS and current:
+                    chunks.append((chunk_idx, "\n\n".join(current)))
+                    chunk_idx += 1
+                    current = []
+                    current_len = 0
+                current.append(para)
+                current_len += len(para)
+
+            if current:
+                chunks.append((chunk_idx, "\n\n".join(current)))
+
+            docs = [
+                VectorDocument(
+                    id=f"{session_id}__doc__{file_id}__chunk{idx}",
+                    content=text,
+                    metadata={"file_id": file_id, "filename": filename, "chunk_num": idx},
+                )
+                for idx, text in chunks
+            ]
+
+            if docs:
+                await session_store.ingest("document_context", docs)
+                app_logger.debug(
+                    f"Ingested {len(docs)} document chunks for '{filename}' "
+                    f"into session store {session_id}"
+                )
+
+    except Exception as _e:
+        app_logger.debug(f"Document ingestion to session store skipped (non-critical): {_e}")
+
+
 class PlanExecutor:
     AgentState = AgentState
 
@@ -1512,9 +1588,43 @@ class PlanExecutor:
                 profile_config=profile_config,
             )
 
+            # Create per-session vector store for RAG condensation (if configured)
+            session_store = None
+            try:
+                from components.builtin.context_window.session_vector_store import get_session_store
+                rag_backend_id = cwt.get("rag_offload_backend_id")
+                backend_config = None
+                if rag_backend_id:
+                    vs_configs = config_manager.get_vector_store_configurations(self.user_uuid)
+                    vs_cfg = next(
+                        (c for c in vs_configs if c.get("id") == rag_backend_id), None
+                    )
+                    if vs_cfg:
+                        backend_config = {
+                            "backend_type": vs_cfg.get("backend_type", "chromadb"),
+                            "backend_config": vs_cfg.get("backend_config", {}),
+                        }
+                session_store = get_session_store(self.session_id, self.user_uuid, backend_config)
+            except Exception as _svs_err:
+                app_logger.debug(f"Session store init skipped (non-critical): {_svs_err}")
+
+            # Ingest documents if document_context has rag_offload configured
+            if session_store:
+                cwt_modules = cwt.get("modules", {})
+                doc_module_cfg = cwt_modules.get("document_context", {})
+                if doc_module_cfg.get("condensation_strategy") == "rag_offload":
+                    asyncio.create_task(
+                        _ingest_documents_to_session_store(
+                            session_store=session_store,
+                            session_id=self.session_id,
+                            user_uuid=self.user_uuid,
+                            session_data=enriched_session,
+                        )
+                    )
+
             # Run orchestrator
             handler = ContextWindowHandler()
-            assembled = await handler.assemble(cwt, ctx)
+            assembled = await handler.assemble(cwt, ctx, session_store=session_store)
 
             # Log snapshot
             if assembled.snapshot:

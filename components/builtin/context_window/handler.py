@@ -134,6 +134,7 @@ class ContextWindowHandler(SystemHandler):
         self,
         context_window_type: Dict[str, Any],
         ctx: AssemblyContext,
+        session_store: Optional[Any] = None,
     ) -> AssembledContext:
         """
         Assemble the full context window using the four-pass algorithm.
@@ -203,6 +204,8 @@ class ContextWindowHandler(SystemHandler):
             contributions, condensations = await self._condense(
                 active_modules, contributions, condensation_order,
                 total_used, available_budget, ctx,
+                cwt_modules=context_window_type.get("modules", {}),
+                session_store=session_store,
             )
             total_used = sum(c.tokens_used for c in contributions.values())
 
@@ -600,15 +603,23 @@ class ContextWindowHandler(SystemHandler):
         total_used: int,
         available_budget: int,
         ctx: AssemblyContext,
+        cwt_modules: Optional[Dict[str, Any]] = None,
+        session_store: Optional[Any] = None,
     ) -> Tuple[Dict[str, Contribution], List[CondensationEvent]]:
         """
         Condense contributions to fit within budget.
 
         Processes modules in condensation_order (lowest priority first).
         Stops as soon as total usage is within budget.
+
+        When a module has condensation_strategy="rag_offload" in its CWT config,
+        supports_rag_condensation=True, and the session store has indexed data for
+        that module, dispatches to condense_rag() instead of condense().
+        Falls back to condense() silently if any precondition is not met.
         """
         events = []
         modules_by_id = {m.module_id: m for m in active_modules}
+        cwt_modules = cwt_modules or {}
 
         for module_id in condensation_order:
             if total_used <= available_budget:
@@ -626,9 +637,64 @@ class ContextWindowHandler(SystemHandler):
             target_tokens = max(0, contrib.tokens_used - overage)
 
             try:
-                condensed = await am.handler.condense(
-                    contrib.content, target_tokens, ctx
+                # --- RAG offload dispatch ---
+                module_cwt_cfg = cwt_modules.get(module_id, {})
+                strategy = module_cwt_cfg.get("condensation_strategy", "truncate")
+                rag_cfg = module_cwt_cfg.get("rag_offload", {})
+                # Enforce backend policy: if "require_external" but session_store is in-memory,
+                # silently fall back to truncation so the admin policy is respected.
+                if strategy == "rag_offload" and not rag_cfg.get("vector_backend_id"):
+                    try:
+                        from trusted_data_agent.core.config_manager import get_config_manager
+                        _policy = get_config_manager().get_rag_offload_settings().get(
+                            "backend_policy", "allow_internal"
+                        )
+                        if _policy == "require_external":
+                            logger.warning(
+                                f"RAG offload for '{module_id}' requires external backend "
+                                f"(policy=require_external) but no vector_backend_id configured "
+                                f"— falling back to truncate"
+                            )
+                            strategy = "truncate"
+                    except Exception:
+                        pass
+
+                use_rag = (
+                    strategy == "rag_offload"
+                    and getattr(am.handler, "supports_rag_condensation", False)
+                    and session_store is not None
+                    and session_store.has_data(module_id)
                 )
+
+                if use_rag:
+                    floor_pct = rag_cfg.get("floor_pct", 30)
+                    query = ctx.session_data.get("current_query", "")
+                    max_store_mb = rag_cfg.get("max_store_mb", 10.0)
+
+                    # Enforce memory cap — fall back to truncate if exceeded
+                    if session_store.get_store_size_mb(module_id) > max_store_mb:
+                        logger.debug(
+                            f"RAG offload cap exceeded for '{module_id}' "
+                            f"({session_store.get_store_size_mb(module_id):.1f}MB > "
+                            f"{max_store_mb}MB) — falling back to truncate"
+                        )
+                        use_rag = False
+
+                    if use_rag:
+                        condensed = await am.handler.condense_rag(
+                            contrib.content, target_tokens, query,
+                            ctx, session_store, floor_pct,
+                        )
+                        logger.debug(
+                            f"RAG condensation for '{module_id}': "
+                            f"floor_pct={floor_pct}, "
+                            f"chunks={condensed.metadata.get('chunks_retrieved', '?')}"
+                        )
+
+                if not use_rag:
+                    condensed = await am.handler.condense(
+                        contrib.content, target_tokens, ctx
+                    )
 
                 tokens_before = contrib.tokens_used
                 tokens_after = condensed.tokens_used

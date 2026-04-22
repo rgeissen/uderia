@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List, TYPE_CHECKING
 
 from ..base import AssemblyContext, Contribution, ContextModule
 from ..token_estimator import estimate_tokens, estimate_tokens_for_messages
+
+if TYPE_CHECKING:
+    from trusted_data_agent.vectorstore.types import VectorDocument
 
 logger = logging.getLogger("quart.app")
 
@@ -27,8 +30,12 @@ class ConversationHistoryModule(ContextModule):
     budget pressure (keeps most recent N turns).
 
     Condensation strategy: sliding window (drop oldest turns first).
+    RAG condensation: floor% via sliding window + remainder from semantic retrieval.
     Purgeable: clears accumulated conversation history.
     """
+
+    supports_rag_condensation: bool = True
+    APPROX_TOKENS_PER_CHUNK: int = 200
 
     @property
     def module_id(self) -> str:
@@ -124,6 +131,57 @@ class ConversationHistoryModule(ContextModule):
                 "turns_dropped": len(valid_messages) - len(windowed),
             },
         )
+
+    async def condense_rag(
+        self,
+        content: str,
+        target_tokens: int,
+        query: str,
+        ctx: AssemblyContext,
+        session_store: Any,
+        floor_pct: int,
+    ) -> Contribution:
+        """
+        RAG condensation: keep floor_pct% of recent messages via sliding window,
+        fill remainder with semantically retrieved earlier turns.
+        """
+        floor_tokens = int(target_tokens * floor_pct / 100)
+        rag_tokens = target_tokens - floor_tokens
+
+        floor_contribution = None
+        if floor_pct > 0 and floor_tokens > 0:
+            floor_contribution = await self.condense(content, floor_tokens, ctx)
+
+        n_chunks = max(1, rag_tokens // self.APPROX_TOKENS_PER_CHUNK)
+        results = await session_store.retrieve(self.module_id, query, n_results=n_chunks)
+        rag_content = self._format_rag_chunks(results)
+
+        parts = []
+        if floor_contribution and floor_contribution.content:
+            parts.append(f"--- Recent Context ---\n{floor_contribution.content}")
+        if rag_content:
+            parts.append(f"--- Relevant Earlier Context ---\n{rag_content}")
+
+        if not parts:
+            # Safety: both floor and retrieval empty — fall back to truncation
+            return await self.condense(content, target_tokens, ctx)
+
+        combined = "\n\n".join(parts)
+        return Contribution(
+            content=combined,
+            tokens_used=estimate_tokens(combined),
+            metadata={
+                "strategy": "rag_offload",
+                "floor_pct": floor_pct,
+                "chunks_retrieved": len(results),
+                "condensed": True,
+            },
+            condensable=True,
+        )
+
+    def _format_rag_chunks(self, results: "List[VectorDocument]") -> str:
+        """Format retrieved conversation chunks for context."""
+        return "\n\n".join(doc.content for doc in results if doc.content)
 
     async def purge(
         self,
