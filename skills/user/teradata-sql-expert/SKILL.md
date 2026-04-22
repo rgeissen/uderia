@@ -4,12 +4,6 @@ description: Teradata-specific SQL conversion rules and best practices for writi
 user-invokable: true
 ---
 
----
-name: teradata-sql-expert
-description: Teradata-specific SQL conversion rules and best practices for writing correct, idiomatic Teradata SQL.
-user-invokable: true
----
-
 If you would like to create SQL, you must follow the following conversion rules:
 
 **Conversion Rules:**
@@ -70,3 +64,20 @@ If you would like to create SQL, you must follow the following conversion rules:
       FROM database.Sales S JOIN database.Customers C ON S.CustomerID = C.CustomerID
       GROUP BY C.CustomerID, C.FirstName, C.LastName
       ORDER BY TotalRevenue DESC
+
+**Result Reporting (CRITICAL — applies to your final answer):**
+
+When your query returns rows, always include the actual data values in your answer text — not only a count or a generic summary.
+
+- **Enumeration results** (users, tables, databases, columns, views, objects): list each name explicitly in your answer.
+  - Good: "The system has 53 registered users: DBC, SysAdmin, viewpoint, TDaaS_FLOW1, TDaaS_CloudAvailabilityS1, ..."
+  - Bad: "There are 53 registered users on the system."
+  - If the result has more than 30 rows, list the first 30 and state "… and N more."
+
+- **Count/aggregate results**: always include representative examples alongside the count.
+
+- **Single-column results**: list all values (up to 30) directly in the answer text.
+
+- **Multi-column results**: for the primary identifier column (the first meaningful column), list the values. Include other columns only when directly relevant to the question.
+
+Never reduce a result set to only a count when the user asked which or what specific items exist.
