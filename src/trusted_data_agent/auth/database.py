@@ -166,6 +166,9 @@ def init_database():
         # Bootstrap prompt management system
         _bootstrap_prompt_system()
 
+        # Sync any new provider mappings added to tda_config.json after initial bootstrap
+        _sync_default_prompt_mappings()
+
         # Bootstrap recommended models from tda_config.json
         _bootstrap_recommended_models()
 
@@ -2250,6 +2253,71 @@ def _bootstrap_prompt_system():
         
     except Exception as e:
         logger.error(f"Failed to bootstrap prompt system: {e}", exc_info=True)
+
+
+def _sync_default_prompt_mappings():
+    """
+    Sync __system_default__ prompt mappings from tda_config.json on every startup.
+
+    _bootstrap_prompt_system() only runs on first install (tables-exist guard).
+    This function runs unconditionally so new providers added to tda_config.json
+    (e.g. OpenRouter) get their __system_default__ DB row without a full DB reset.
+    Uses INSERT OR IGNORE — safe to run repeatedly.
+    """
+    import sqlite3
+    import json
+    from pathlib import Path
+
+    try:
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # Bail early if the table doesn't exist yet (bootstrap hasn't run)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='profile_prompt_mappings'")
+        if not cursor.fetchone():
+            conn.close()
+            return
+
+        config_path = Path(__file__).resolve().parents[3] / "tda_config.json"
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+
+        default_mappings = config.get('default_prompt_mappings', {})
+        if not default_mappings:
+            conn.close()
+            return
+
+        synced = 0
+
+        category_map = {
+            'master_system_prompts': 'master_system',
+            'workflow_classification': 'workflow_classification',
+            'error_recovery': 'error_recovery',
+            'data_operations': 'data_operations',
+            'visualization': 'visualization',
+        }
+
+        for config_key, db_category in category_map.items():
+            for subcategory, prompt_name in default_mappings.get(config_key, {}).items():
+                cursor.execute("""
+                    INSERT OR IGNORE INTO profile_prompt_mappings
+                    (profile_id, category, subcategory, prompt_name, created_by)
+                    VALUES ('__system_default__', ?, ?, ?, 'system')
+                """, (db_category, subcategory, prompt_name))
+                if cursor.rowcount > 0:
+                    synced += 1
+                    logger.info(f"Synced missing default mapping: {db_category}/{subcategory} -> {prompt_name}")
+
+        conn.commit()
+        conn.close()
+
+        if synced:
+            logger.info(f"✅ Synced {synced} new default prompt mappings from tda_config.json")
+
+    except Exception as e:
+        logger.error(f"Failed to sync default prompt mappings: {e}", exc_info=True)
+
 
 
 def _bootstrap_recommended_models():

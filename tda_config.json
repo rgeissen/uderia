@@ -2758,6 +2758,7 @@
       "OpenAI": "MASTER_SYSTEM_PROMPT",
       "Azure": "MASTER_SYSTEM_PROMPT",
       "Friendli": "MASTER_SYSTEM_PROMPT",
+      "OpenRouter": "MASTER_SYSTEM_PROMPT",
       "Ollama": "OLLAMA_MASTER_SYSTEM_PROMPT"
     },
     "workflow_classification": {

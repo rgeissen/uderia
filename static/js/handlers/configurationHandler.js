@@ -2671,10 +2671,13 @@ export async function reconnectAndLoad(silent = false) {
                 if (DOM.headerCollapseIcon) DOM.headerCollapseIcon.classList.add('hidden');
             }
             
-            // Show conversation header after successful configuration
-            const conversationHeader = document.getElementById('conversation-header');
-            if (conversationHeader) {
-                conversationHeader.classList.remove('hidden');
+            // Show conversation header after successful configuration, but only if the
+            // welcome screen is not currently visible (hideWelcomeScreen handles it otherwise)
+            const welcomeScreen = document.getElementById('welcome-screen');
+            const isWelcomeVisible = welcomeScreen && !welcomeScreen.classList.contains('hidden');
+            if (!isWelcomeVisible) {
+                const conversationHeader = document.getElementById('conversation-header');
+                if (conversationHeader) conversationHeader.classList.remove('hidden');
             }
             
             // Show panel toggle buttons after configuration
@@ -5010,7 +5013,8 @@ async function _populateSkillsTab(modal, profile) {
                     const opts = ['', ...(skill.allowed_params)].map(p => {
                         const sel = curParam === p;
                         return `<div data-param-opt="${p}"
-                            class="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer select-none transition-colors ${sel ? 'text-blue-400 bg-blue-500/10' : 'text-gray-400 hover:bg-gray-700/60 hover:text-gray-200'}">
+                            class="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer select-none transition-colors ${sel ? 'text-blue-400 bg-blue-500/10' : ''}"
+                            style="${sel ? '' : 'color: var(--text-muted);'}">
                             <span class="w-3 flex-shrink-0 text-blue-400">${sel ? CHECK_SVG : ''}</span>
                             <span>${p || '— none —'}</span>
                         </div>`;
@@ -5018,13 +5022,15 @@ async function _populateSkillsTab(modal, profile) {
                     paramCellHtml = `<div class="w-28 flex justify-center" data-param-col${showParams ? '' : ' style="display:none"'}>
                         <div class="relative w-full" data-param-wrapper>
                             <button type="button" data-role="param-btn"
-                                class="flex items-center justify-between gap-2 w-full text-xs bg-gray-800/80 border border-gray-600/40 text-gray-300 rounded-md px-2.5 py-1.5 hover:bg-gray-700/50 hover:border-gray-500/60 focus:outline-none focus:border-blue-500/40 transition-all">
+                                class="flex items-center justify-between gap-2 w-full text-xs rounded-md px-2.5 py-1.5 focus:outline-none transition-all"
+                                style="background-color: var(--input-bg); border: 1px solid var(--border-primary); color: var(--text-primary);">
                                 <span data-role="param-label" class="truncate">${curParam || '— none —'}</span>
-                                <svg class="w-3 h-3 flex-shrink-0 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                                <svg class="w-3 h-3 flex-shrink-0" style="color: var(--text-muted)" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                             </button>
                             <input type="hidden" data-role="param" value="${curParam}">
                             <div data-role="param-panel" data-skill-param-panel
-                                class="hidden fixed w-36 bg-gray-800 border border-gray-600/40 rounded-lg shadow-2xl z-[500] py-1 overflow-y-auto max-h-52">
+                                class="hidden fixed w-36 rounded-lg shadow-2xl z-[500] py-1 overflow-y-auto max-h-52"
+                                style="background-color: var(--card-bg); border: 1px solid var(--border-primary);">
                                 ${opts}
                             </div>
                         </div>
@@ -5093,6 +5099,18 @@ async function _populateSkillsTab(modal, profile) {
                 });
 
                 panel.querySelectorAll('[data-param-opt]').forEach(opt => {
+                    opt.addEventListener('mouseenter', () => {
+                        if (!opt.classList.contains('text-blue-400')) {
+                            opt.style.backgroundColor = 'var(--hover-bg)';
+                            opt.style.color = 'var(--text-primary)';
+                        }
+                    });
+                    opt.addEventListener('mouseleave', () => {
+                        if (!opt.classList.contains('text-blue-400')) {
+                            opt.style.backgroundColor = '';
+                            opt.style.color = 'var(--text-muted)';
+                        }
+                    });
                     opt.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const val = opt.dataset.paramOpt;
@@ -5100,11 +5118,10 @@ async function _populateSkillsTab(modal, profile) {
                         label.textContent = val || '— none —';
                         panel.querySelectorAll('[data-param-opt]').forEach(o => {
                             const sel = o.dataset.paramOpt === val;
-                            o.classList.toggle('text-blue-400',     sel);
-                            o.classList.toggle('bg-blue-500/10',    sel);
-                            o.classList.toggle('text-gray-400',     !sel);
-                            o.classList.toggle('hover:bg-gray-700/60', !sel);
-                            o.classList.toggle('hover:text-gray-200',  !sel);
+                            o.classList.toggle('text-blue-400',  sel);
+                            o.classList.toggle('bg-blue-500/10', sel);
+                            o.style.color = sel ? '' : 'var(--text-muted)';
+                            o.style.backgroundColor = sel ? '' : '';
                             const chk = o.querySelector('span');
                             if (chk) chk.innerHTML = sel ? CHECK_SVG : '';
                         });

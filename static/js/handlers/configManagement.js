@@ -301,12 +301,13 @@ export async function finalizeConfiguration(config, switchToConversationView = t
         }
     }
     
-    // Show conversation header after successful configuration
-    const conversationHeader = document.getElementById('conversation-header');
-    if (conversationHeader) {
-        conversationHeader.classList.remove('hidden');
-    } else {
-        console.error('Conversation header element not found!');
+    // Show conversation header after successful configuration, but only if the
+    // welcome screen is not currently visible (hideWelcomeScreen handles it otherwise)
+    const welcomeScreen = document.getElementById('welcome-screen');
+    const isWelcomeVisible = welcomeScreen && !welcomeScreen.classList.contains('hidden');
+    if (!isWelcomeVisible) {
+        const conversationHeader = document.getElementById('conversation-header');
+        if (conversationHeader) conversationHeader.classList.remove('hidden');
     }
     
     // Show panel toggle buttons container after configuration
