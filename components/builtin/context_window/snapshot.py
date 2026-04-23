@@ -66,7 +66,10 @@ class CondensationEvent:
     """Percentage reduction: (before - after) / before * 100."""
 
     strategy: str
-    """Condensation strategy used (e.g., 'names_only', 'sliding_window', 'truncation')."""
+    """Condensation strategy used (e.g., 'names_only', 'sliding_window', 'truncation', 'rag_offload')."""
+
+    chunks_retrieved: Optional[int] = None
+    """Number of RAG chunks retrieved (only set when strategy='rag_offload')."""
 
 
 @dataclass
@@ -183,6 +186,7 @@ class ContextWindowSnapshot:
                     "after": e.tokens_after,
                     "reduction_pct": round(e.reduction_pct, 1),
                     "strategy": e.strategy,
+                    **({"chunks_retrieved": e.chunks_retrieved} if e.chunks_retrieved is not None else {}),
                 }
                 for e in self.condensations
             ],

@@ -370,6 +370,82 @@ def rebuild_tools_and_prompts_context(tool_to_exclude: str = None) -> Tuple[str,
     return tools_context, prompts_context
 
 
+async def _ingest_documents_to_session_store(
+    session_store: Any,
+    session_id: str,
+    user_uuid: str,
+    session_data: dict,
+) -> None:
+    """Ingest uploaded documents into the session vector store for RAG condensation.
+
+    Chunks extracted text from each attachment into ~200-token paragraph blocks.
+    Idempotent: session_store.ingest() skips already-indexed chunk IDs.
+    Called before handler.assemble() so the store is warm during Pass 4 condensation.
+    """
+    try:
+        from pathlib import Path as _Path
+        from trusted_data_agent.vectorstore.types import VectorDocument
+
+        attachments = session_data.get("attachments", [])
+        if not attachments:
+            return
+
+        manifest_path = _Path(f"tda_sessions/{user_uuid}/uploads/{session_id}/manifest.json")
+        if not manifest_path.exists():
+            return
+
+        with open(manifest_path) as _f:
+            manifest = json.load(_f)
+
+        CHUNK_CHARS = 800  # ~200 tokens per chunk
+
+        for attachment in attachments:
+            file_id = attachment.get("file_id", "")
+            filename = attachment.get("filename", "unknown")
+            file_info = manifest.get(file_id, {})
+            extracted_text = file_info.get("extracted_text", "")
+            if not extracted_text:
+                continue
+
+            # Split into paragraphs, group into ~200-token chunks
+            paragraphs = [p.strip() for p in extracted_text.split("\n\n") if p.strip()]
+            chunks: list = []
+            current: list = []
+            current_len = 0
+            chunk_idx = 0
+
+            for para in paragraphs:
+                if current_len + len(para) > CHUNK_CHARS and current:
+                    chunks.append((chunk_idx, "\n\n".join(current)))
+                    chunk_idx += 1
+                    current = []
+                    current_len = 0
+                current.append(para)
+                current_len += len(para)
+
+            if current:
+                chunks.append((chunk_idx, "\n\n".join(current)))
+
+            docs = [
+                VectorDocument(
+                    id=f"{session_id}__doc__{file_id}__chunk{idx}",
+                    content=text,
+                    metadata={"file_id": file_id, "filename": filename, "chunk_num": idx},
+                )
+                for idx, text in chunks
+            ]
+
+            if docs:
+                await session_store.ingest("document_context", docs)
+                app_logger.debug(
+                    f"Ingested {len(docs)} document chunks for '{filename}' "
+                    f"into session store {session_id}"
+                )
+
+    except Exception as _e:
+        app_logger.debug(f"Document ingestion to session store skipped (non-critical): {_e}")
+
+
 class PlanExecutor:
     AgentState = AgentState
 
@@ -1512,9 +1588,43 @@ class PlanExecutor:
                 profile_config=profile_config,
             )
 
+            # Create per-session vector store for RAG condensation (if configured)
+            session_store = None
+            try:
+                from components.builtin.context_window.session_vector_store import get_session_store
+                rag_backend_id = cwt.get("rag_offload_backend_id")
+                backend_config = None
+                if rag_backend_id:
+                    vs_configs = config_manager.get_vector_store_configurations(self.user_uuid)
+                    vs_cfg = next(
+                        (c for c in vs_configs if c.get("id") == rag_backend_id), None
+                    )
+                    if vs_cfg:
+                        backend_config = {
+                            "backend_type": vs_cfg.get("backend_type", "chromadb"),
+                            "backend_config": vs_cfg.get("backend_config", {}),
+                        }
+                session_store = get_session_store(self.session_id, self.user_uuid, backend_config)
+            except Exception as _svs_err:
+                app_logger.debug(f"Session store init skipped (non-critical): {_svs_err}")
+
+            # Ingest documents if document_context has rag_offload configured
+            if session_store:
+                cwt_modules = cwt.get("modules", {})
+                doc_module_cfg = cwt_modules.get("document_context", {})
+                if doc_module_cfg.get("condensation_strategy") == "rag_offload":
+                    asyncio.create_task(
+                        _ingest_documents_to_session_store(
+                            session_store=session_store,
+                            session_id=self.session_id,
+                            user_uuid=self.user_uuid,
+                            session_data=enriched_session,
+                        )
+                    )
+
             # Run orchestrator
             handler = ContextWindowHandler()
-            assembled = await handler.assemble(cwt, ctx)
+            assembled = await handler.assemble(cwt, ctx, session_store=session_store)
 
             # Log snapshot
             if assembled.snapshot:
@@ -6263,6 +6373,87 @@ The following domain knowledge may be relevant to this conversation:
                 yield event
             self.state = self.AgentState.DONE
 
+    def _build_tool_context_summary(self) -> str | None:
+        """
+        Build a compact summary of MCP tool calls from this turn for cross-turn LLM context.
+
+        Stored in chat_object so conversation_history carries tool awareness across turns
+        without re-running queries. Only data-returning tools are included — TDA_ internal
+        tools are skipped as they carry no cross-turn value.
+        """
+        _TDA_PREFIX = "TDA_"
+        lines = []
+
+        for entry in self.turn_action_history:
+            action = entry.get("action", {})
+            result = entry.get("result", {})
+            tool_name = action.get("tool_name", "")
+
+            # Skip internal orchestration tools
+            if tool_name.startswith(_TDA_PREFIX):
+                # Date range orchestrator: summarise using its consolidated result
+                args = action.get("arguments", {})
+                if args.get("orchestration_type") == "date_range_complete":
+                    target = args.get("target_tool", tool_name)
+                    n_iter = args.get("num_iterations", "?")
+                    lines.append(self._format_tool_summary_line(
+                        f"{target} (×{n_iter} dates)", action, result
+                    ))
+                continue
+
+            if result.get("status") == "error":
+                continue
+
+            lines.append(self._format_tool_summary_line(tool_name, action, result))
+
+        if not lines:
+            return None
+        return "[Tool Execution Summary]\n" + "\n".join(lines)
+
+    def _format_tool_summary_line(self, tool_name: str, action: dict, result: dict) -> str:
+        """Format a single tool call as a compact summary line."""
+        args = action.get("arguments", {})
+        meta = result.get("metadata", {})
+        results_list = result.get("results", [])
+
+        # Primary argument: prefer sql/query fields, then first string value
+        primary_arg = ""
+        for key in ("sql", "query", "statement"):
+            if key in args and isinstance(args[key], str):
+                val = args[key].replace("\n", " ").strip()
+                primary_arg = val[:120] + "..." if len(val) > 120 else val
+                break
+        if not primary_arg:
+            for val in args.values():
+                if isinstance(val, str) and val.strip():
+                    primary_arg = val[:80] + "..." if len(val) > 80 else val
+                    break
+
+        # Row count and columns — prefer distiller metadata, fall back to inline
+        row_count = meta.get("row_count")
+        columns = meta.get("columns")
+        if row_count is None and results_list:
+            row_count = len(results_list)
+        if columns is None and results_list and isinstance(results_list[0], dict):
+            columns = list(results_list[0].keys())
+        # Normalize: distiller may store columns as [{name, type}, ...] — extract names only
+        if columns and isinstance(columns[0], dict):
+            columns = [c.get("name", str(c)) for c in columns]
+
+        # One sample row (first row, trimmed)
+        sample = ""
+        if results_list and isinstance(results_list[0], dict):
+            row = results_list[0]
+            trimmed = {k: (str(v)[:60] if len(str(v)) > 60 else v)
+                       for k, v in list(row.items())[:5]}
+            sample = f", sample: {trimmed}"
+
+        row_info = f"→ {row_count} row{'s' if row_count != 1 else ''}" if row_count is not None else ""
+        col_info = f", cols: {columns}" if columns else ""
+        arg_info = f": {primary_arg}" if primary_arg else ""
+
+        return f"• {tool_name}{arg_info} {row_info}{col_info}{sample}".strip()
+
     async def _format_and_yield_final_answer(self, final_content: CanonicalResponse | PromptReportResponse):
         """
         Formats a raw summary string OR a CanonicalResponse object and yields
@@ -6318,12 +6509,14 @@ The following domain knowledge may be relevant to this conversation:
         self.final_summary_text = clean_summary_for_llm
 
         # Now, save both versions to their respective histories
+        tool_context = self._build_tool_context_summary() if self._detect_profile_type() == "tool_enabled" else None
         await session_manager.add_message_to_histories(
             self.user_uuid,
             self.session_id,
             'assistant',
             content=self.final_summary_text, # Clean text for LLM's chat_object
             html_content=final_html,         # Rich HTML for UI's session_history
+            tool_context=tool_context,
             is_session_primer=self.is_session_primer
         )
         # --- MODIFICATION END ---

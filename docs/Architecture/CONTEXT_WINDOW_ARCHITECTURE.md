@@ -44,9 +44,13 @@ Each message added to context includes:
     "role": "user" | "assistant",
     "content": "plain text content",
     "turn_number": int,
-    "isValid": bool
+    "isValid": bool,
+    # tool_enabled profiles only — absent for all other profile types
+    "tool_context": "[Tool Execution Summary]\n• tool_name: arg → N rows, cols: [...], sample: {...}"  # optional
 }
 ```
+
+The `tool_context` field is written by `executor.py:_build_tool_context_summary()` at the end of each `tool_enabled` turn and stored by `add_message_to_histories()`. It is rendered by `conversation_history/handler.py:_format_messages()` as a trailing block after the prose answer, making it visible to the LLM as part of the assistant's turn and available for RAG offload semantic retrieval.
 
 ### 1.3 RAG Context Injection
 
@@ -194,7 +198,10 @@ Bedrock:    invoke_model(body={...})
 
   "chat_object": [
     {"role": "user", "content": "...", "turn_number": 1, "isValid": true},
-    {"role": "assistant", "content": "...", "turn_number": 1, "isValid": true}
+    {
+      "role": "assistant", "content": "...", "turn_number": 1, "isValid": true,
+      "tool_context": "[Tool Execution Summary]\n• base_readQuery: SELECT ... → 45 rows, cols: ['DatabaseName', 'SpaceUsed_GB'], sample: {...}"
+    }
   ],
 
   "session_history": [
@@ -256,7 +263,9 @@ Turn N:  Linear growth in history portion
 | Optimization | Mechanism | Savings | File:Lines |
 |--------------|-----------|---------|------------|
 | **Tool condensation** | Names-only after first turn | 60-70% of tool context | handler.py:423-437 |
-| **History condensation** | Remove duplicates, clean capabilities | 10-20% of history | handler.py:253-355 |
+| **History condensation** | Budget-aware sliding window | 10-20% of history | conversation_history/handler.py |
+| **RAG offload condensation** | `floor_pct`% of recent turns via sliding window + remainder via semantic retrieval from per-session ChromaDB (`SessionVectorStore`); chunks_retrieved surfaced in Live Status amber RAG badge | Avoids destructive truncation; retrieves contextually relevant earlier turns | conversation_history/handler.py:`condense_rag()` + context_window/handler.py:`_condense()` |
+| **Tool context enrichment** | Compact `[Tool Execution Summary]` appended to @OPTIM `chat_object` assistant entries: tool name, key arg (≤120 chars), row count, column names, 1 sample row; TDA_ tools excluded | ~50–150 tokens/turn overhead; enables RAG offload to retrieve cross-turn tool metadata semantically | executor.py:`_build_tool_context_summary()` + session_manager.py:`add_message_to_histories()` |
 | **Context distillation** | Summarize large tool outputs (metadata-only) | 99%+ of large results | executor.py:975-1015 |
 | **Analytical distillation L1** | Column statistics + stratified samples per result set | 80-90% of large results | adapter.py:25-320 |
 | **Analytical distillation L2** | Aggressive stratified reduction on total budget | 95%+ when budget exceeded | adapter.py:293-320 |
@@ -270,7 +279,9 @@ Turn N:  Linear growth in history portion
 | Optimization | Trigger |
 |--------------|---------|
 | Tool condensation | `full_context_sent == True` (after turn 1) |
-| History condensation | `CONDENSE_SYSTEMPROMPT_HISTORY` config flag |
+| History condensation | Budget-aware: fires when `estimate_tokens(history) > budget` during Pass 4 |
+| RAG offload condensation | `condensation_strategy == "rag_offload"` set on the module's CWT config entry; falls back to sliding window if session vector store unavailable |
+| Tool context enrichment | Always fires for `tool_enabled` profiles when `turn_action_history` has qualifying (non-TDA_) tool calls |
 | Context distillation | Result > `CONTEXT_DISTILLATION_MAX_ROWS` (500) rows OR > `CONTEXT_DISTILLATION_MAX_CHARS` (10,000) chars |
 | Analytical distillation L1 | Per-result > `REPORT_DISTILLATION_MAX_ROWS` (100) rows OR > `REPORT_DISTILLATION_MAX_CHARS` (50,000) chars |
 | Analytical distillation L2 | Total distilled JSON > `REPORT_DISTILLATION_TOTAL_BUDGET` (200,000) chars |
@@ -1151,6 +1162,9 @@ class ContextModule(ABC):
     async def contribute(self, budget: int, ctx: AssemblyContext) -> Contribution: ...
 
     async def condense(self, content: str, target_tokens: int, ctx: AssemblyContext) -> Contribution: ...
+    # RAG offload variant — only implemented by modules that set supports_rag_condensation = True
+    async def condense_rag(self, content: str, target_tokens: int, query: str,
+                           ctx: AssemblyContext, session_store: Any, floor_pct: int) -> Contribution: ...
     async def purge(self, session_id: str, user_uuid: str) -> dict: ...
     def get_status(self) -> dict: ...
 ```
@@ -1161,7 +1175,7 @@ class ContextModule(ABC):
 |-----------|:--------:|:--------:|:-----------:|:---------:|----------------------|
 | `system_prompt` | 95 | 10% | No | No | All |
 | `tool_definitions` | 85 | 22% | Yes (full → names-only) | No | tool_enabled, genie |
-| `conversation_history` | 80 | 22% | Yes (sliding window) | Yes | All |
+| `conversation_history` | 80 | 22% | Yes (sliding window + RAG offload) | Yes | All |
 | `rag_context` | 75 | 15% | Yes (fewer examples) | Yes | tool_enabled |
 | `knowledge_context` | 70 | 10% | Yes (fewer docs) | Yes | tool_enabled, llm_only, rag_focused — two-tier circuit breaker (see below) |
 | `plan_hydration` | 65 | 8% | Yes (summary) | Yes | tool_enabled |

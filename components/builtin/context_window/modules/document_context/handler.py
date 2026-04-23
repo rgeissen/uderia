@@ -11,10 +11,13 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, TYPE_CHECKING
 
 from ..base import AssemblyContext, Contribution, ContextModule
 from ..token_estimator import estimate_tokens, tokens_to_chars
+
+if TYPE_CHECKING:
+    from trusted_data_agent.vectorstore.types import VectorDocument
 
 logger = logging.getLogger("quart.app")
 
@@ -28,8 +31,13 @@ class DocumentContextModule(ContextModule):
     character limits to stay within budget.
 
     Condensation strategy: per-file truncation, then drop lower-priority files.
+    RAG condensation: floor% via truncation + remainder from semantic retrieval
+    (default floor=0: replace entirely with relevant chunks).
     Purgeable: clears extracted text cache for the session.
     """
+
+    supports_rag_condensation: bool = True
+    APPROX_TOKENS_PER_CHUNK: int = 150
 
     @property
     def module_id(self) -> str:
@@ -131,6 +139,66 @@ class DocumentContextModule(ContextModule):
             tokens_used=tokens,
             metadata={"condensed": True, "strategy": "truncation"},
         )
+
+    async def condense_rag(
+        self,
+        content: str,
+        target_tokens: int,
+        query: str,
+        ctx: AssemblyContext,
+        session_store: Any,
+        floor_pct: int,
+    ) -> Contribution:
+        """
+        RAG condensation: keep floor_pct% via truncation, fill remainder with
+        semantically retrieved document chunks (default floor=0 for documents —
+        positional truncation is too poor a heuristic to keep).
+        """
+        floor_tokens = int(target_tokens * floor_pct / 100)
+        rag_tokens = target_tokens - floor_tokens
+
+        floor_contribution = None
+        if floor_pct > 0 and floor_tokens > 0:
+            floor_contribution = await self.condense(content, floor_tokens, ctx)
+
+        n_chunks = max(1, rag_tokens // self.APPROX_TOKENS_PER_CHUNK)
+        results = await session_store.retrieve(self.module_id, query, n_results=n_chunks)
+        rag_content = self._format_rag_chunks(results)
+
+        parts = []
+        if floor_contribution and floor_contribution.content:
+            parts.append(f"--- Recent Context ---\n{floor_contribution.content}")
+        if rag_content:
+            parts.append(f"--- Relevant Earlier Context ---\n{rag_content}")
+
+        if not parts:
+            return await self.condense(content, target_tokens, ctx)
+
+        combined = "\n\n".join(parts)
+        return Contribution(
+            content=combined,
+            tokens_used=estimate_tokens(combined),
+            metadata={
+                "strategy": "rag_offload",
+                "floor_pct": floor_pct,
+                "chunks_retrieved": len(results),
+                "condensed": True,
+            },
+            condensable=True,
+        )
+
+    def _format_rag_chunks(self, results: "List[VectorDocument]") -> str:
+        """Format retrieved document chunks with source labels."""
+        parts = []
+        for doc in results:
+            filename = doc.metadata.get("filename", "document")
+            chunk_num = doc.metadata.get("chunk_num", "")
+            label = f"=== DOCUMENT: {filename}"
+            if chunk_num:
+                label += f" (chunk {chunk_num})"
+            label += " ==="
+            parts.append(f"{label}\n{doc.content}")
+        return "\n\n".join(parts)
 
     async def purge(
         self,

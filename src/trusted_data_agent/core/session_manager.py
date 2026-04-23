@@ -987,6 +987,16 @@ async def delete_session(user_uuid: str, session_id: str, archived_reason: str =
             # Clean up uploads directory for this session
             _cleanup_session_uploads(user_uuid, session_id)
 
+            # Clean up session vector store (in-memory: removes registry entry;
+            # external: explicitly deletes per-module collections)
+            try:
+                from components.builtin.context_window.session_vector_store import (
+                    destroy_session_store,
+                )
+                asyncio.create_task(destroy_session_store(session_id))
+            except Exception:
+                pass
+
             return True # Indicate success
         else:
             # This case should ideally not be hit if _find_session_path is correct
@@ -1397,7 +1407,7 @@ def _cleanup_session_uploads(user_uuid: str, session_id: str):
             app_logger.warning(f"Failed to clean up uploads directory for session {session_id}: {e}")
 
 # --- MODIFICATION START: Rename and refactor add_to_history ---
-async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None, is_session_primer: bool = False, attachments: list | None = None, extension_specs: list | None = None, skill_specs: list | None = None):
+async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None, is_session_primer: bool = False, attachments: list | None = None, extension_specs: list | None = None, skill_specs: list | None = None, tool_context: str | None = None):
     """
     Adds a message to the appropriate histories, decoupling UI from LLM context.
     - `content` (plain text) is *always* added to the LLM's chat_object.
@@ -1480,6 +1490,8 @@ async def add_message_to_histories(user_uuid: str, session_id: str, role: str, c
         }
         if attachments and role == 'user':
             llm_message['has_attachments'] = True
+        if tool_context and role == 'assistant':
+            llm_message['tool_context'] = tool_context
         chat_object_history.append(llm_message)
 
 async def update_session_name(user_uuid: str, session_id: str, new_name: str):
@@ -1598,6 +1610,111 @@ async def update_models_used(user_uuid: str, session_id: str, provider: str, mod
         session_data['profile_tag'] = profile_tag
 
 
+async def _ingest_turn_to_session_store(
+    session_id: str,
+    user_uuid: str,
+    turn_data: dict,
+    turn_number: int,
+) -> None:
+    """Background task: ingest the completed turn into the session vector store.
+
+    Populates three module sub-collections so RAG condensation has warm data
+    by the next turn:
+      - workflow_history: one turn-summary chunk
+      - plan_hydration:   one chunk per successful tool result
+      - conversation_history: the latest user+assistant message pair
+    """
+    try:
+        from components.builtin.context_window.session_vector_store import get_session_store
+        from trusted_data_agent.vectorstore.types import VectorDocument
+
+        session_store = get_session_store(session_id, user_uuid)
+        execution_trace = turn_data.get("execution_trace", [])
+
+        # ── workflow_history ──────────────────────────────────────────────────
+        if execution_trace:
+            tool_lines = []
+            for phase in execution_trace:
+                action = phase.get("action", {})
+                output = phase.get("tool_output_summary", {})
+                tool_name = action.get("tool_name", "unknown")
+                status = output.get("status", "unknown")
+                results = output.get("results", [])
+                count = f" ({len(results)} rows)" if isinstance(results, list) else ""
+                tool_lines.append(f"  - {tool_name}: {status}{count}")
+
+            wf_content = f"Turn #{turn_number}:\n" + "\n".join(tool_lines)
+            await session_store.ingest(
+                "workflow_history",
+                [VectorDocument(
+                    id=f"{session_id}__wf__{turn_number}",
+                    content=wf_content,
+                    metadata={"turn_number": turn_number, "session_id": session_id},
+                )],
+            )
+
+        # ── plan_hydration ────────────────────────────────────────────────────
+        ph_chunks = []
+        for phase_idx, phase in enumerate(execution_trace):
+            action = phase.get("action", {})
+            output = phase.get("tool_output_summary", {})
+            if output.get("status") != "success":
+                continue
+            tool_name = action.get("tool_name", "unknown")
+            results = output.get("results", [])
+            if isinstance(results, list) and len(results) > 5:
+                result_text = (
+                    f"{len(results)} rows. First 3: "
+                    f"{json.dumps(results[:3], default=str)}"
+                )
+            else:
+                result_text = json.dumps(results, default=str)
+            ph_chunks.append(VectorDocument(
+                id=f"{session_id}__plan__{turn_number}__phase{phase_idx}",
+                content=f"{tool_name}:\n{result_text}",
+                metadata={
+                    "tool_name": tool_name,
+                    "phase": phase_idx,
+                    "turn_number": turn_number,
+                },
+            ))
+        if ph_chunks:
+            await session_store.ingest("plan_hydration", ph_chunks)
+
+        # ── conversation_history ──────────────────────────────────────────────
+        session_data = await get_session(user_uuid, session_id)
+        if session_data:
+            chat_object = session_data.get("chat_object", [])
+            valid_msgs = [
+                m for m in chat_object
+                if m.get("role") and m.get("content") and m.get("isValid") is not False
+            ]
+            last_user = next(
+                (m for m in reversed(valid_msgs) if m["role"] == "user"), None
+            )
+            last_asst = next(
+                (m for m in reversed(valid_msgs) if m["role"] in ("assistant", "model")), None
+            )
+            if last_user and last_asst:
+                conv_content = (
+                    f"[user]: {last_user['content']}\n\n"
+                    f"[assistant]: {last_asst['content']}"
+                )
+                await session_store.ingest(
+                    "conversation_history",
+                    [VectorDocument(
+                        id=f"{session_id}__conv__{turn_number}",
+                        content=conv_content,
+                        metadata={"turn_number": turn_number, "session_id": session_id},
+                    )],
+                )
+
+    except Exception as _e:
+        app_logger.debug(
+            f"Session store background ingestion skipped for {session_id}: {_e}"
+        )
+
+
 async def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict):
     """Saves the most recent turn's action history and plans to the session file."""
     # Capture values needed for post-save consumption tracking
@@ -1709,6 +1826,20 @@ async def update_last_turn_data(user_uuid: str, session_id: str, turn_data: dict
                 app_logger.debug(f"Recorded turn metrics for user {user_uuid}, session {session_id}, turn {_consumption_data['turn_number']}")
         except Exception as e:
             app_logger.warning(f"Failed to record turn metrics for user {user_uuid}: {e}")
+
+    # Background fire-and-forget: populate session vector store for RAG condensation
+    if APP_CONFIG.USE_CONTEXT_WINDOW_MANAGER and isinstance(turn_data, dict) and _consumption_data:
+        try:
+            asyncio.create_task(
+                _ingest_turn_to_session_store(
+                    session_id=session_id,
+                    user_uuid=user_uuid,
+                    turn_data=turn_data,
+                    turn_number=_consumption_data["turn_number"],
+                )
+            )
+        except Exception:
+            pass  # Non-critical; background ingestion failure never blocks turn save
 
 
 async def append_extension_results_to_turn(

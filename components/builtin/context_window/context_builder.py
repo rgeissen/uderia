@@ -221,6 +221,19 @@ class ContextBuilder:
             if key in pc:
                 tv[key] = pc[key]
 
+        # RAG offload note: injected when workflow_history uses rag_offload strategy
+        _rag_modules = {
+            mod_id for mod_id, cfg in (self._cwt or {}).get("modules", {}).items()
+            if cfg.get("condensation_strategy") == "rag_offload"
+        }
+        tv["workflow_history_rag_note"] = (
+            " The history may include a **\"Recent Execution History\"** section "
+            "(latest turns) and a **\"Relevant Earlier Context\"** section "
+            "(semantically retrieved earlier turns relevant to the current goal). "
+            "Treat both sections as available context."
+            if "workflow_history" in _rag_modules else ""
+        )
+
         # --- Build snapshot ---
         tokens = sum(estimate_tokens(str(v)) for v in tv.values() if isinstance(v, str))
         snapshot = self._build_call_snapshot("strategic", content_blocks, tokens)
@@ -343,6 +356,19 @@ class ContextBuilder:
 
         # Pass through any caller-provided content
         tv = dict(pc)
+
+        # RAG offload note for conversation history
+        _rag_modules = {
+            mod_id for mod_id, cfg in (self._cwt or {}).get("modules", {}).items()
+            if cfg.get("condensation_strategy") == "rag_offload"
+        }
+        tv["conversation_history_rag_note"] = (
+            "\n**Note on History Structure:** Your conversation history may include a "
+            "**\"Relevant Earlier Context\"** section containing turns retrieved from "
+            "earlier in the session based on relevance to the current query. Treat this "
+            "section the same as recent history when scanning for relevant information."
+            if "conversation_history" in _rag_modules else ""
+        )
 
         tokens = sum(estimate_tokens(v) for v in content_blocks.values())
         snapshot = self._build_call_snapshot("synthesis", content_blocks, tokens)

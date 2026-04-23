@@ -332,10 +332,18 @@ export function showContextWindowTypeModal(typeId = null) {
     modal.querySelector('#cwt-modal-reserve')?.addEventListener('input', budgetHandler);
     budgetHandler(); // initial render
 
-    // --- Condensation order: up/down buttons ---
+    // --- Condensation order: up/down buttons + strategy change ---
     modal.querySelector('#cwt-condensation-list')?.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-cond-dir]');
         if (btn) moveCondensationItem(btn);
+    });
+    modal.querySelector('#cwt-condensation-list')?.addEventListener('change', (e) => {
+        if (e.target.classList.contains('cwt-cond-strategy')) {
+            const ragPanel = e.target.closest('[data-cond-module-id]')?.querySelector('.cwt-rag-panel');
+            if (ragPanel) {
+                ragPanel.classList.toggle('hidden', e.target.value !== 'rag_offload');
+            }
+        }
     });
 
     // --- Dynamic adjustments: add/remove/action-type-change ---
@@ -383,10 +391,21 @@ async function saveContextWindowType(existingId, modal) {
         modules[moduleId] = { active, target_pct: targetPct, min_pct: minPct, max_pct: maxPct, priority };
     });
 
-    // Read condensation order from the reorderable list
+    // Read condensation order and merge RAG offload strategy into module config
     const condensationOrder = [];
     modal.querySelectorAll('#cwt-condensation-list [data-cond-module-id]').forEach(el => {
-        condensationOrder.push(el.dataset.condModuleId);
+        const moduleId = el.dataset.condModuleId;
+        condensationOrder.push(moduleId);
+        const strategy = el.querySelector('.cwt-cond-strategy')?.value || 'truncate';
+        if (modules[moduleId]) {
+            modules[moduleId].condensation_strategy = strategy;
+            if (strategy === 'rag_offload') {
+                modules[moduleId].rag_offload = {
+                    floor_pct: parseInt(el.querySelector('.cwt-rag-floor-pct')?.value) || 30,
+                    max_store_mb: parseFloat(el.querySelector('.cwt-rag-max-store-mb')?.value) || 10,
+                };
+            }
+        }
     });
 
     // Build dynamic adjustments from the rules editor
@@ -854,6 +873,61 @@ function updateBudgetSummary(modal) {
 // Condensation order
 // ---------------------------------------------------------------------------
 
+// Modules that have condense_rag() implemented and can use RAG offload
+const RAG_OFFLOAD_MODULES = new Set([
+    'conversation_history', 'document_context', 'plan_hydration', 'workflow_history'
+]);
+
+function buildCondensationItemHTML(id, i, total, allMods, moduleCfg) {
+    const mod = allMods.find(m => m.module_id === id);
+    const name = mod?.display_name || id;
+    const color = getModuleColor(id);
+    const supportsRag = RAG_OFFLOAD_MODULES.has(id);
+    const strategy = moduleCfg?.condensation_strategy || 'truncate';
+    const ragCfg = moduleCfg?.rag_offload || {};
+    const floorPct = ragCfg.floor_pct ?? (id === 'document_context' || id === 'plan_hydration' ? 0 : 30);
+    const maxStoreMb = ragCfg.max_store_mb ?? 10;
+    const ragHidden = strategy !== 'rag_offload' ? 'hidden' : '';
+
+    const strategySelect = `
+        <select class="cwt-cond-strategy text-xs bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-gray-300 ${supportsRag ? '' : 'opacity-40 cursor-not-allowed'}"
+                ${supportsRag ? '' : 'disabled title="RAG offload not supported for this module"'}>
+            <option value="truncate" ${strategy === 'truncate' ? 'selected' : ''}>Truncate</option>
+            <option value="rag_offload" ${strategy === 'rag_offload' ? 'selected' : ''} ${supportsRag ? '' : 'disabled'}>RAG Offload</option>
+        </select>`;
+
+    const ragPanel = `
+        <div class="cwt-rag-panel ${ragHidden} ml-7 mt-1 p-2 bg-white/5 rounded text-xs space-y-1">
+            <div class="flex items-center gap-2">
+                <label class="text-gray-400 w-24">Floor %</label>
+                <input type="number" class="cwt-rag-floor-pct w-16 p-0.5 bg-gray-800 border border-gray-700 rounded text-center text-gray-300"
+                    value="${floorPct}" min="0" max="80" step="10"
+                    title="Percentage of budget to keep via existing condense() (0 = replace entirely with RAG)">
+                <span class="text-gray-500">% of budget via existing condense</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-gray-400 w-24">Max Store MB</label>
+                <input type="number" class="cwt-rag-max-store-mb w-16 p-0.5 bg-gray-800 border border-gray-700 rounded text-center text-gray-300"
+                    value="${maxStoreMb}" min="1" max="200" step="1"
+                    title="Maximum size of the in-session vector store for this module">
+                <span class="text-gray-500">MB per session</span>
+            </div>
+        </div>`;
+
+    return `
+        <div class="flex flex-col py-1 px-2 rounded bg-white/5" data-cond-module-id="${id}">
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-500 w-5 text-right">${i + 1}.</span>
+                <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:${color}"></div>
+                <span class="text-xs text-gray-300 flex-1">${escapeHtml(name)}</span>
+                ${strategySelect}
+                <button type="button" data-cond-dir="up" class="text-xs text-gray-500 hover:text-white px-1 ${i === 0 ? 'invisible' : ''}" title="Move up">&uarr;</button>
+                <button type="button" data-cond-dir="down" class="text-xs text-gray-500 hover:text-white px-1 ${i === total - 1 ? 'invisible' : ''}" title="Move down">&darr;</button>
+            </div>
+            ${ragPanel}
+        </div>`;
+}
+
 function buildCondensationOrderSection(allModules, existing) {
     // Determine order: use existing condensation_order if editing, else priority ascending
     const existingOrder = existing?.condensation_order || [];
@@ -874,17 +948,8 @@ function buildCondensationOrderSection(allModules, existing) {
     }
 
     return ordered.map((id, i) => {
-        const mod = allModules.find(m => m.module_id === id);
-        const name = mod?.display_name || id;
-        const color = getModuleColor(id);
-        return `
-            <div class="flex items-center gap-2 py-1 px-2 rounded bg-white/5" data-cond-module-id="${id}">
-                <span class="text-xs text-gray-500 w-5 text-right">${i + 1}.</span>
-                <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:${color}"></div>
-                <span class="text-xs text-gray-300 flex-1">${escapeHtml(name)}</span>
-                <button type="button" data-cond-dir="up" class="text-xs text-gray-500 hover:text-white px-1 ${i === 0 ? 'invisible' : ''}" title="Move up">&uarr;</button>
-                <button type="button" data-cond-dir="down" class="text-xs text-gray-500 hover:text-white px-1 ${i === ordered.length - 1 ? 'invisible' : ''}" title="Move down">&darr;</button>
-            </div>`;
+        const moduleCfg = existing?.modules?.[id];
+        return buildCondensationItemHTML(id, i, ordered.length, allModules, moduleCfg);
     }).join('');
 }
 
@@ -911,19 +976,23 @@ function rebuildCondensationOrder(modal) {
         if (!currentOrder.includes(id)) currentOrder.push(id);
     }
 
+    // Capture current strategies before rebuilding (preserve user edits)
+    const savedStrategies = {};
+    list.querySelectorAll('[data-cond-module-id]').forEach(el => {
+        const id = el.dataset.condModuleId;
+        const strategy = el.querySelector('.cwt-cond-strategy')?.value || 'truncate';
+        savedStrategies[id] = {
+            condensation_strategy: strategy,
+            rag_offload: strategy === 'rag_offload' ? {
+                floor_pct: parseInt(el.querySelector('.cwt-rag-floor-pct')?.value) || 30,
+                max_store_mb: parseFloat(el.querySelector('.cwt-rag-max-store-mb')?.value) || 10,
+            } : undefined,
+        };
+    });
+
     const allMods = installedModules.length > 0 ? installedModules : [];
     list.innerHTML = currentOrder.map((id, i) => {
-        const mod = allMods.find(m => m.module_id === id);
-        const name = mod?.display_name || id;
-        const color = getModuleColor(id);
-        return `
-            <div class="flex items-center gap-2 py-1 px-2 rounded bg-white/5" data-cond-module-id="${id}">
-                <span class="text-xs text-gray-500 w-5 text-right">${i + 1}.</span>
-                <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" style="background:${color}"></div>
-                <span class="text-xs text-gray-300 flex-1">${escapeHtml(name)}</span>
-                <button type="button" data-cond-dir="up" class="text-xs text-gray-500 hover:text-white px-1 ${i === 0 ? 'invisible' : ''}" title="Move up">&uarr;</button>
-                <button type="button" data-cond-dir="down" class="text-xs text-gray-500 hover:text-white px-1 ${i === currentOrder.length - 1 ? 'invisible' : ''}" title="Move down">&darr;</button>
-            </div>`;
+        return buildCondensationItemHTML(id, i, currentOrder.length, allMods, savedStrategies[id]);
     }).join('');
 }
 

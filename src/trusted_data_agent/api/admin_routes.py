@@ -2410,6 +2410,61 @@ async def save_knowledge_global_settings():
 
 
 # ==============================================================================
+# RAG OFFLOAD SETTINGS ENDPOINTS
+# ==============================================================================
+
+@admin_api_bp.route('/v1/admin/rag-offload-settings', methods=['GET'])
+@require_admin
+async def get_rag_offload_settings():
+    """Get the platform-level RAG offload condensation policy."""
+    try:
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        settings = config_manager.get_rag_offload_settings()
+        return jsonify({'status': 'success', 'settings': settings}), 200
+    except Exception as e:
+        logger.error(f"Error loading RAG offload settings: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/rag-offload-settings', methods=['PUT'])
+@require_admin
+async def save_rag_offload_settings():
+    """Save the platform-level RAG offload condensation policy."""
+    try:
+        data = await request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+
+        from trusted_data_agent.core.config_manager import get_config_manager
+        config_manager = get_config_manager()
+        user_uuid = getattr(g, 'user_uuid', None)
+
+        backend_policy = data.get('backend_policy', 'allow_internal')
+        default_max_store_mb = int(data.get('default_max_store_mb', 10))
+
+        success = config_manager.save_rag_offload_settings(
+            backend_policy=backend_policy,
+            default_max_store_mb=default_max_store_mb,
+            user_uuid=user_uuid,
+        )
+
+        if success:
+            updated = config_manager.get_rag_offload_settings()
+            return jsonify({
+                'status': 'success',
+                'message': 'RAG offload settings saved successfully',
+                'settings': updated,
+            }), 200
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to save RAG offload settings'}), 500
+
+    except Exception as e:
+        logger.error(f"Error saving RAG offload settings: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ==============================================================================
 # PROMPT CACHE MANAGEMENT ENDPOINT
 # ==============================================================================
 

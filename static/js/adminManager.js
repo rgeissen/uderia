@@ -460,6 +460,7 @@ const AdminManager = {
         } else if (tabName === 'app-config-tab') {
             this.loadAppConfig();
             this.loadRateLimitSettings();
+            this.loadRagOffloadSettings();
             // Load document upload configurations
             if (typeof DocumentUploadConfigManager !== 'undefined' && DocumentUploadConfigManager.loadConfigurations) {
                 DocumentUploadConfigManager.loadConfigurations();
@@ -4172,6 +4173,9 @@ const AdminManager = {
                 return;
             }
 
+            // Save RAG offload policy (non-blocking; errors are logged but don't fail the save)
+            await this.saveRagOffloadSettings();
+
             // Reset dirty state
             this.aiKnowledgeOriginal = this.getAIKnowledgeSnapshot();
             this.aiKnowledgeDirty = false;
@@ -6416,6 +6420,59 @@ const AdminManager = {
         } catch (error) {
             console.error('[AdminManager] Error saving knowledge global settings:', error);
             window.showAppBanner(`Failed to save knowledge settings: ${error.message}`, 'error', 5000);
+        }
+    },
+
+    /**
+     * Load RAG offload settings from the server
+     */
+    async loadRagOffloadSettings() {
+        const token = localStorage.getItem('jwt_token');
+        if (!token) return;
+        try {
+            const response = await fetch('/api/v1/admin/rag-offload-settings', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) return;
+            const data = await response.json();
+            const settings = data.settings || {};
+
+            const policy = settings.backend_policy || 'allow_internal';
+            const policyInternal = document.getElementById('rag-offload-policy-internal');
+            const policyExternal = document.getElementById('rag-offload-policy-external');
+            if (policyInternal) policyInternal.checked = policy === 'allow_internal';
+            if (policyExternal) policyExternal.checked = policy === 'require_external';
+
+            const maxMbInput = document.getElementById('rag-offload-default-max-mb');
+            if (maxMbInput) maxMbInput.value = settings.default_max_store_mb ?? 10;
+        } catch (error) {
+            console.warn('[AdminManager] Could not load RAG offload settings:', error);
+        }
+    },
+
+    /**
+     * Save RAG offload settings to the server
+     */
+    async saveRagOffloadSettings() {
+        const token = localStorage.getItem('jwt_token');
+        if (!token) return;
+        try {
+            const policy = document.querySelector('input[name="rag_offload_backend_policy"]:checked')?.value || 'allow_internal';
+            const maxMb = parseInt(document.getElementById('rag-offload-default-max-mb')?.value) || 10;
+
+            const response = await fetch('/api/v1/admin/rag-offload-settings', {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ backend_policy: policy, default_max_store_mb: maxMb })
+            });
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.message || 'Failed to save RAG offload settings');
+            }
+            console.log('[AdminManager] RAG offload settings saved');
+        } catch (error) {
+            console.error('[AdminManager] Error saving RAG offload settings:', error);
+            window.showAppBanner(`Failed to save RAG offload settings: ${error.message}`, 'error', 5000);
         }
     },
 

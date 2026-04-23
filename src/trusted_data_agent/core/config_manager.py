@@ -2537,6 +2537,81 @@ class ConfigManager:
 
         return effective
 
+    # ── RAG Offload Settings ───────────────────────────────────────────────
+
+    def get_rag_offload_settings(self) -> Dict[str, Any]:
+        """
+        Get the platform-level RAG offload condensation policy.
+
+        Returns:
+            {
+                'backend_policy': 'allow_internal' | 'require_external',
+                'default_max_store_mb': int
+            }
+        """
+        from trusted_data_agent.auth.database import get_db_session
+
+        defaults = {
+            "rag_offload_backend_policy": "allow_internal",
+            "rag_offload_default_max_store_mb": "10",
+        }
+        settings = dict(defaults)
+
+        try:
+            with get_db_session() as session:
+                result = session.execute(
+                    text(
+                        "SELECT setting_key, setting_value FROM genie_global_settings "
+                        "WHERE setting_key LIKE 'rag_offload_%'"
+                    )
+                )
+                for key, value in result.fetchall():
+                    settings[key] = value
+        except Exception as e:
+            app_logger.warning(f"Could not load RAG offload settings: {e}")
+
+        return {
+            "backend_policy": settings.get("rag_offload_backend_policy", "allow_internal"),
+            "default_max_store_mb": int(settings.get("rag_offload_default_max_store_mb", 10)),
+        }
+
+    def save_rag_offload_settings(
+        self,
+        backend_policy: str,
+        default_max_store_mb: int,
+        user_uuid: Optional[str] = None,
+    ) -> bool:
+        """Persist the RAG offload policy settings."""
+        from trusted_data_agent.auth.database import get_db_session
+
+        if backend_policy not in ("allow_internal", "require_external"):
+            app_logger.warning(f"Invalid RAG offload policy: {backend_policy}")
+            return False
+
+        try:
+            with get_db_session() as session:
+                for key, value in [
+                    ("rag_offload_backend_policy", backend_policy),
+                    ("rag_offload_default_max_store_mb", str(default_max_store_mb)),
+                ]:
+                    session.execute(
+                        text("""
+                        INSERT OR REPLACE INTO genie_global_settings
+                        (setting_key, setting_value, is_locked, updated_at, updated_by)
+                        VALUES (:k, :v, 0, datetime('now'), :u)
+                        """),
+                        {"k": key, "v": value, "u": user_uuid},
+                    )
+                session.commit()
+                app_logger.info(
+                    f"RAG offload policy saved: {backend_policy}, "
+                    f"max_store_mb={default_max_store_mb}"
+                )
+                return True
+        except Exception as e:
+            app_logger.error(f"Failed to save RAG offload settings: {e}")
+            return False
+
 
 # Singleton instance
 _config_manager_instance: Optional[ConfigManager] = None

@@ -502,7 +502,7 @@ The context window is managed by a modular orchestrator that runs a **five-pass 
 |--------|---------|------------|
 | `system_prompt` | LLM system prompt | All |
 | `tool_definitions` | MCP tool schemas | tool_enabled |
-| `conversation_history` | Budget-aware chat history (replaces hardcoded [-10:]) | All |
+| `conversation_history` | Budget-aware chat history with sliding-window + RAG offload condensation; enriched with tool execution summaries for @OPTIM profiles | All |
 | `rag_context` | Retrieved champion cases for planner | tool_enabled |
 | `knowledge_context` | Knowledge repository documents | tool_enabled, llm_only, rag_focused |
 | `plan_hydration` | Previous turn results injection | tool_enabled |
@@ -529,10 +529,10 @@ Uses tiktoken (`cl100k_base` BPE tokenizer) for accurate token counting during b
 Every LLM call emits a `context_window_snapshot` SSE event showing:
 - Per-module allocation, usage, and utilization percentage
 - Dynamic adjustments that fired
-- Condensation events (strategy, tokens saved)
+- Condensation events (strategy, tokens saved, chunks retrieved)
 - Total budget utilization
 
-Rendered in the Live Status panel as a color-coded stacked bar chart.
+Rendered in the Live Status panel as a color-coded stacked bar chart. When RAG offload condensation fires, an amber **RAG** badge appears next to the affected module showing the number of chunks semantically retrieved.
 
 **ContextBuilder (tool_enabled bridge):**
 
@@ -553,7 +553,7 @@ Profile and session context limit overrides allow users to reduce the effective 
 
 **Three-History System:**
 Each session maintains three synchronized histories:
-- **`chat_object`**: Plain text for LLM context (what gets sent to providers)
+- **`chat_object`**: Plain text for LLM context (what gets sent to providers). For `tool_enabled` profiles, assistant entries carry an optional `tool_context` field — a compact `[Tool Execution Summary]` block listing each MCP tool call (name, key argument, row count, column names, and one sample row). This enriches the `conversation_history` module's RAG offload target with structured data metadata that survives across turns.
 - **`session_history`**: HTML-formatted for UI display
 - **`workflow_history`**: Execution traces for planner context
 
@@ -567,6 +567,8 @@ Each session maintains three synchronized histories:
 |--------------|-----------|--------|
 | Tool condensation | Names-only after first turn | `tool_definitions` |
 | History truncation | Budget-aware sliding window | `conversation_history` |
+| RAG offload condensation | Floor% via sliding window + remainder via semantic retrieval (per-session ChromaDB) | `conversation_history` (+ any module with `supports_rag_condensation: True`) |
+| Tool context enrichment | Compact `[Tool Execution Summary]` stored on @OPTIM assistant turns in `chat_object`; enriches RAG offload retrieval with cross-turn tool metadata | `conversation_history` + `executor.py` |
 | Context distillation | Summarize large tool outputs (>500 rows) | `distiller.py` |
 | Plan hydration | Inject previous results, skip re-fetch | `plan_hydration` |
 | Dynamic adjustments | Transfer budget based on runtime conditions | Orchestrator |
@@ -2159,6 +2161,8 @@ Example: "Using the n8n-uderia skill, how do I configure profile override in a w
 
 ## Recent Major Changes
 
+- **Apr 2026**: RAG offload condensation for `conversation_history` — replaces destructive truncation with semantic retrieval via per-session ChromaDB (`SessionVectorStore`); `condense_rag()` keeps `floor_pct`% of recent turns via sliding window and fills the remainder from semantically retrieved earlier chunks; configurable per-module in Context Window Types; amber **RAG** badge + chunk count shown in Live Status panel when it fires
+- **Apr 2026**: Tool Context Enrichment for @OPTIM profiles — every `tool_enabled` assistant turn in `chat_object` now carries a `tool_context` field with a compact `[Tool Execution Summary]` (tool name, key argument truncated at 120 chars, row count, column names, 1 sample row); makes `conversation_history` a richer RAG offload target with cross-turn tool awareness; TDA_ internal tools excluded; built in `executor.py:_build_tool_context_summary()` + `_format_tool_summary_line()`; rendered by `conversation_history/handler.py:_format_messages()` so the LLM sees it as part of the assistant's turn
 - **Apr 2026**: Agent Pack KG export/import hardening — export queries `kg_profile_assignments` (not `kg_metadata.profile_id`) as source of truth for active KG per profile; manifest v1.4 KG entries include `owner_profile_tag` and `assigned_profiles[]` (full assignment fidelity); import uses owner resolution: manifest owner → genie coordinator → active-assignment profile; import creates `kg_profile_assignments` rows for all pack profiles; `agent_pack_resources` tracks KGs so uninstall cascade-deletes them; import/uninstall responses include `kgs_created`/`kgs_deleted`; success message shows KG count; tag conflicts return HTTP 409 `tag_conflict`
 - **Apr 2026**: Knowledge Graphs first-class Agent Pack citizens (v1.4 manifest) — active KG per profile bundled in export as `knowledge_graphs/kg_N.json`; restored on import after profiles created; new `PUT /v1/agent-packs/{id}` endpoint to edit pack metadata and profile membership
 - **Apr 2026**: KG import overhaul — two-mode dialog (create new vs merge), export v2.0 with `kg_id`/`kg_name`/`kg_description`/`kg_database_name`, `set_kg_metadata(is_active=)` param, marketplace publish/install/fork create named KGs with `kg_id` tracking

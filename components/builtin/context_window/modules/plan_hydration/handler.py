@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List, TYPE_CHECKING
 
 from ..base import AssemblyContext, Contribution, ContextModule
 from ..token_estimator import estimate_tokens, tokens_to_chars
+
+if TYPE_CHECKING:
+    from trusted_data_agent.vectorstore.types import VectorDocument
 
 logger = logging.getLogger("quart.app")
 
@@ -28,8 +31,13 @@ class PlanHydrationModule(ContextModule):
     re-executing redundant tool calls (30-50% token savings on multi-turn).
 
     Condensation strategy: summarize results instead of full data.
+    RAG condensation: floor% via summary + remainder from semantic retrieval
+    (default floor=0: replace entirely — relevance beats recency for tool results).
     Purgeable: clears accumulated turn data.
     """
+
+    supports_rag_condensation: bool = True
+    APPROX_TOKENS_PER_CHUNK: int = 300
 
     @property
     def module_id(self) -> str:
@@ -119,6 +127,69 @@ class PlanHydrationModule(ContextModule):
             tokens_used=tokens,
             metadata={"condensed": True, "strategy": "summary"},
         )
+
+    async def condense_rag(
+        self,
+        content: str,
+        target_tokens: int,
+        query: str,
+        ctx: AssemblyContext,
+        session_store: Any,
+        floor_pct: int,
+    ) -> Contribution:
+        """
+        RAG condensation: keep floor_pct% via summary, fill remainder with
+        semantically retrieved tool results. Uses the current phase goal as
+        retrieval query when available — surfaces the most relevant prior results
+        for the specific operation being planned.
+        """
+        # Phase goal is more precise than the raw user message for tool result retrieval
+        retrieval_query = ctx.session_data.get("current_phase_goal") or query
+
+        floor_tokens = int(target_tokens * floor_pct / 100)
+        rag_tokens = target_tokens - floor_tokens
+
+        floor_contribution = None
+        if floor_pct > 0 and floor_tokens > 0:
+            floor_contribution = await self.condense(content, floor_tokens, ctx)
+
+        n_chunks = max(1, rag_tokens // self.APPROX_TOKENS_PER_CHUNK)
+        results = await session_store.retrieve(self.module_id, retrieval_query, n_results=n_chunks)
+        rag_content = self._format_rag_chunks(results)
+
+        parts = []
+        if floor_contribution and floor_contribution.content:
+            parts.append(f"--- Recent Context ---\n{floor_contribution.content}")
+        if rag_content:
+            parts.append(f"--- Relevant Earlier Context ---\n{rag_content}")
+
+        if not parts:
+            return await self.condense(content, target_tokens, ctx)
+
+        combined = "\n\n".join(parts)
+        return Contribution(
+            content=combined,
+            tokens_used=estimate_tokens(combined),
+            metadata={
+                "strategy": "rag_offload",
+                "floor_pct": floor_pct,
+                "chunks_retrieved": len(results),
+                "condensed": True,
+            },
+            condensable=True,
+        )
+
+    def _format_rag_chunks(self, results: "List[VectorDocument]") -> str:
+        """Format retrieved tool result chunks."""
+        parts = []
+        for doc in results:
+            tool_name = doc.metadata.get("tool_name", "tool")
+            phase = doc.metadata.get("phase", "")
+            label = tool_name
+            if phase:
+                label += f" (phase {phase})"
+            parts.append(f"{label}:\n{doc.content}")
+        return "\n\n".join(parts)
 
     async def purge(
         self,
