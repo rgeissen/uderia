@@ -713,6 +713,7 @@ class ContextWindowHandler(SystemHandler):
                         tokens_after=tokens_after,
                         reduction_pct=reduction_pct,
                         strategy=condensed.metadata.get("strategy", "unknown"),
+                        chunks_retrieved=condensed.metadata.get("chunks_retrieved"),
                     ))
                     logger.debug(
                         f"Condensed '{module_id}': {tokens_before} → {tokens_after} "

@@ -6373,6 +6373,87 @@ The following domain knowledge may be relevant to this conversation:
                 yield event
             self.state = self.AgentState.DONE
 
+    def _build_tool_context_summary(self) -> str | None:
+        """
+        Build a compact summary of MCP tool calls from this turn for cross-turn LLM context.
+
+        Stored in chat_object so conversation_history carries tool awareness across turns
+        without re-running queries. Only data-returning tools are included — TDA_ internal
+        tools are skipped as they carry no cross-turn value.
+        """
+        _TDA_PREFIX = "TDA_"
+        lines = []
+
+        for entry in self.turn_action_history:
+            action = entry.get("action", {})
+            result = entry.get("result", {})
+            tool_name = action.get("tool_name", "")
+
+            # Skip internal orchestration tools
+            if tool_name.startswith(_TDA_PREFIX):
+                # Date range orchestrator: summarise using its consolidated result
+                args = action.get("arguments", {})
+                if args.get("orchestration_type") == "date_range_complete":
+                    target = args.get("target_tool", tool_name)
+                    n_iter = args.get("num_iterations", "?")
+                    lines.append(self._format_tool_summary_line(
+                        f"{target} (×{n_iter} dates)", action, result
+                    ))
+                continue
+
+            if result.get("status") == "error":
+                continue
+
+            lines.append(self._format_tool_summary_line(tool_name, action, result))
+
+        if not lines:
+            return None
+        return "[Tool Execution Summary]\n" + "\n".join(lines)
+
+    def _format_tool_summary_line(self, tool_name: str, action: dict, result: dict) -> str:
+        """Format a single tool call as a compact summary line."""
+        args = action.get("arguments", {})
+        meta = result.get("metadata", {})
+        results_list = result.get("results", [])
+
+        # Primary argument: prefer sql/query fields, then first string value
+        primary_arg = ""
+        for key in ("sql", "query", "statement"):
+            if key in args and isinstance(args[key], str):
+                val = args[key].replace("\n", " ").strip()
+                primary_arg = val[:120] + "..." if len(val) > 120 else val
+                break
+        if not primary_arg:
+            for val in args.values():
+                if isinstance(val, str) and val.strip():
+                    primary_arg = val[:80] + "..." if len(val) > 80 else val
+                    break
+
+        # Row count and columns — prefer distiller metadata, fall back to inline
+        row_count = meta.get("row_count")
+        columns = meta.get("columns")
+        if row_count is None and results_list:
+            row_count = len(results_list)
+        if columns is None and results_list and isinstance(results_list[0], dict):
+            columns = list(results_list[0].keys())
+        # Normalize: distiller may store columns as [{name, type}, ...] — extract names only
+        if columns and isinstance(columns[0], dict):
+            columns = [c.get("name", str(c)) for c in columns]
+
+        # One sample row (first row, trimmed)
+        sample = ""
+        if results_list and isinstance(results_list[0], dict):
+            row = results_list[0]
+            trimmed = {k: (str(v)[:60] if len(str(v)) > 60 else v)
+                       for k, v in list(row.items())[:5]}
+            sample = f", sample: {trimmed}"
+
+        row_info = f"→ {row_count} row{'s' if row_count != 1 else ''}" if row_count is not None else ""
+        col_info = f", cols: {columns}" if columns else ""
+        arg_info = f": {primary_arg}" if primary_arg else ""
+
+        return f"• {tool_name}{arg_info} {row_info}{col_info}{sample}".strip()
+
     async def _format_and_yield_final_answer(self, final_content: CanonicalResponse | PromptReportResponse):
         """
         Formats a raw summary string OR a CanonicalResponse object and yields
@@ -6428,12 +6509,14 @@ The following domain knowledge may be relevant to this conversation:
         self.final_summary_text = clean_summary_for_llm
 
         # Now, save both versions to their respective histories
+        tool_context = self._build_tool_context_summary() if self._detect_profile_type() == "tool_enabled" else None
         await session_manager.add_message_to_histories(
             self.user_uuid,
             self.session_id,
             'assistant',
             content=self.final_summary_text, # Clean text for LLM's chat_object
             html_content=final_html,         # Rich HTML for UI's session_history
+            tool_context=tool_context,
             is_session_primer=self.is_session_primer
         )
         # --- MODIFICATION END ---

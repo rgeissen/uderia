@@ -1407,7 +1407,7 @@ def _cleanup_session_uploads(user_uuid: str, session_id: str):
             app_logger.warning(f"Failed to clean up uploads directory for session {session_id}: {e}")
 
 # --- MODIFICATION START: Rename and refactor add_to_history ---
-async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None, is_session_primer: bool = False, attachments: list | None = None, extension_specs: list | None = None, skill_specs: list | None = None):
+async def add_message_to_histories(user_uuid: str, session_id: str, role: str, content: str, html_content: str | None = None, source: str | None = None, profile_tag: str | None = None, is_session_primer: bool = False, attachments: list | None = None, extension_specs: list | None = None, skill_specs: list | None = None, tool_context: str | None = None):
     """
     Adds a message to the appropriate histories, decoupling UI from LLM context.
     - `content` (plain text) is *always* added to the LLM's chat_object.
@@ -1490,6 +1490,8 @@ async def add_message_to_histories(user_uuid: str, session_id: str, role: str, c
         }
         if attachments and role == 'user':
             llm_message['has_attachments'] = True
+        if tool_context and role == 'assistant':
+            llm_message['tool_context'] = tool_context
         chat_object_history.append(llm_message)
 
 async def update_session_name(user_uuid: str, session_id: str, new_name: str):

@@ -533,7 +533,15 @@ async function saveSessionContextLimit(overrideValue) {
  * @returns {string} HTML string for the Live Status panel
  */
 export function renderContextWindowSnapshot(snapshot) {
-    lastSnapshot = snapshot;
+    // Only replace lastSnapshot if the new one is at least as comprehensive.
+    // The strategic planning phase emits a partial snapshot (tool_definitions +
+    // workflow_history only) that arrives after the full 9-module synthesis
+    // snapshot — don't let it overwrite the richer one in the resource panel.
+    const newCount = (snapshot.contributions || []).length;
+    const curCount = (lastSnapshot?.contributions || []).length;
+    if (newCount >= curCount) {
+        lastSnapshot = snapshot;
+    }
 
     // Also update the Resource Panel's "Last Query" section if visible
     _refreshSnapshotInPanel();
@@ -557,9 +565,17 @@ export function renderContextWindowSnapshot(snapshot) {
     // Condensation events
     const condensations = snapshot.condensations || [];
     const condensedText = condensations.length > 0
-        ? condensations.map(c =>
-            `${formatModuleName(c.module_id)} (${c.strategy}, saved ${((c.before - c.after) / 1000).toFixed(1)}K)`
-        ).join(', ')
+        ? condensations.map(c => {
+            const saved = ((c.before - c.after) / 1000).toFixed(1);
+            if (c.strategy === 'rag_offload') {
+                const chunks = c.chunks_retrieved != null ? `, ${c.chunks_retrieved} chunks` : '';
+                return `<span class="inline-flex items-center gap-1">`
+                    + `<span class="px-1 py-0 rounded text-[9px] font-semibold bg-amber-500/25 text-amber-300 border border-amber-500/30">RAG</span>`
+                    + `${escapeHtml(formatModuleName(c.module_id))} (saved ${saved}K${chunks})`
+                    + `</span>`;
+            }
+            return `${escapeHtml(formatModuleName(c.module_id))} (${escapeHtml(c.strategy)}, saved ${saved}K)`;
+        }).join(', ')
         : '';
 
     // Distillation events (intra-turn tactical planning)
@@ -618,7 +634,7 @@ export function renderContextWindowSnapshot(snapshot) {
             <div class="flex flex-wrap gap-x-2 gap-y-0.5">
                 ${labels}
             </div>
-            ${condensedText ? `<div class="text-[10px] text-yellow-400/70 mt-1.5">Condensed: ${escapeHtml(condensedText)}</div>` : ''}
+            ${condensedText ? `<div class="text-[10px] text-yellow-400/70 mt-1.5">Condensed: ${condensedText}</div>` : ''}
             ${distillationHtml}
             ${reallocationHtml}
         </div>`;

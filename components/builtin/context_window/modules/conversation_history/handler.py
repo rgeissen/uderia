@@ -252,5 +252,9 @@ class ConversationHistoryModule(ContextModule):
         for msg in messages:
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
-            lines.append(f"[{role}]: {content}")
+            text = f"[{role}]: {content}"
+            tool_ctx = msg.get("tool_context")
+            if tool_ctx:
+                text += f"\n{tool_ctx}"
+            lines.append(text)
         return "\n\n".join(lines)
