@@ -2054,8 +2054,28 @@ Response:"""
             # Re-raise quota/rate limit errors
             raise
         except Exception as e:
-            # Non-critical: If enforcement fails, allow execution (fail-open)
-            app_logger.error(f"Failed to check consumption limits for user {self.user_uuid}: {e}")
+            # Consumption enforcement failed unexpectedly (e.g. DB unavailable).
+            # Execution is allowed to proceed (fail-open) to prevent locking all users out
+            # during transient infrastructure issues, but we emit a visible warning event
+            # and increment a process-level counter so operators can detect the bypass.
+            APP_STATE.setdefault("consumption_enforcement_bypasses", 0)
+            APP_STATE["consumption_enforcement_bypasses"] += 1
+            bypass_count = APP_STATE["consumption_enforcement_bypasses"]
+            app_logger.warning(
+                f"[SECURITY] Consumption enforcement bypassed for user {self.user_uuid} "
+                f"due to unexpected error (bypass #{bypass_count}): {e}"
+            )
+            bypass_event = {
+                "step": "Security Warning",
+                "type": "workaround",
+                "details": (
+                    f"Consumption limit check could not be completed ({type(e).__name__}). "
+                    "Execution is proceeding, but quota limits may not be enforced. "
+                    "Contact your administrator if this persists."
+                ),
+            }
+            self._log_system_event(bypass_event)
+            yield self._format_sse_with_depth(bypass_event)
         # --- CONSUMPTION ENFORCEMENT END ---
         
         # --- LLM-ONLY PROFILE: DIRECT EXECUTION PATH START ---
