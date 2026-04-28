@@ -1,4 +1,5 @@
 # trusted_data_agent/agent/orchestrators.py
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -402,33 +403,39 @@ async def execute_date_range_orchestrator(executor, command: dict, date_param_na
         return  # Skip the per-day iteration below
     # --- End Range Tool Mode ---
 
-    # --- Single-Date Iteration Mode: call tool once per day ---
+    # --- Single-Date Iteration Mode: call tool concurrently per day ---
     cleaned_command_args = { k: v for k, v in args.items() if 'date' not in k.lower() }
     cleaned_command = {**command, 'arguments': cleaned_command_args}
 
-    all_results = []
     yield _format_sse({"target": "db", "state": "busy"}, "status_indicator_update")
-    for date_item in date_list:
+    yield _format_sse({
+        "step": f"System Orchestration: date_range parallel",
+        "type": "system_message",
+        "details": {"summary": f"Executing {len(date_list)} date(s) concurrently for '{date_phrase}'"}
+    })
+
+    async def _call_for_date(date_item):
         date_str = date_item['date']
-        yield _format_sse({"step": f"Processing data for: {date_str}"})
-        
-        day_command = {**cleaned_command, 'arguments': {**cleaned_command['arguments'], date_param_name: date_str}}
-        yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": day_command})
-        # --- MODIFICATION START: Pass user_uuid ---
+        day_cmd = {**cleaned_command, 'arguments': {**cleaned_command['arguments'], date_param_name: date_str}}
         day_result, _, _ = await mcp_adapter.invoke_mcp_tool(
-            executor.dependencies['STATE'], day_command, user_uuid=user_uuid, session_id=executor.session_id,
+            executor.dependencies['STATE'], day_cmd, user_uuid=user_uuid, session_id=executor.session_id,
             profile_id=executor.active_profile_id
         )
+        day_cmd.setdefault("metadata", {})["timestamp"] = datetime.now(timezone.utc).isoformat()
+        return date_str, day_cmd, day_result
+
+    # All days run concurrently — results arrive in completion order but we re-sort by date
+    day_results = await asyncio.gather(*[_call_for_date(d) for d in date_list])
+
+    all_results = []
+    for date_str, day_cmd, day_result in day_results:
+        yield _format_sse({"step": "Tool Execution Intent", "type": "tool_intent", "details": day_cmd})
         _result_type = "tool_error" if (isinstance(day_result, dict) and day_result.get("status") == "error") else "tool_result"
         yield _format_sse({"step": "Tool Execution Result", "type": _result_type, "details": day_result})
-        # Add timestamp metadata for timing analysis
-        day_command.setdefault("metadata", {})["timestamp"] = datetime.now(timezone.utc).isoformat()
-        executor.turn_action_history.append({"action": day_command, "result": day_result})
-        # --- MODIFICATION END ---
-        
+        executor.turn_action_history.append({"action": day_cmd, "result": day_result})
         if isinstance(day_result, dict) and day_result.get("status") == "success" and day_result.get("results"):
             all_results.extend(day_result["results"])
-        
+
     yield _format_sse({"target": "db", "state": "idle"}, "status_indicator_update")
     
     final_tool_output = {
