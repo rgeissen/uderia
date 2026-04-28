@@ -8,10 +8,11 @@ dispatch.
 
 Current registration status:
   Phase 0 — Base infrastructure (this file, base.py, registry.py)
-  Phase 1 — IdeateEngine    (llm_only)     [complete]
-  Phase 2 — FocusEngine     (rag_focused)  [complete]
-  Phase 3 — CoordinateEngine (genie)       [complete]
-  Phase 4 — OptimizeEngine  (tool_enabled) [complete]
+  Phase 1 — IdeateEngine        (llm_only)             [complete]
+  Phase 2 — FocusEngine         (rag_focused)           [complete]
+  Phase 3 — CoordinateEngine    (genie)                 [complete]
+  Phase 4 — OptimizeEngine      (tool_enabled)          [complete]
+  Phase 5 — ConversationEngine  (llm_only_with_tools)   [complete]
 """
 
 from .base import ExecutionEngine
@@ -29,6 +30,9 @@ from .coordinate_engine import CoordinateEngine  # noqa: F401  — registers on 
 # Phase 4 — OptimizeEngine (tool_enabled)
 from .optimize_engine import OptimizeEngine  # noqa: F401  — registers on import
 
+# Phase 5 — ConversationEngine (llm_only with MCP tools or component tools)
+from .conversation_engine import ConversationEngine  # noqa: F401  — registers on import
+
 __all__ = [
     "ExecutionEngine",
     "EngineRegistry",
@@ -36,4 +40,5 @@ __all__ = [
     "FocusEngine",
     "CoordinateEngine",
     "OptimizeEngine",
+    "ConversationEngine",
 ]
