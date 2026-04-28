@@ -2382,45 +2382,66 @@ Ranking:"""
         """
         # Store knowledge context before calling _generate_meta_plan
         knowledge_context_for_optimization = ""
-        
+
+        # Helper: run a pass generator and emit a rewrite_diff event if the plan changed.
+        # Handles both sync (for…yield) and async (async for…yield) generators transparently.
+        async def _pass(name, gen):
+            before = json.dumps(self.executor.meta_plan, sort_keys=True, default=str)
+            n_before = len(self.executor.meta_plan)
+            if hasattr(gen, '__anext__'):
+                async for ev in gen:
+                    yield ev
+            else:
+                for ev in gen:
+                    yield ev
+            after = json.dumps(self.executor.meta_plan, sort_keys=True, default=str)
+            if after != before:
+                n_after = len(self.executor.meta_plan)
+                diff_event = {
+                    "step": "Plan Rewrite",
+                    "type": "plan_rewrite_diff",
+                    "details": {
+                        "pass": name,
+                        "phases_before": n_before,
+                        "phases_after": n_after,
+                        "delta": n_after - n_before,
+                    },
+                }
+                self.executor._log_system_event(diff_event)
+                yield self.executor._format_sse_with_depth(diff_event)
+
         async for event in self._generate_meta_plan(
             force_disable_history=force_disable_history,
             replan_context=replan_context
         ):
-            # Capture knowledge context if it was generated
             if hasattr(self, '_last_knowledge_context'):
                 knowledge_context_for_optimization = self._last_knowledge_context
             yield event
 
-        # Temporal data flow: wire TDA_CurrentDate result to data-gathering tools
-        for event in self._rewrite_plan_for_temporal_data_flow():
+        async for event in _pass("temporal_data_flow", self._rewrite_plan_for_temporal_data_flow()):
             yield event
 
-        # --- MODIFICATION START: Make SQL consolidation rewrite conditional ---
         if APP_CONFIG.ENABLE_SQL_CONSOLIDATION_REWRITE:
-            async for event in self._rewrite_plan_for_sql_consolidation():
+            async for event in _pass("sql_consolidation", self._rewrite_plan_for_sql_consolidation()):
                 yield event
-        # --- MODIFICATION END ---
 
-        async for event in self._rewrite_plan_for_multi_loop_synthesis():
+        async for event in _pass("multi_loop_synthesis", self._rewrite_plan_for_multi_loop_synthesis()):
             yield event
-        async for event in self._rewrite_plan_for_corellmtask_loops():
+        async for event in _pass("llm_task_optimization", self._rewrite_plan_for_corellmtask_loops()):
             yield event
-        for event in self._rewrite_plan_for_date_range_loops():
+        async for event in _pass("date_range_wiring", self._rewrite_plan_for_date_range_loops()):
             yield event
-        for event in self._validate_and_correct_plan():
+        async for event in _pass("plan_validation", self._validate_and_correct_plan()):
             yield event
-        for event in self._rewrite_plan_collapse_chart_data_refetch():
+        async for event in _pass("chart_data_reuse", self._rewrite_plan_collapse_chart_data_refetch()):
             yield event
-        for event in self._rewrite_plan_for_charting_phases():
+        async for event in _pass("charting_cleanup", self._rewrite_plan_for_charting_phases()):
             yield event
-        for event in self._hydrate_plan_from_previous_turn():
+        async for event in _pass("plan_hydration", self._hydrate_plan_from_previous_turn()):
             yield event
-        # --- NEW OPTIMIZATION: Rewrite empty TDA_ContextReport with synthesized answer ---
-        async for event in self._rewrite_plan_for_empty_context_report(knowledge_context_for_optimization):
+        async for event in _pass("context_report", self._rewrite_plan_for_empty_context_report(knowledge_context_for_optimization)):
             yield event
-        # --- END NEW OPTIMIZATION ---
-        for event in self._ensure_final_report_phase():
+        async for event in _pass("final_report_guarantee", self._ensure_final_report_phase()):
             yield event
 
         # --- EPC: Record plan after all rewrite passes ---
