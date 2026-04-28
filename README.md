@@ -3428,6 +3428,8 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **28-Apr-2026:** Independent Phase Parallelization — Independent plan phases and date-range tool calls now execute concurrently, reducing multi-phase query time from N × phase_latency to 1 × phase_latency.
+*   **27-Apr-2026:** Engine Modularization — PlanExecutor refactored into five engine classes (`IdeateEngine`, `FocusEngine`, `CoordinateEngine`, `OptimizeEngine`, `ConversationEngine`) via `EngineRegistry`; `executor.py` reduced from ~6,800 to ~3,160 lines.
 *   **16-Apr-2026:** Knowledge Graphs first-class citizens of Agent Packs — Agent Pack manifest v1.4 bundles the active Knowledge Graph per profile; import restores full graph data (entities, relationships, metadata) without displacing an existing active KG on the target profile.
 *   **16-Apr-2026:** Knowledge Graph import overhaul — Two-mode import dialog: create a new named KG (with safe non-displacing activation) or merge into an existing one. Export upgraded to v2.0 format with `kg_id`, name, description, and database name. Marketplace install/fork also create named KGs.
 *   **15-Apr-2026:** Teradata EVS Hybrid Search — Native server-side BM25 hybrid search for server-side chunked (FILE_CONTENT_BASED) collections. The VantageCloud server performs RRF fusion internally; enable via the BM25 card in the Knowledge Repository inspector. Client-side chunked collections use semantic search and show an informational note in the inspector.
