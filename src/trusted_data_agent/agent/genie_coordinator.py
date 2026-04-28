@@ -1142,6 +1142,16 @@ After gathering information from profiles, provide a synthesized answer that:
                                         if tool_name and tool_name not in tools_used:
                                             tools_used.append(tool_name)
 
+            # Strip model-specific thinking artifacts from the final answer.
+            # Gemma and some other models prefix the response with their internal
+            # reasoning step (e.g. "thought\n..."). These must not reach the user.
+            if output:
+                import re as _re
+                # Strip leading "thought\n", "Thought:\n", "<think>...</think>", etc.
+                output = _re.sub(r'^(thought|Thought:?)\s*\n+', '', output, flags=_re.IGNORECASE)
+                output = _re.sub(r'^<think>.*?</think>\s*', '', output, flags=_re.DOTALL | _re.IGNORECASE)
+                output = output.strip()
+
             # Emit synthesis events only when synthesis actually ran.
             # Pass-through queries break early — no synthesis LLM was called.
             if _passed_through:
