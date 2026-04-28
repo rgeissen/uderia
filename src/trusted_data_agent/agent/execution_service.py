@@ -568,49 +568,9 @@ async def run_agent_execution(
                 skill_result=skill_result,  # Pass resolved skills to genie coordinator
             )
 
-            # --- EXTENSION EXECUTION: Genie path ---
-            if extension_specs and final_result_payload:
-                # Read prior turn tokens from workflow_history (genie saves turn data before returning)
-                _prior_turn_input = 0
-                _prior_turn_output = 0
-                _ext_provider = None
-                _ext_model = None
-                try:
-                    _session_data = await session_manager.get_session(user_uuid, session_id)
-                    if _session_data:
-                        _wh = _session_data.get("last_turn_data", {}).get("workflow_history", [])
-                        if _wh:
-                            _latest = _wh[-1]
-                            _prior_turn_input = _latest.get("turn_input_tokens", 0) or 0
-                            _prior_turn_output = _latest.get("turn_output_tokens", 0) or 0
-                            _ext_provider = _latest.get("provider")
-                            _ext_model = _latest.get("model")
-                except Exception:
-                    pass
-
-                ext_results, ext_events = await _run_extensions(
-                    extension_specs=extension_specs,
-                    final_payload=final_result_payload,
-                    user_input=user_input,
-                    session_id=session_id,
-                    user_uuid=user_uuid,
-                    event_handler=event_handler,
-                    llm_config_id=active_profile.get("llmConfigurationId") if active_profile else None,
-                )
-                if ext_results:
-                    final_result_payload["extension_results"] = ext_results
-                    await _persist_extension_results(
-                        ext_results, ext_events, user_uuid, session_id, event_handler,
-                        prior_turn_input=_prior_turn_input,
-                        prior_turn_output=_prior_turn_output,
-                        provider=_ext_provider,
-                        model=_ext_model,
-                    )
-
             return final_result_payload
         # --- END GENIE PROFILE DETECTION ---
 
-        # --- MODIFICATION START: Pass new parameters to PlanExecutor ---
         executor = PlanExecutor(
             user_uuid=user_uuid,
             session_id=session_id,
@@ -621,31 +581,26 @@ async def run_agent_execution(
             disabled_history=disabled_history,
             previous_turn_data=previous_turn_data,
             source=source,
-            plan_to_execute=plan_to_execute, # Pass the plan
-            is_replay=is_replay, # Pass the flag
-            task_id=task_id, # Pass the task_id here
-            profile_override_id=profile_override_id, # Pass the profile override
+            plan_to_execute=plan_to_execute,
+            is_replay=is_replay,
+            task_id=task_id,
+            profile_override_id=profile_override_id,
             event_handler=event_handler,
-            is_session_primer=is_session_primer, # Pass the session primer flag
-            attachments=attachments,  # Pass document upload attachments
-            skill_result=skill_result,  # Pass pre-processing skill content
-            canvas_context=canvas_context,  # Pass canvas bidirectional context
-            force_profile_type=force_profile_type  # Override profile type (KG constructor)
+            is_session_primer=is_session_primer,
+            attachments=attachments,
+            skill_result=skill_result,
+            canvas_context=canvas_context,
+            force_profile_type=force_profile_type,
         )
-        # --- MODIFICATION END ---
 
         async for event_str in executor.run():
             event_data, event_type = _parse_sse_event(event_str)
             await event_handler(event_data, event_type)
-
             if event_type == "final_answer":
                 final_result_payload = event_data
 
-        # --- EXTENSION EXECUTION: PlanExecutor path (tool_enabled, llm_only, rag_focused) ---
+        # --- EXTENSION EXECUTION (shared by all non-genie profile types) ---
         if extension_specs and final_result_payload:
-            # Read prior turn tokens from workflow_history (reliable across all profile types).
-            # The executor saves turn_summary via update_last_turn_data() before the generator ends,
-            # so this data is available here. final_answer events don't include turn tokens.
             _prior_turn_input = 0
             _prior_turn_output = 0
             _ext_provider = None
@@ -661,7 +616,7 @@ async def run_agent_execution(
                         _ext_provider = _latest.get("provider")
                         _ext_model = _latest.get("model")
             except Exception:
-                pass  # Fallback to 0 — KPI display will still work, just show extension tokens only
+                pass
 
             ext_results, ext_events = await _run_extensions(
                 extension_specs=extension_specs,
