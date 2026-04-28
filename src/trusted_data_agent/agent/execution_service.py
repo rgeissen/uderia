@@ -567,39 +567,37 @@ async def run_agent_execution(
                 attachments=attachments,  # Pass document upload attachments
                 skill_result=skill_result,  # Pass resolved skills to genie coordinator
             )
-
-            return final_result_payload
         # --- END GENIE PROFILE DETECTION ---
+        else:
+            executor = PlanExecutor(
+                user_uuid=user_uuid,
+                session_id=session_id,
+                original_user_input=user_input,
+                dependencies={'STATE': APP_STATE},
+                active_prompt_name=active_prompt_name,
+                prompt_arguments=prompt_arguments,
+                disabled_history=disabled_history,
+                previous_turn_data=previous_turn_data,
+                source=source,
+                plan_to_execute=plan_to_execute,
+                is_replay=is_replay,
+                task_id=task_id,
+                profile_override_id=profile_override_id,
+                event_handler=event_handler,
+                is_session_primer=is_session_primer,
+                attachments=attachments,
+                skill_result=skill_result,
+                canvas_context=canvas_context,
+                force_profile_type=force_profile_type,
+            )
 
-        executor = PlanExecutor(
-            user_uuid=user_uuid,
-            session_id=session_id,
-            original_user_input=user_input,
-            dependencies={'STATE': APP_STATE},
-            active_prompt_name=active_prompt_name,
-            prompt_arguments=prompt_arguments,
-            disabled_history=disabled_history,
-            previous_turn_data=previous_turn_data,
-            source=source,
-            plan_to_execute=plan_to_execute,
-            is_replay=is_replay,
-            task_id=task_id,
-            profile_override_id=profile_override_id,
-            event_handler=event_handler,
-            is_session_primer=is_session_primer,
-            attachments=attachments,
-            skill_result=skill_result,
-            canvas_context=canvas_context,
-            force_profile_type=force_profile_type,
-        )
+            async for event_str in executor.run():
+                event_data, event_type = _parse_sse_event(event_str)
+                await event_handler(event_data, event_type)
+                if event_type == "final_answer":
+                    final_result_payload = event_data
 
-        async for event_str in executor.run():
-            event_data, event_type = _parse_sse_event(event_str)
-            await event_handler(event_data, event_type)
-            if event_type == "final_answer":
-                final_result_payload = event_data
-
-        # --- EXTENSION EXECUTION (shared by all non-genie profile types) ---
+        # --- EXTENSION EXECUTION (all profile types, including genie) ---
         if extension_specs and final_result_payload:
             _prior_turn_input = 0
             _prior_turn_output = 0
