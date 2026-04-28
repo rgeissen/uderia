@@ -3423,6 +3423,32 @@ export function renderConversationAgentStepForReload(eventData, parentContainer,
 }
 
 /**
+ * Renders details for system_message events.
+ * Parallel execution events get phase badges; other messages render as plain text.
+ */
+function _renderSystemMessageDetails(details) {
+    if (typeof details !== 'object' || details === null) {
+        return details ? `<div class="text-xs text-gray-300 mt-1">${details}</div>` : null;
+    }
+
+    const parallelPhases = details.parallel_phases;
+    if (Array.isArray(parallelPhases) && parallelPhases.length > 0) {
+        const badges = parallelPhases
+            .map(n => `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-900/50 text-violet-300 border border-violet-700/50">Phase ${n}</span>`)
+            .join('');
+        return `
+            <div class="flex items-center gap-2 mt-1 flex-wrap">
+                <span class="text-xs text-gray-400">Running concurrently:</span>
+                ${badges}
+            </div>`;
+    }
+
+    // Generic system message — summary text only
+    const summary = details.summary || details.message || '';
+    return summary ? `<div class="text-xs text-gray-300 mt-1">${summary}</div>` : null;
+}
+
+/**
  * Renders details for optimization events (workaround, plan_optimization).
  * Handles both string payloads and structured objects with summary/correction_type/etc.
  */
@@ -3856,6 +3882,8 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
                 customRenderedHtml = _renderExecutionStartDetails(details);
             } else if (type === "execution_complete") {
                 customRenderedHtml = _renderExecutionCompleteDetails(details);
+            } else if (type === "system_message") {
+                customRenderedHtml = _renderSystemMessageDetails(details);
             } else if (type === "workaround" || type === "plan_optimization") {
                 customRenderedHtml = _renderOptimizationDetails(details);
             } else if (type === "context_optimization") {

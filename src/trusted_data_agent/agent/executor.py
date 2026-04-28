@@ -2660,34 +2660,22 @@ Response:"""
 
     async def _stream_parallel_phases(self, phase_executor, phases: list):
         """
-        Execute a list of independent phases concurrently and stream their SSE
-        events as they arrive, preserving real-time progress visibility.
+        Execute a list of independent phases concurrently, collect all events per
+        phase, then yield them phase-by-phase.
+
+        The collect-then-yield approach ensures the ui.js phase container stack
+        sees a clean sequential lifecycle (phase_start … phase_end) for each phase,
+        even though the underlying execution was parallel. Interleaving events from
+        multiple phases would otherwise confuse the stack and lose "Phase N Completed"
+        footers.
+
+        turn_action_history entries produced during the parallel group are also
+        post-sorted by phase_num so that historical replay renders in the correct order.
         """
-        _sentinel = object()
-        queue: asyncio.Queue = asyncio.Queue()
-
-        async def _drive(phase):
-            try:
-                is_delegated = ('executable_prompt' in phase
-                                and self.execution_depth < self.MAX_EXECUTION_DEPTH)
-                if is_delegated:
-                    prompt_name = phase.get('executable_prompt')
-                    prompt_args = phase.get('arguments', {})
-                    gen = self._run_sub_prompt(prompt_name, prompt_args)
-                else:
-                    gen = phase_executor.execute_phase(phase)
-                async for event in gen:
-                    await queue.put(event)
-            except Exception as exc:
-                app_logger.error(f"Parallel phase error: {exc}", exc_info=True)
-            finally:
-                await queue.put(_sentinel)
-
+        phase_nums = [p.get('phase', '?') for p in phases]
         n = len(phases)
-        tasks = [asyncio.create_task(_drive(p)) for p in phases]
 
         # Emit a system note so the Live Status panel shows parallel execution
-        phase_nums = [p.get('phase', '?') for p in phases]
         parallel_note = {
             "step": f"Parallel Execution: phases {phase_nums}",
             "type": "system_message",
@@ -2699,15 +2687,60 @@ Response:"""
         self._log_system_event(parallel_note)
         yield self._format_sse_with_depth(parallel_note)
 
-        done = 0
-        while done < n:
-            item = await queue.get()
-            if item is _sentinel:
-                done += 1
-            else:
-                yield item
+        # Mark where parallel phase entries begin in turn_action_history
+        history_start = len(self.turn_action_history)
 
-        await asyncio.gather(*tasks)
+        async def _collect(phase):
+            """Run one phase generator and collect all SSE events into a list."""
+            events = []
+            try:
+                is_delegated = ('executable_prompt' in phase
+                                and self.execution_depth < self.MAX_EXECUTION_DEPTH)
+                if is_delegated:
+                    gen = self._run_sub_prompt(
+                        phase.get('executable_prompt'), phase.get('arguments', {}))
+                else:
+                    gen = phase_executor.execute_phase(phase)
+                async for event in gen:
+                    events.append(event)
+            except Exception as exc:
+                app_logger.error(f"Parallel phase error (phase {phase.get('phase', '?')}): {exc}",
+                                 exc_info=True)
+            return events
+
+        # Run all phases concurrently; each returns its complete event list
+        per_phase_events = await asyncio.gather(
+            *[_collect(p) for p in phases], return_exceptions=True)
+
+        # Yield events phase-by-phase so the UI sees clean sequential lifecycles
+        for phase_events in per_phase_events:
+            if isinstance(phase_events, Exception):
+                app_logger.error(f"Parallel phase raised: {phase_events}")
+                continue
+            for event in phase_events:
+                yield event
+
+        # Post-sort turn_action_history entries by phase_num for correct historical replay
+        def _entry_phase_num(entry):
+            action = entry.get('action', {})
+            if not isinstance(action, dict):
+                return float('inf')
+            # Tool call entries carry metadata.phase_number
+            pn = action.get('metadata', {}).get('phase_number')
+            if pn is not None:
+                return int(pn)
+            # TDA_SystemLog entries carry details.phase_num
+            if action.get('tool_name') == 'TDA_SystemLog':
+                details = action.get('arguments', {}).get('details', {})
+                if isinstance(details, dict):
+                    pn = details.get('phase_num')
+                    if pn is not None:
+                        return int(pn)
+            return float('inf')
+
+        parallel_slice = self.turn_action_history[history_start:]
+        parallel_slice.sort(key=_entry_phase_num)  # stable sort preserves intra-phase order
+        self.turn_action_history[history_start:] = parallel_slice
 
     # --- End phase parallelization helpers ---
 

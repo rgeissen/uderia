@@ -715,16 +715,6 @@ class OptimizeEngine(ExecutionEngine):
                             force_disable_history=planning_is_disabled_history,
                             replan_context=replan_context
                         ):
-                            # --- MODIFICATION START: Capture and log planner corrections ---
-                            # Check if the yielded event is a system correction and log it to the history.
-                            if "system_correction" in event.lower() or '"type": "workaround"' in event.lower():
-                                try:
-                                    # The event is a JSON string, parse it.
-                                    event_data = json.loads(event.replace("data: ", "").strip())
-                                    executor.turn_action_history.append({"action": "system_correction", "result": event_data})
-                                except json.JSONDecodeError:
-                                    app_logger.warning(f"Could not parse planner event for history logging: {event}")
-                            # --- MODIFICATION END ---
                             yield event
 
                         # --- MODIFICATION START: Store original plan AFTER refinement ---
