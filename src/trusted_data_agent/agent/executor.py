@@ -2579,6 +2579,138 @@ Response:"""
         async for event in planner.generate_and_refine_plan():
             yield event
 
+    # --- Phase parallelization helpers ---
+
+    @staticmethod
+    def _phase_referenced_deps(phase: dict) -> set:
+        """Return the set of phase numbers that this phase directly references."""
+        _PAT = re.compile(r'result_of_phase_(\d+)|phase_(\d+)')
+
+        def _scan(obj):
+            nums = set()
+            if isinstance(obj, str):
+                for m in _PAT.finditer(obj):
+                    nums.add(int(m.group(1) or m.group(2)))
+            elif isinstance(obj, dict):
+                for v in obj.values():
+                    nums |= _scan(v)
+            elif isinstance(obj, list):
+                for item in obj:
+                    nums |= _scan(item)
+            return nums
+
+        refs = set()
+        refs |= _scan(phase.get('loop_over', ''))
+        refs |= _scan(phase.get('arguments', {}))
+        refs |= _scan(phase.get('goal', ''))
+        return refs
+
+    _TERMINAL_TOOLS = frozenset({
+        "TDA_FinalReport", "TDA_ComplexPromptReport",
+        "TDA_ContextReport", "TDA_LLMTask",
+    })
+
+    @classmethod
+    def _is_terminal_phase(cls, phase: dict) -> bool:
+        """A terminal phase cannot share a parallel group with any other phase."""
+        if phase.get('type') == 'loop':
+            return True
+        if 'executable_prompt' in phase:
+            return True
+        tools = set(phase.get('relevant_tools') or [])
+        return bool(tools & cls._TERMINAL_TOOLS)
+
+    @classmethod
+    def _build_phase_groups(cls, meta_plan: list) -> list:
+        """
+        Return a list of groups where each group is a list of phases.
+        Groups with >1 phase can be run in parallel — their phases have
+        no cross-dependencies and none is terminal.
+        """
+        groups = []
+        current_group: list = []
+        current_nums: set = set()
+
+        for phase in meta_plan:
+            phase_num = phase.get('phase', 0)
+
+            if cls._is_terminal_phase(phase):
+                if current_group:
+                    groups.append(current_group)
+                    current_group = []
+                    current_nums = set()
+                groups.append([phase])
+                continue
+
+            deps = cls._phase_referenced_deps(phase)
+            if deps & current_nums:
+                # This phase depends on something already in the current group —
+                # flush and start a fresh group.
+                groups.append(current_group)
+                current_group = [phase]
+                current_nums = {phase_num}
+            else:
+                current_group.append(phase)
+                current_nums.add(phase_num)
+
+        if current_group:
+            groups.append(current_group)
+
+        return groups
+
+    async def _stream_parallel_phases(self, phase_executor, phases: list):
+        """
+        Execute a list of independent phases concurrently and stream their SSE
+        events as they arrive, preserving real-time progress visibility.
+        """
+        _sentinel = object()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def _drive(phase):
+            try:
+                is_delegated = ('executable_prompt' in phase
+                                and self.execution_depth < self.MAX_EXECUTION_DEPTH)
+                if is_delegated:
+                    prompt_name = phase.get('executable_prompt')
+                    prompt_args = phase.get('arguments', {})
+                    gen = self._run_sub_prompt(prompt_name, prompt_args)
+                else:
+                    gen = phase_executor.execute_phase(phase)
+                async for event in gen:
+                    await queue.put(event)
+            except Exception as exc:
+                app_logger.error(f"Parallel phase error: {exc}", exc_info=True)
+            finally:
+                await queue.put(_sentinel)
+
+        n = len(phases)
+        tasks = [asyncio.create_task(_drive(p)) for p in phases]
+
+        # Emit a system note so the Live Status panel shows parallel execution
+        phase_nums = [p.get('phase', '?') for p in phases]
+        parallel_note = {
+            "step": f"Parallel Execution: phases {phase_nums}",
+            "type": "system_message",
+            "details": {
+                "summary": f"Executing {n} independent phases concurrently: {phase_nums}",
+                "parallel_phases": phase_nums,
+            },
+        }
+        self._log_system_event(parallel_note)
+        yield self._format_sse_with_depth(parallel_note)
+
+        done = 0
+        while done < n:
+            item = await queue.get()
+            if item is _sentinel:
+                done += 1
+            else:
+                yield item
+
+        await asyncio.gather(*tasks)
+
+    # --- End phase parallelization helpers ---
+
     async def _run_plan(self):
         """Executes the generated meta-plan, delegating to the PhaseExecutor."""
         if not self.meta_plan:
@@ -2603,11 +2735,30 @@ Response:"""
                 self.meta_plan = self.meta_plan[:-1]
 
 
-        while self.current_phase_index < len(self.meta_plan):
-            # Check for cancellation before each phase
+        # Build phase groups — consecutive independent phases share a group and
+        # are run concurrently; terminal/loop/synthesis phases run alone.
+        phase_groups = self._build_phase_groups(self.meta_plan)
+        has_parallel = any(len(g) > 1 for g in phase_groups)
+        if has_parallel:
+            n_parallel = sum(len(g) for g in phase_groups if len(g) > 1)
+            app_logger.info(
+                f"Phase parallelization: {len(self.meta_plan)} phases → {len(phase_groups)} groups "
+                f"({n_parallel} phases eligible for parallel execution)"
+            )
+
+        for group in phase_groups:
+            # Check for cancellation before each group
             self._check_cancellation()
 
-            current_phase = self.meta_plan[self.current_phase_index]
+            if len(group) > 1:
+                # Parallel group — stream events from all phases concurrently
+                async for event in self._stream_parallel_phases(phase_executor, group):
+                    yield event
+                self.current_phase_index += len(group)
+                continue
+
+            # Single-phase group — existing sequential path (unchanged behaviour)
+            current_phase = group[0]
             is_delegated_prompt_phase = 'executable_prompt' in current_phase and self.execution_depth < self.MAX_EXECUTION_DEPTH
 
             # --- MODIFICATION START: Add replay status prefix ---
@@ -2625,11 +2776,10 @@ Response:"""
                 replay_prefix = f"🔄 Replay ({replay_type_text} from Turn {original_turn_id}): "
             # --- MODIFICATION END ---
 
-
             if is_delegated_prompt_phase:
                 prompt_name = current_phase.get('executable_prompt')
                 prompt_args = current_phase.get('arguments', {})
-                
+
                 # Safeguard: Skip if prompt_name is None or empty (shouldn't happen after planner cleanup, but defensive)
                 if not prompt_name or prompt_name in ['None', 'null', '']:
                     app_logger.warning(f"Skipping delegated prompt phase with invalid prompt_name: '{prompt_name}'. Phase: {current_phase}")
@@ -2642,7 +2792,7 @@ Response:"""
                     yield self._format_sse_with_depth(error_event)
                     self.current_phase_index += 1
                     continue
-                
+
                 # Send phase_start event for delegated prompt phases
                 phase_num = current_phase.get("phase", self.current_phase_index + 1)
                 phase_goal = current_phase.get("goal", "No goal defined.")
@@ -2659,10 +2809,10 @@ Response:"""
                 }
                 self._log_system_event(event_data)
                 yield self._format_sse_with_depth(event_data)
-                
+
                 async for event in self._run_sub_prompt(prompt_name, prompt_args):
                     yield event
-                
+
                 # Send phase_end event after sub-prompt completes
                 event_data = {
                     "step": f"Ending Plan Phase {phase_num}/{len(self.meta_plan)}",
