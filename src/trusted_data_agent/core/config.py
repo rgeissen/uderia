@@ -77,6 +77,10 @@ class AppConfig:
     # LLM output limits
     LLM_MAX_OUTPUT_TOKENS = 16_384  # Max output tokens for LLM generation calls
 
+    # LLM call timeout — prevents indefinite hangs when a provider is overloaded or unresponsive.
+    # Set to 0 to disable. Applies to every _call_llm_and_update_tokens() invocation.
+    LLM_CALL_TIMEOUT_SECONDS = 120
+
     SQL_OPTIMIZATION_PROMPTS = []
     SQL_OPTIMIZATION_TOOLS = ["base_readQuery"]
 

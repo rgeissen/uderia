@@ -864,24 +864,37 @@ class PlanExecutor:
             # Single-model mode: Use profile-specific LLM instance when available (e.g., RAG profile with Friendli
             # while default profile uses Google). Falls back to global instance.
             llm_instance = self.profile_llm_instance if self.profile_llm_instance else self.dependencies['STATE']['llm']
-        response_text, statement_input_tokens, statement_output_tokens, actual_provider, actual_model = await llm_handler.call_llm_api(
+        _llm_coro = llm_handler.call_llm_api(
             llm_instance, prompt,
-            # --- MODIFICATION START: Pass user_uuid and session_id ---
             user_uuid=self.user_uuid, session_id=self.session_id,
-            # --- MODIFICATION END ---
             dependencies=self.dependencies, reason=reason,
             system_prompt_override=system_prompt_override, raise_on_error=raise_on_error,
             disabled_history=final_disabled_history,
             active_prompt_name_for_filter=active_prompt_name_for_filter,
             source=source,
-            # --- MODIFICATION START: Pass active profile, provider and model for prompt resolution ---
             active_profile_id=self.active_profile_id,
-            current_provider=effective_provider,  # Use effective provider (may be overridden)
-            current_model=effective_model,        # Use effective model (may be overridden)
-            # --- MODIFICATION END ---
+            current_provider=effective_provider,
+            current_model=effective_model,
             multimodal_content=multimodal_content,
             thinking_budget=self.thinking_budget
         )
+        _timeout = APP_CONFIG.LLM_CALL_TIMEOUT_SECONDS
+        try:
+            if _timeout > 0:
+                response_text, statement_input_tokens, statement_output_tokens, actual_provider, actual_model = \
+                    await asyncio.wait_for(_llm_coro, timeout=_timeout)
+            else:
+                response_text, statement_input_tokens, statement_output_tokens, actual_provider, actual_model = \
+                    await _llm_coro
+        except asyncio.TimeoutError:
+            app_logger.error(
+                f"LLM call timed out after {_timeout}s [reason='{reason}', "
+                f"provider={effective_provider}, model={effective_model}]"
+            )
+            raise RuntimeError(
+                f"The AI provider did not respond within {_timeout} seconds. "
+                "It may be overloaded — please try again in a moment."
+            )
         self.llm_debug_history.append({"reason": reason, "response": response_text})
         app_logger.debug(f"LLM RESPONSE (DEBUG): Reason='{reason}', Response='{response_text}'")
 
