@@ -461,7 +461,7 @@ class PlanExecutor:
         return None
 
     # --- MODIFICATION START: Add plan_to_execute and is_replay ---
-    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False, attachments: list = None, skill_result=None, canvas_context: dict = None, force_profile_type: str = None):
+    def __init__(self, session_id: str, user_uuid: str, original_user_input: str, dependencies: dict, active_prompt_name: str = None, prompt_arguments: dict = None, execution_depth: int = 0, disabled_history: bool = False, previous_turn_data: dict = None, force_history_disable: bool = False, source: str = "text", is_delegated_task: bool = False, force_final_summary: bool = False, plan_to_execute: list = None, is_replay: bool = False, task_id: str = None, profile_override_id: str = None, event_handler=None, is_session_primer: bool = False, attachments: list = None, skill_result=None, canvas_context: dict = None, force_profile_type: str = None, _visited_prompts: frozenset = None):
         self.session_id = session_id
         self.user_uuid = user_uuid
         self.event_handler = event_handler
@@ -667,6 +667,9 @@ class PlanExecutor:
 
         self.execution_depth = execution_depth
         self.MAX_EXECUTION_DEPTH = APP_CONFIG.MAX_EXECUTION_DEPTH
+        # Tracks the prompt call chain for this execution tree to detect cycles (e.g. A→B→A).
+        # Inherited by sub-executors and extended with each new prompt name.
+        self._visited_prompts: frozenset = _visited_prompts if _visited_prompts is not None else frozenset()
 
         self.disabled_history = disabled_history or force_history_disable
         self.previous_turn_data = previous_turn_data or {}
@@ -2679,6 +2682,19 @@ Response:"""
             yield self._format_sse_with_depth(error_event)
             app_logger.error(f"Attempted to run sub-prompt with invalid name: '{prompt_name}'")
             return
+
+        # Cycle detection: abort if this prompt is already in the current call chain
+        if prompt_name in self._visited_prompts:
+            cycle_path = " → ".join(sorted(self._visited_prompts)) + f" → {prompt_name}"
+            app_logger.error(f"Prompt cycle detected and blocked: {cycle_path}")
+            cycle_event = {
+                "step": "System Correction",
+                "details": f"Circular prompt execution blocked: '{prompt_name}' is already in the current call chain ({cycle_path}). Skipping to prevent infinite recursion.",
+                "type": "workaround"
+            }
+            self._log_system_event(cycle_event)
+            yield self._format_sse_with_depth(cycle_event)
+            return
         
         event_data = {
             "step": "Prompt Execution Granted",
@@ -2706,7 +2722,8 @@ Response:"""
             is_delegated_task=is_delegated_task,
             force_final_summary=APP_CONFIG.SUB_PROMPT_FORCE_SUMMARY,
             event_handler=self.event_handler,
-            profile_override_id=self.profile_override_id
+            profile_override_id=self.profile_override_id,
+            _visited_prompts=self._visited_prompts | {prompt_name},
         )
 
         sub_executor.workflow_state = self.workflow_state
