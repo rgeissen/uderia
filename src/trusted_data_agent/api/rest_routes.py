@@ -2565,7 +2565,15 @@ async def get_task_status(task_id: str):
     task = APP_STATE["background_tasks"].get(task_id)
 
     if not task:
-        app_logger.warning(f"REST API: Task '{task_id}' not found for user '{user_uuid}'.")
+        # Warn once per unknown task_id; subsequent polls downgrade to DEBUG to avoid log flooding.
+        _warned = APP_STATE.setdefault("_task_not_found_warned", set())
+        if task_id not in _warned:
+            app_logger.warning(f"REST API: Task '{task_id}' not found for user '{user_uuid}'.")
+            _warned.add(task_id)
+            if len(_warned) > 500:  # Bounded to prevent unbounded growth
+                _warned.clear()
+        else:
+            app_logger.debug(f"REST API: Task '{task_id}' not found (repeated poll) for user '{user_uuid}'.")
         return jsonify({"error": f"Task '{task_id}' not found."}), 404
 
     # Optional: Check if the requesting user owns this task

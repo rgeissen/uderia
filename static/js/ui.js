@@ -663,6 +663,18 @@ export function updateGenieMasterBadges() {
  * @param {Array<object>} systemEvents - Optional system events (session name generation, etc.).
  * @param {number} durationMs - Optional execution duration in milliseconds (for tool_enabled profiles).
  */
+function _addDefensivePhaseFooter(container) {
+    const pNum = container.dataset.phaseNum;
+    const pTotal = container.dataset.totalPhases;
+    if (!pNum || !pTotal) return;
+    const pDepth = parseInt(container.dataset.phaseDepth || '0', 10);
+    const depthPrefix = pDepth > 0 ? '↳ '.repeat(pDepth) : '';
+    const phaseFooter = document.createElement('div');
+    phaseFooter.className = 'status-phase-header phase-end';
+    phaseFooter.innerHTML = `<span class="font-bold">${depthPrefix}Phase ${pNum}/${pTotal} Completed</span>`;
+    container.appendChild(phaseFooter);
+}
+
 export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, kgEnrichmentEvent = null, turnTokens = null, systemEvents = [], durationMs = 0, toolEnabledEvents = [], contextWindowSnapshotHtml = null, strategicSnapshotHtml = null) {
     DOM.statusWindowContent.innerHTML = ''; // Clear previous content
     state.currentStatusId = 0; // Reset status ID counter for this rendering
@@ -777,12 +789,18 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
             // Close any containers at same or deeper depth (handles re-planning)
             while (_phaseContainerStack.length > depth) {
                 const old = _phaseContainerStack.pop();
-                if (old) old.classList.add('completed');
+                if (old) {
+                    old.classList.add('completed');
+                    _addDefensivePhaseFooter(old);
+                }
             }
 
             const phaseContainer = document.createElement('details');
             phaseContainer.className = 'status-phase-container';
             phaseContainer.dataset.filterCategory = 'planning';
+            phaseContainer.dataset.phaseNum = details.phase_num || '';
+            phaseContainer.dataset.totalPhases = details.total_phases || '';
+            phaseContainer.dataset.phaseDepth = depth;
             if (!isFilterCategoryEnabled('planning')) {
                 phaseContainer.classList.add('event-filtered-hidden');
             }
@@ -945,7 +963,10 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
     // Close any remaining open phase containers (edge case: trace ends mid-phase)
     while (_phaseContainerStack.length > 0) {
         const remaining = _phaseContainerStack.pop();
-        if (remaining) remaining.classList.add('completed');
+        if (remaining) {
+            remaining.classList.add('completed');
+            _addDefensivePhaseFooter(remaining);
+        }
     }
 
     // Render system events (session name generation, etc.) after execution trace
@@ -3423,6 +3444,32 @@ export function renderConversationAgentStepForReload(eventData, parentContainer,
 }
 
 /**
+ * Renders details for system_message events.
+ * Parallel execution events get phase badges; other messages render as plain text.
+ */
+function _renderSystemMessageDetails(details) {
+    if (typeof details !== 'object' || details === null) {
+        return details ? `<div class="text-xs text-gray-300 mt-1">${details}</div>` : null;
+    }
+
+    const parallelPhases = details.parallel_phases;
+    if (Array.isArray(parallelPhases) && parallelPhases.length > 0) {
+        const badges = parallelPhases
+            .map(n => `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-900/50 text-violet-300 border border-violet-700/50">Phase ${n}</span>`)
+            .join('');
+        return `
+            <div class="flex items-center gap-2 mt-1 flex-wrap">
+                <span class="text-xs text-gray-400">Running concurrently:</span>
+                ${badges}
+            </div>`;
+    }
+
+    // Generic system message — summary text only
+    const summary = details.summary || details.message || '';
+    return summary ? `<div class="text-xs text-gray-300 mt-1">${summary}</div>` : null;
+}
+
+/**
  * Renders details for optimization events (workaround, plan_optimization).
  * Handles both string payloads and structured objects with summary/correction_type/etc.
  */
@@ -3856,6 +3903,8 @@ function _renderStandardStep(eventData, parentContainer, isFinal = false) {
                 customRenderedHtml = _renderExecutionStartDetails(details);
             } else if (type === "execution_complete") {
                 customRenderedHtml = _renderExecutionCompleteDetails(details);
+            } else if (type === "system_message") {
+                customRenderedHtml = _renderSystemMessageDetails(details);
             } else if (type === "workaround" || type === "plan_optimization") {
                 customRenderedHtml = _renderOptimizationDetails(details);
             } else if (type === "context_optimization") {

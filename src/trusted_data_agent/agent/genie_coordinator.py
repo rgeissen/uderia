@@ -67,9 +67,8 @@ _slave_session_locks: Dict[str, asyncio.Lock] = {}
 
 def _get_slave_session_lock(session_id: str) -> asyncio.Lock:
     """Get or create a per-slave-session lock to serialize concurrent invocations."""
-    if session_id not in _slave_session_locks:
-        _slave_session_locks[session_id] = asyncio.Lock()
-    return _slave_session_locks[session_id]
+    # setdefault is atomic under the GIL — avoids TOCTOU between check and assignment
+    return _slave_session_locks.setdefault(session_id, asyncio.Lock())
 
 
 def _format_collected_data_as_text(collected_data: dict, max_rows: int = 50) -> str:
@@ -333,8 +332,8 @@ class SlaveSessionTool(BaseTool):
                             # Combine all statements into one query
                             primer_text = "\n\n".join(statements) if statements else None
                         elif mode == "sequential":
-                            # Execute first statement only (for now)
-                            primer_text = statements[0] if statements else None
+                            # Execute each statement in order; store as a list for sequential dispatch
+                            primer_text = statements if statements else None
                         else:
                             logger.warning(f"Unknown session_primer mode '{mode}' for @{self.profile_tag}")
                             primer_text = "\n\n".join(statements) if statements else None
@@ -343,22 +342,24 @@ class SlaveSessionTool(BaseTool):
                     primer_text = session_primer
 
                 if primer_text:
-                    primer_preview = primer_text[:50] if len(primer_text) > 50 else primer_text
-                    logger.info(f"Executing session primer for @{self.profile_tag}: {primer_preview}...")
+                    # primer_text is either a str (combined/legacy) or list[str] (sequential)
+                    primer_statements = primer_text if isinstance(primer_text, list) else [primer_text]
+                    logger.info(f"Executing {len(primer_statements)} session primer statement(s) for @{self.profile_tag}")
                     self._emit_event("genie_slave_progress", {
                         "profile_tag": self.profile_tag,
                         "slave_session_id": session_id,
                         "status": "primer_executing",
-                        "message": "Executing session primer...",
+                        "message": f"Executing session primer ({len(primer_statements)} statement(s))...",
                         "session_id": self.parent_session_id
                     })
 
-                    try:
-                        await self._execute_primer(session_id, primer_text)
-                        logger.info(f"Session primer completed for @{self.profile_tag}")
-                    except Exception as e:
-                        logger.warning(f"Session primer failed for @{self.profile_tag}: {e}")
-                        # Continue anyway - primer failure shouldn't block the main query
+                    for i, stmt in enumerate(primer_statements, 1):
+                        try:
+                            await self._execute_primer(session_id, stmt)
+                            logger.info(f"Session primer {i}/{len(primer_statements)} completed for @{self.profile_tag}")
+                        except Exception as e:
+                            logger.warning(f"Session primer {i}/{len(primer_statements)} failed for @{self.profile_tag}: {e}")
+                            # Continue — primer failure shouldn't block the main query
 
             return session_id
 
@@ -1142,6 +1143,16 @@ After gathering information from profiles, provide a synthesized answer that:
                                         if tool_name and tool_name not in tools_used:
                                             tools_used.append(tool_name)
 
+            # Strip model-specific thinking artifacts from the final answer.
+            # Gemma and some other models prefix the response with their internal
+            # reasoning step (e.g. "thought\n..."). These must not reach the user.
+            if output:
+                import re as _re
+                # Strip leading "thought\n", "Thought:\n", "<think>...</think>", etc.
+                output = _re.sub(r'^(thought|Thought:?)\s*\n+', '', output, flags=_re.IGNORECASE)
+                output = _re.sub(r'^<think>.*?</think>\s*', '', output, flags=_re.DOTALL | _re.IGNORECASE)
+                output = output.strip()
+
             # Emit synthesis events only when synthesis actually ran.
             # Pass-through queries break early — no synthesis LLM was called.
             if _passed_through:
@@ -1304,13 +1315,16 @@ After gathering information from profiles, provide a synthesized answer that:
                 "input_tokens": self.total_input_tokens,
                 "output_tokens": self.total_output_tokens
             }
+        finally:
+            self._cleanup_session_state()
 
     def get_used_slave_sessions(self) -> Dict[str, str]:
-        """Get map of profile_id -> session_id for all used child sessions.
+        """Get map of profile_id -> session_id for child sessions of this coordinator.
 
         Note: Method name preserved for API compatibility.
         """
-        return dict(_slave_session_cache)
+        prefix = f"{self.parent_session_id}:"
+        return {k[len(prefix):]: v for k, v in _slave_session_cache.items() if k.startswith(prefix)}
 
     def load_existing_slave_sessions(self, existing_sessions: List[Dict[str, Any]]):
         """
@@ -1336,6 +1350,25 @@ After gathering information from profiles, provide a synthesized answer that:
         logger.info(f"Pre-loaded {len(existing_sessions)} existing child sessions into cache")
 
     def clear_session_cache(self):
-        """Clear the session cache (useful for testing)."""
-        _slave_session_cache = {}
-        _slave_session_locks = {}
+        """Clear the session cache entries for this coordinator's parent session (useful for testing)."""
+        prefix = f"{self.parent_session_id}:"
+        stale_keys = [k for k in list(_slave_session_cache) if k.startswith(prefix)]
+        for k in stale_keys:
+            session_id = _slave_session_cache.pop(k, None)
+            if session_id:
+                _slave_session_locks.pop(session_id, None)
+
+    def _cleanup_session_state(self):
+        """Remove per-execution state for this parent session from module-level dicts.
+
+        Called in a finally block after execute() completes to prevent unbounded
+        memory growth in long-running processes with many genie sessions.
+        The slave session cache is intentionally NOT cleared here — it persists
+        across turns so child sessions can be reused within the same parent session.
+        """
+        _event_callbacks.pop(self.parent_session_id, None)
+        _provenance_chains.pop(self.parent_session_id, None)
+        # Clear any leftover HTML responses for this session (normally consumed by execute())
+        stale_html_keys = [k for k in list(_slave_html_responses) if k.startswith(f"{self.parent_session_id}:")]
+        for k in stale_html_keys:
+            _slave_html_responses.pop(k, None)

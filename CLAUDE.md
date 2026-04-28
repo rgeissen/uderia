@@ -118,17 +118,50 @@ curl -s -X GET "http://localhost:5050/api/v1/tasks/$TASK_ID" \
   -H "Authorization: Bearer $JWT" | jq '.events[] | select(.event_type == "champion_cases_retrieved")'
 ```
 
-**Test Profile Override:**
+**Test Profile Override (REST API — CORRECT APPROACH):**
 ```bash
-# Submit query with temporary profile override using @TAG syntax
+# IMPORTANT: @TAG syntax in the prompt text is UI-only. For REST API, use profile_id in the query body.
+# Profile IDs (this instance):
+#   OPTIM (tool_enabled): profile-1764006444002-z0hdduce9
+#   IDEAT (llm_only):     profile-default-chat
+#   FOCUS (rag_focused):  profile-default-rag
+#   COORD (genie):        profile-default-genie
+#
+# Also prefix the prompt with @OPTIM/@IDEAT/etc. so execution_service picks up the tag.
+# Both together guarantee the right profile is used.
+
+# 1. Create session WITHOUT profile_id (session uses default profile)
+SESSION_RESPONSE=$(curl -s -X POST http://localhost:5050/api/v1/sessions \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{}')
+SESSION_ID=$(echo "$SESSION_RESPONSE" | jq -r '.session_id')
+
+# 2. Submit query WITH profile_id override AND @TAG prefix in prompt
 TASK_RESPONSE=$(curl -s -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
   -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "@CHAT What is the capital of France?"}')
+  -d '{"prompt": "@OPTIM Your query here", "profile_id": "profile-1764006444002-z0hdduce9"}')
+TASK_ID=$(echo "$TASK_RESPONSE" | jq -r '.task_id')
 
-# Verify profile was overridden
-curl -s -X GET "http://localhost:5050/api/v1/tasks/$TASK_ID" \
-  -H "Authorization: Bearer $JWT" | jq '.events[] | select(.event_type == "notification") | select(.event_data.type == "user_message_profile_tag")'
+# 3. Poll for completion (status field is "complete", not "completed")
+until curl -s -H "Authorization: Bearer $JWT" \
+  "http://localhost:5050/api/v1/tasks/$TASK_ID" | \
+  python3 -c "import json,sys; s=json.load(sys.stdin).get('status',''); exit(0 if s in ('complete','failed','error') else 1)" 2>/dev/null; do
+  sleep 5
+done
+
+# 4. Verify profile used
+curl -s -H "Authorization: Bearer $JWT" "http://localhost:5050/api/v1/tasks/$TASK_ID" | \
+  python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+for e in d.get('events',[]):
+    ed=e.get('event_data',{})
+    if isinstance(ed,dict) and ed.get('type')=='execution_start':
+        p=ed.get('payload',{})
+        print('Profile tag:', p.get('profile_tag'), '| type:', p.get('profile_type'))
+"
 ```
 
 **Test Cost Tracking:**
@@ -252,15 +285,23 @@ schema/default_prompts.dat  # Encrypted system prompts (84KB)
 ### Core Module Structure
 
 - **`src/trusted_data_agent/agent/`** - Agent execution engine
-  - `executor.py` - Main orchestrator with Fusion Optimizer
-  - `planner.py` - Strategic & tactical planning logic
-  - `phase_executor.py` - Individual phase execution
-  - `orchestrators.py` - Specialized execution patterns
+  - `executor.py` - Main orchestrator and shared infrastructure hub (~3,160 lines after engine extraction)
+  - `planner.py` - Strategic & tactical planning logic (9 rewrite passes)
+  - `phase_executor.py` - Individual phase execution, FASTPATH, self-correction, parallel phase streaming
+  - `orchestrators.py` - Specialized execution patterns (date range [parallelised], column iteration, hallucinated loop)
+  - `engines/` - **Modular IFOC execution engines** (see [Engine Modularization Architecture](docs/Architecture/ENGINE_MODULARIZATION_ARCHITECTURE.md))
+    - `base.py` - `ExecutionEngine` ABC
+    - `registry.py` - `EngineRegistry` (register decorator + resolve)
+    - `ideate_engine.py` - Direct LLM execution (`llm_only`)
+    - `focus_engine.py` - Knowledge retrieval + synthesis (`rag_focused`)
+    - `coordinate_engine.py` - Multi-expert coordination (`genie`)
+    - `optimize_engine.py` - Full Planner/Executor pipeline (`tool_enabled`)
+    - `conversation_engine.py` - LangChain ReAct agent (`llm_only` + MCP tools / component tools)
   - `formatter.py` - Response formatting & rendering
   - `prompt_loader.py` - Database-backed prompt system with tier-based access
   - `prompt_encryption.py` - License-based encryption (runtime vs UI access)
   - `profile_prompt_resolver.py` - Profile-specific prompt resolution
-  - `rag_retriever.py` - RAG case retrieval
+  - `rag_retriever.py` - RAG case retrieval (3× over-fetch multiplier, down from 10×)
   - `repository_constructor.py` - RAG template plugins
 
 - **`src/trusted_data_agent/llm/`** - Multi-provider LLM integration
@@ -474,11 +515,15 @@ User Query → Strategic Plan → Tactical Execution → Tool Calls → Response
 ```
 
 - **Strategic planning**: High-level meta-plan (phases)
-- **Tactical execution**: Single-step tool selection (per phase)
+- **Tactical execution**: Single-step tool selection (per phase), with FASTPATH when all arguments are pre-known
+- **Parallel execution**: Independent phases run concurrently via `asyncio.gather()` in `_stream_parallel_phases()`
 - **Self-correction**: Error recovery with targeted prompts
 - **Plan hydration**: Inject previous turn results to skip redundant calls
+- **Engine dispatch**: `OptimizeEngine` carries out the full pipeline; `executor.py` dispatches to it via the `engines/` package
 
-Files: `src/trusted_data_agent/agent/executor.py`, `planner.py`, `phase_executor.py`
+Files: `src/trusted_data_agent/agent/executor.py`, `planner.py`, `phase_executor.py`, `engines/optimize_engine.py`
+
+**Architecture doc:** [Fusion Optimizer Architecture](docs/Architecture/FUSION_OPTIMIZER_ARCHITECTURE.md) | [Engine Modularization Architecture](docs/Architecture/ENGINE_MODULARIZATION_ARCHITECTURE.md)
 
 #### 6. Context Window Management
 
@@ -2161,6 +2206,17 @@ Example: "Using the n8n-uderia skill, how do I configure profile override in a w
 
 ## Recent Major Changes
 
+- **Apr 2026**: Engine modularization — `PlanExecutor.run()` (formerly ~6,800 lines) split into 5 engine classes in `agent/engines/`: `IdeateEngine` (llm_only), `FocusEngine` (rag_focused), `CoordinateEngine` (genie), `OptimizeEngine` (tool_enabled), `ConversationEngine` (llm_only+tools). `EngineRegistry` provides a register decorator + resolve API. `executor.py` is now ~3,160 lines (shared infrastructure + dispatch only). See [Engine Modularization Architecture](docs/Architecture/ENGINE_MODULARIZATION_ARCHITECTURE.md)
+- **Apr 2026**: Independent phase parallelization — `OptimizeEngine._stream_parallel_phases()` uses `asyncio.gather()` to execute independent plan phases concurrently; events are collected per-phase (not interleaved) for clean Live Status rendering; `turn_action_history` post-sorted by `phase_num` for correct historical replay
+- **Apr 2026**: Date range orchestrator parallelization — `execute_date_range_orchestrator()` now fires all per-day tool calls concurrently via `asyncio.gather()`; 30-day ranges drop from `30 × tool_latency` to `~1 × tool_latency`
+- **Apr 2026**: SQL consolidation enabled by default — `ENABLE_SQL_CONSOLIDATION_REWRITE` flipped to `True`; consecutive SQL phases automatically merged into a single optimised query (CTE/JOIN) on every turn
+- **Apr 2026**: LLM call timeout — every LLM call wrapped with `asyncio.wait_for(timeout=LLM_CALL_TIMEOUT_SECONDS)`; provider hangs raise `asyncio.TimeoutError` after the configured timeout (default 120 s) rather than blocking indefinitely
+- **Apr 2026**: Cycle detection for recursive prompt chains — `visited_prompts` set threaded through the execution tree; circular prompt graphs (A→B→A) detected and short-circuited before hitting depth limit
+- **Apr 2026**: RAG over-retrieval fix — `rag_retriever.py` fetch multiplier reduced from `k × 10` to `k × 3`; ~67% reduction in ChromaDB query + deserialization cost with no quality impact
+- **Apr 2026**: Plan rewrite diff events — `planner.py` emits a `plan_rewrite_diff` event after each of the 9 rewrite passes, capturing before/after plan state and a diff summary; full pass-level auditability in the Live Status historical trace
+- **Apr 2026**: Consumption enforcement hardening — quota check changed from fail-open (silent bypass on exception) to fail-closed; enforcement failures surface a `consumption_warning` SSE event and increment an audit bypass counter
+- **Apr 2026**: Genie coordinator state fixes — 5 targeted fixes: lock creation atomicity via `dict.setdefault()`, memory leak cleanup in `finally` block, `clear_session_cache()` scope fix, `get_used_slave_sessions()` scope fix, sequential primer mode now iterates all statements
+- **Apr 2026**: Live Status parallel phase event sequencing — FASTPATH events carry `phase_num` in details dict for correct post-sort positioning; tactical LLM slow path `phase_end` now calls `_log_system_event()` consistently with all other 5 sites; `renderHistoricalTrace()` defensive footer via `_addDefensivePhaseFooter()` when closing phase containers implicitly
 - **Apr 2026**: RAG offload condensation for `conversation_history` — replaces destructive truncation with semantic retrieval via per-session ChromaDB (`SessionVectorStore`); `condense_rag()` keeps `floor_pct`% of recent turns via sliding window and fills the remainder from semantically retrieved earlier chunks; configurable per-module in Context Window Types; amber **RAG** badge + chunk count shown in Live Status panel when it fires
 - **Apr 2026**: Tool Context Enrichment for @OPTIM profiles — every `tool_enabled` assistant turn in `chat_object` now carries a `tool_context` field with a compact `[Tool Execution Summary]` (tool name, key argument truncated at 120 chars, row count, column names, 1 sample row); makes `conversation_history` a richer RAG offload target with cross-turn tool awareness; TDA_ internal tools excluded; built in `executor.py:_build_tool_context_summary()` + `_format_tool_summary_line()`; rendered by `conversation_history/handler.py:_format_messages()` so the LLM sees it as part of the assistant's turn
 - **Apr 2026**: Agent Pack KG export/import hardening — export queries `kg_profile_assignments` (not `kg_metadata.profile_id`) as source of truth for active KG per profile; manifest v1.4 KG entries include `owner_profile_tag` and `assigned_profiles[]` (full assignment fidelity); import uses owner resolution: manifest owner → genie coordinator → active-assignment profile; import creates `kg_profile_assignments` rows for all pack profiles; `agent_pack_resources` tracks KGs so uninstall cascade-deletes them; import/uninstall responses include `kgs_created`/`kgs_deleted`; success message shows KG count; tag conflicts return HTTP 409 `tag_conflict`

@@ -94,6 +94,7 @@ These subsystems are not isolated features. They form a **connected optimization
 11. [System Prompt Reference](#11-system-prompt-reference)
 12. [Configuration Reference](#12-configuration-reference)
 13. [File Reference](#13-file-reference)
+14. [Recent Improvements](#14-recent-improvements-engine-modularization-branch)
 
 ---
 
@@ -809,7 +810,9 @@ Every LLM call emits a `token_update` SSE event:
 | `MAX_PHASE_RETRY_ATTEMPTS` | 5 | S4, S5 | Phase retries before autonomous recovery |
 | `MAX_EXECUTION_DEPTH` | 5 | S2 | Maximum nested PlanExecutor depth |
 | `GRANTED_PROMPTS_FOR_EFFICIENCY_REPLANNING` | `["base_teradataQuery"]` | S2 | Prompts exempt from efficiency re-planning |
-| `ENABLE_SQL_CONSOLIDATION_REWRITE` | `False` | S1 | Toggle SQL consolidation rewrite pass |
+| `ENABLE_SQL_CONSOLIDATION_REWRITE` | `True` | S1 | Enable SQL consolidation rewrite pass (enabled by default) |
+| `LLM_CALL_TIMEOUT_SECONDS` | 120 | All | asyncio timeout for every LLM call (0 = disabled) |
+| `PARALLEL_PHASE_ENABLED` | `True` | OptimizeEngine | Execute independent phases concurrently via asyncio.gather |
 | `CONTEXT_DISTILLATION_MAX_ROWS` | 500 | S6 | Execution context distiller row limit |
 | `CONTEXT_DISTILLATION_MAX_CHARS` | 10,000 | S6 | Execution context distiller char limit |
 | `REPORT_DISTILLATION_MAX_ROWS` | 100 | S6 | L1 per-result-set row limit |
@@ -833,10 +836,12 @@ Context Window Type overrides (in `tda_config.json`):
 
 | File | Subsystems | Key Classes / Functions |
 |------|-----------|------------------------|
-| `src/trusted_data_agent/agent/planner.py` | S1, S3 | `Planner`, `_validate_and_correct_plan()`, 7 rewrite methods, `_hydrate_plan_from_previous_turn()` |
-| `src/trusted_data_agent/agent/executor.py` | S2, S6 | `PlanExecutor`, replan loop (5083-5173), `_distill_data_for_llm_context()` |
-| `src/trusted_data_agent/agent/phase_executor.py` | S4, S5 | `PhaseExecutor`, `CorrectionHandler`, `CorrectionStrategy` subclasses, `_recover_from_phase_failure()` |
-| `src/trusted_data_agent/agent/orchestrators.py` | S3 | `execute_date_range_orchestrator()`, `execute_column_iteration()`, `execute_hallucinated_loop()`, `_resolve_temporal_phrase_deterministic()` |
+| `src/trusted_data_agent/agent/engines/optimize_engine.py` | All | `OptimizeEngine` — full Planner/Executor pipeline (extracted from executor.py) |
+| `src/trusted_data_agent/agent/engines/` | — | Engine package: `IdeateEngine`, `FocusEngine`, `CoordinateEngine`, `ConversationEngine`, `EngineRegistry` |
+| `src/trusted_data_agent/agent/planner.py` | S1, S3 | `Planner`, `_validate_and_correct_plan()`, 9 rewrite methods, `_hydrate_plan_from_previous_turn()` |
+| `src/trusted_data_agent/agent/executor.py` | S2, S6 | `PlanExecutor`, replan loop, `_distill_data_for_llm_context()`, engine dispatch |
+| `src/trusted_data_agent/agent/phase_executor.py` | S4, S5 | `PhaseExecutor`, `CorrectionHandler`, `CorrectionStrategy` subclasses, `_recover_from_phase_failure()`, `_stream_parallel_phases()` |
+| `src/trusted_data_agent/agent/orchestrators.py` | S3 | `execute_date_range_orchestrator()` (parallelised), `execute_column_iteration()`, `execute_hallucinated_loop()`, `_resolve_temporal_phrase_deterministic()` |
 | `components/builtin/context_window/distiller.py` | S6 | `ExecutionContextDistiller` |
 | `components/builtin/context_window/handler.py` | S6 | `ContextWindowHandler`, 5-pass assembly algorithm |
 | `components/builtin/context_window/context_builder.py` | S6 | `ContextBuilder` — format bridge between orchestrator and LLM call sites |
@@ -844,7 +849,75 @@ Context Window Type overrides (in `tda_config.json`):
 | `src/trusted_data_agent/agent/profile_prompt_resolver.py` | S4, S5 | `ProfilePromptResolver` |
 | `src/trusted_data_agent/core/config.py` | All | `AppConfig` with all threshold constants |
 | `src/trusted_data_agent/core/session_manager.py` | S3 | Turn validity filtering (`isValid` flag) |
+| `src/trusted_data_agent/auth/consumption_enforcer.py` | Security | Consumption enforcement (fail-closed with user-visible warning event) |
 | `rag_templates/schemas/planner-schema.json` | S1 | JSON schema defining plan structure |
+
+---
+
+## 14. Recent Improvements (engine-modularization branch)
+
+### 14.1 Engine Modularization
+
+`PlanExecutor.run()` was a 6,800-line monolith containing all four IFOC profile execution paths inline. Each path has been extracted into a dedicated engine class in `src/trusted_data_agent/agent/engines/`. The executor is now a shared infrastructure hub (~3,160 lines) that dispatches to engines. See [Engine Modularization Architecture](ENGINE_MODULARIZATION_ARCHITECTURE.md) for the full design.
+
+### 14.2 Independent Phase Parallelization
+
+`OptimizeEngine._stream_parallel_phases()` uses `asyncio.gather()` to execute independent plan phases concurrently. Phases are eligible for parallelization when the planner marks them without data dependencies on each other. For plans with N parallel data-gathering phases, wall-clock time is reduced from `N × phase_latency` to `1 × phase_latency`.
+
+Events are collected per phase (not interleaved) using a collect-then-yield pattern, so the Live Status panel receives clean per-phase event sequences that render correctly with `renderHistoricalTrace()`. A stable post-sort on `turn_action_history` by `phase_num` ensures historical replay is deterministic even when asyncio scheduling interleaves `_log_system_event()` calls.
+
+### 14.3 Date Range Orchestrator Parallelization
+
+`execute_date_range_orchestrator()` in `orchestrators.py` now executes all per-day tool calls concurrently via `asyncio.gather()`. For a 30-day range, latency drops from `30 × tool_latency` to `1 × tool_latency` (plus result consolidation). Results are ordered by date after gathering.
+
+### 14.4 SQL Consolidation Enabled by Default
+
+`ENABLE_SQL_CONSOLIDATION_REWRITE` changed from `False` to `True`. The SQL consolidation rewrite pass (Pass 2 in the plan refinement pipeline) now fires automatically when the plan contains two or more consecutive phases using SQL tools, merging them into a single optimised query (CTE / JOIN). Individual profiles can opt out via their configuration.
+
+### 14.5 LLM Call Timeout
+
+Every LLM call is now wrapped with `asyncio.wait_for(timeout=LLM_CALL_TIMEOUT_SECONDS)`. If the provider hangs (network partition, service outage), the call raises `asyncio.TimeoutError` after the configured timeout rather than blocking indefinitely. The timeout is configurable per-instance (default: 120 seconds; set to 0 to disable).
+
+### 14.6 Cycle Detection for Recursive Prompt Chains
+
+Sub-executors are spawned up to `MAX_EXECUTION_DEPTH` levels deep. A `visited_prompts` set is now threaded through the execution tree: if prompt A calls prompt B which calls prompt A, the cycle is detected at the second invocation and the prompt is skipped with a warning rather than recursing until depth limit. This eliminates runaway token consumption from circular prompt graphs.
+
+### 14.7 RAG Over-Retrieval Fix
+
+`rag_retriever.py` previously fetched `k × 10` candidates from ChromaDB and discarded 90% after client-side filtering. The multiplier is now `k × 3`, reducing ChromaDB query + deserialization cost by ~67% while still providing sufficient candidates for filtering. No change to final result quality.
+
+### 14.8 Plan Rewrite Diff Events
+
+After each of the 9 plan rewrite passes, `planner.py` emits a `plan_rewrite_diff` event into `turn_action_history` capturing:
+- Which pass fired
+- The plan state before and after the pass
+- A human-readable diff summary
+
+This makes the historical trace fully auditable: the Live Status panel can show exactly which pass changed what, rather than only the final plan vs. the raw LLM output.
+
+### 14.9 Consumption Enforcement Hardening
+
+The consumption quota check in `executor.py` was previously fail-open: any exception silently bypassed all rate limits. The check is now fail-closed — enforcement failures surface a visible `consumption_warning` SSE event to the user and increment a bypass counter in the audit log. Genuine quota violations still block execution; the audit trail records all bypass incidents.
+
+### 14.10 Genie Coordinator State Fixes
+
+Five targeted fixes to `genie_coordinator.py` address module-level shared state issues that could cause session context leakage under concurrent parent sessions:
+
+1. **Lock creation atomicity:** `dict.setdefault()` replaces TOCTOU check-then-set in `_get_slave_session_lock()`, preventing duplicate lock objects under concurrent dispatch.
+2. **Memory leak:** `_cleanup_session_state()` is called in a `finally` block after each coordinator turn, removing `_event_callbacks` and `_provenance_chains` entries that previously grew indefinitely.
+3. **`clear_session_cache()` scope:** Was modifying local variables instead of the module-level dicts. Now correctly removes only entries for the current parent session.
+4. **`get_used_slave_sessions()` scope:** Previously returned the entire global cache (all coordinators, all users). Now filters to the current parent session only.
+5. **Sequential primer mode:** Was silently executing only the first statement in the `statements` list. Now iterates all statements in order, with per-statement error handling.
+
+### 14.11 Live Status Event Sequencing (Parallel Phases)
+
+Three fixes ensure the Live Status panel renders parallel phase executions correctly in both live and historical (plan reload) modes:
+
+1. **FASTPATH events positioned in phase** (`phase_executor.py`): FASTPATH `plan_optimization` events now include `phase_num` in their `details` dict, enabling the post-sort in `_stream_parallel_phases` to place them inside their correct phase container rather than after the last sequential phase.
+
+2. **Phase Completed footer in historical replay** (`phase_executor.py`): The tactical LLM slow path's `phase_end` emission was the only one of 6 sites that called `_format_sse_with_depth()` without also calling `_log_system_event()`. The missing history write caused `renderHistoricalTrace()` to never see the `phase_end` event and therefore never render the "Phase N/M Completed" footer. Both calls are now made consistently.
+
+3. **Defensive footer in `renderHistoricalTrace()`** (`ui.js`): Phase containers store `phase_num`, `total_phases`, and `depth` as `dataset` attributes at creation time. The two cleanup `while` loops (triggered when a same-depth phase starts, and at end-of-trace) now call `_addDefensivePhaseFooter()` to render a Completed footer if no explicit `phase_end` event was processed — ensuring correct display even if backend tracing regresses.
 
 ---
 
@@ -852,4 +925,5 @@ Context Window Type overrides (in `tda_config.json`):
 
 - [Context Window Architecture](CONTEXT_WINDOW_ARCHITECTURE.md) — Detailed analysis of context generation, contribution, and optimization
 - [Knowledge Retrieval Architecture](KNOWLEDGE_RETRIEVAL_ARCHITECTURE.md) — RAG pipeline, scoring, and retrieval
+- [Engine Modularization Architecture](ENGINE_MODULARIZATION_ARCHITECTURE.md) — How execution paths are modularised into engine classes
 - [Component Architecture](COMPONENT_ARCHITECTURE.md) — Extension system and component lifecycle
