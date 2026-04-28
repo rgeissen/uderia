@@ -1277,7 +1277,10 @@ class PhaseExecutor:
             event_data = {
                 "step": "Plan Optimization",
                 "type": "plan_optimization",
-                "details": f"FASTPATH initiated for '{tool_name}'."
+                "details": {
+                    "summary": f"FASTPATH initiated for '{tool_name}'.",
+                    "phase_num": phase.get('phase', phase_num)
+                }
             }
             self.executor._log_system_event(event_data)
             yield self.executor._format_sse_with_depth(event_data)
@@ -1535,11 +1538,13 @@ class PhaseExecutor:
             "context_state_update"
         )
         if not is_loop_iteration:
-            yield self.executor._format_sse_with_depth({
+            event_data = {
                 "step": f"Ending Plan Phase {phase_num}/{len(self.executor.meta_plan)}",
                 "type": "phase_end",
                 "details": {"phase_num": phase_num, "total_phases": len(self.executor.meta_plan), "status": "completed", "execution_depth": self.executor.execution_depth}
-            })
+            }
+            self.executor._log_system_event(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
 
 
     async def _execute_action_with_orchestrators(self, action: dict, phase: dict):

@@ -663,6 +663,18 @@ export function updateGenieMasterBadges() {
  * @param {Array<object>} systemEvents - Optional system events (session name generation, etc.).
  * @param {number} durationMs - Optional execution duration in milliseconds (for tool_enabled profiles).
  */
+function _addDefensivePhaseFooter(container) {
+    const pNum = container.dataset.phaseNum;
+    const pTotal = container.dataset.totalPhases;
+    if (!pNum || !pTotal) return;
+    const pDepth = parseInt(container.dataset.phaseDepth || '0', 10);
+    const depthPrefix = pDepth > 0 ? '↳ '.repeat(pDepth) : '';
+    const phaseFooter = document.createElement('div');
+    phaseFooter.className = 'status-phase-header phase-end';
+    phaseFooter.innerHTML = `<span class="font-bold">${depthPrefix}Phase ${pNum}/${pTotal} Completed</span>`;
+    container.appendChild(phaseFooter);
+}
+
 export function renderHistoricalTrace(originalPlan = [], executionTrace = [], turnId, userQuery = 'N/A', knowledgeRetrievalEvent = null, kgEnrichmentEvent = null, turnTokens = null, systemEvents = [], durationMs = 0, toolEnabledEvents = [], contextWindowSnapshotHtml = null, strategicSnapshotHtml = null) {
     DOM.statusWindowContent.innerHTML = ''; // Clear previous content
     state.currentStatusId = 0; // Reset status ID counter for this rendering
@@ -777,12 +789,18 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
             // Close any containers at same or deeper depth (handles re-planning)
             while (_phaseContainerStack.length > depth) {
                 const old = _phaseContainerStack.pop();
-                if (old) old.classList.add('completed');
+                if (old) {
+                    old.classList.add('completed');
+                    _addDefensivePhaseFooter(old);
+                }
             }
 
             const phaseContainer = document.createElement('details');
             phaseContainer.className = 'status-phase-container';
             phaseContainer.dataset.filterCategory = 'planning';
+            phaseContainer.dataset.phaseNum = details.phase_num || '';
+            phaseContainer.dataset.totalPhases = details.total_phases || '';
+            phaseContainer.dataset.phaseDepth = depth;
             if (!isFilterCategoryEnabled('planning')) {
                 phaseContainer.classList.add('event-filtered-hidden');
             }
@@ -945,7 +963,10 @@ export function renderHistoricalTrace(originalPlan = [], executionTrace = [], tu
     // Close any remaining open phase containers (edge case: trace ends mid-phase)
     while (_phaseContainerStack.length > 0) {
         const remaining = _phaseContainerStack.pop();
-        if (remaining) remaining.classList.add('completed');
+        if (remaining) {
+            remaining.classList.add('completed');
+            _addDefensivePhaseFooter(remaining);
+        }
     }
 
     // Render system events (session name generation, etc.) after execution trace
