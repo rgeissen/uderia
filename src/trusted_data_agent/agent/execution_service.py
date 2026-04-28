@@ -554,7 +554,8 @@ async def run_agent_execution(
         # Route Genie profiles to Genie coordinator
         if active_profile_type == "genie" and active_profile:
             app_logger.info(f"🔮 Detected Genie profile '{active_profile.get('tag')}' - routing to Genie coordinator")
-            final_result_payload = await _run_genie_execution(
+            from trusted_data_agent.agent.engines.coordinate_engine import CoordinateEngine
+            final_result_payload = await CoordinateEngine().execute_genie(
                 user_uuid=user_uuid,
                 session_id=session_id,
                 user_input=user_input,
