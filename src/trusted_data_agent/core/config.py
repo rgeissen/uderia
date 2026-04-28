@@ -17,7 +17,7 @@ class AppConfig:
     ALLOW_SYNTHESIS_FROM_HISTORY = True # If True, allows the planner to generate an answer directly from conversation history without using tools.
     VOICE_CONVERSATION_ENABLED = True # Master switch for the Text-to-Speech (TTS) feature.
     SUB_PROMPT_FORCE_SUMMARY = False # If True, forces sub-executors for prompts to generate their own final summary. Default is False.
-    ENABLE_SQL_CONSOLIDATION_REWRITE = False # If True, enables an LLM-based plan rewrite rule to consolidate sequential SQL queries.
+    ENABLE_SQL_CONSOLIDATION_REWRITE = True # If True, enables an LLM-based plan rewrite rule to consolidate sequential SQL queries.
     GRANTED_PROMPTS_FOR_EFFICIENCY_REPLANNING = ["base_teradataQuery"] # A list of complex prompts that are exempt from the "Re-planning for Efficiency" optimization.
     CONDENSE_SYSTEMPROMPT_HISTORY = True # If True, sends a condensed list of tools/prompts in the system prompt for subsequent turns in a conversation to save tokens.
     USE_CONTEXT_WINDOW_MANAGER = True # If True, uses the new Context Window Manager (system component) for budget-aware context assembly. If False, uses legacy inline assembly code paths.
