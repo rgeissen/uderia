@@ -118,17 +118,50 @@ curl -s -X GET "http://localhost:5050/api/v1/tasks/$TASK_ID" \
   -H "Authorization: Bearer $JWT" | jq '.events[] | select(.event_type == "champion_cases_retrieved")'
 ```
 
-**Test Profile Override:**
+**Test Profile Override (REST API — CORRECT APPROACH):**
 ```bash
-# Submit query with temporary profile override using @TAG syntax
+# IMPORTANT: @TAG syntax in the prompt text is UI-only. For REST API, use profile_id in the query body.
+# Profile IDs (this instance):
+#   OPTIM (tool_enabled): profile-1764006444002-z0hdduce9
+#   IDEAT (llm_only):     profile-default-chat
+#   FOCUS (rag_focused):  profile-default-rag
+#   COORD (genie):        profile-default-genie
+#
+# Also prefix the prompt with @OPTIM/@IDEAT/etc. so execution_service picks up the tag.
+# Both together guarantee the right profile is used.
+
+# 1. Create session WITHOUT profile_id (session uses default profile)
+SESSION_RESPONSE=$(curl -s -X POST http://localhost:5050/api/v1/sessions \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{}')
+SESSION_ID=$(echo "$SESSION_RESPONSE" | jq -r '.session_id')
+
+# 2. Submit query WITH profile_id override AND @TAG prefix in prompt
 TASK_RESPONSE=$(curl -s -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
   -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "@CHAT What is the capital of France?"}')
+  -d '{"prompt": "@OPTIM Your query here", "profile_id": "profile-1764006444002-z0hdduce9"}')
+TASK_ID=$(echo "$TASK_RESPONSE" | jq -r '.task_id')
 
-# Verify profile was overridden
-curl -s -X GET "http://localhost:5050/api/v1/tasks/$TASK_ID" \
-  -H "Authorization: Bearer $JWT" | jq '.events[] | select(.event_type == "notification") | select(.event_data.type == "user_message_profile_tag")'
+# 3. Poll for completion (status field is "complete", not "completed")
+until curl -s -H "Authorization: Bearer $JWT" \
+  "http://localhost:5050/api/v1/tasks/$TASK_ID" | \
+  python3 -c "import json,sys; s=json.load(sys.stdin).get('status',''); exit(0 if s in ('complete','failed','error') else 1)" 2>/dev/null; do
+  sleep 5
+done
+
+# 4. Verify profile used
+curl -s -H "Authorization: Bearer $JWT" "http://localhost:5050/api/v1/tasks/$TASK_ID" | \
+  python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+for e in d.get('events',[]):
+    ed=e.get('event_data',{})
+    if isinstance(ed,dict) and ed.get('type')=='execution_start':
+        p=ed.get('payload',{})
+        print('Profile tag:', p.get('profile_tag'), '| type:', p.get('profile_type'))
+"
 ```
 
 **Test Cost Tracking:**
