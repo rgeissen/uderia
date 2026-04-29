@@ -1373,6 +1373,35 @@ class Planner:
                 f"{self.executor.meta_plan}"
             )
 
+    def _rewrite_llm_filter_deloop(self):
+        """Convert any TDA_LLMFilter loop phase to a standalone filter phase.
+
+        TDA_LLMFilter receives a full dataset and filters it with LLM reasoning.
+        Placing it inside a loop causes redundant_argument_pruning to strip
+        data_to_filter (its value matches the loop_over_key), so every iteration
+        fails. The correct form is a single non-loop call with data_to_filter
+        pointing to the upstream result key.
+        """
+        for phase in self.executor.meta_plan:
+            if phase.get("type") != "loop":
+                continue
+            if "TDA_LLMFilter" not in phase.get("relevant_tools", []):
+                continue
+
+            loop_over = phase.pop("loop_over", None)
+            phase.pop("type", None)
+
+            args = phase.setdefault("arguments", {})
+            if "data_to_filter" not in args and loop_over:
+                args["data_to_filter"] = loop_over
+
+            app_logger.info(
+                "[llm_filter_deloop] Converted TDA_LLMFilter loop phase "
+                "(loop_over=%r) to standalone filter phase.", loop_over
+            )
+        return
+        yield  # makes this a sync generator so _pass() can iterate it
+
     async def _rewrite_plan_for_multi_loop_synthesis(self):
         """
         Surgically corrects plans where multiple, parallel loops feed into a
@@ -2423,6 +2452,8 @@ Ranking:"""
             async for event in _pass("sql_consolidation", self._rewrite_plan_for_sql_consolidation()):
                 yield event
 
+        async for event in _pass("llm_filter_deloop", self._rewrite_llm_filter_deloop()):
+            yield event
         async for event in _pass("multi_loop_synthesis", self._rewrite_plan_for_multi_loop_synthesis()):
             yield event
         async for event in _pass("llm_task_optimization", self._rewrite_plan_for_corellmtask_loops()):

@@ -266,6 +266,7 @@ class GenericCorrectionStrategy(CorrectionStrategy):
 class CorrectionHandler:
     """Manages and executes the appropriate correction strategy."""
     def __init__(self, executor: 'PlanExecutor'):
+        self.executor = executor
         self.strategies = [
             TableNotFoundStrategy(executor),
             ColumnNotFoundStrategy(executor),
@@ -281,7 +282,17 @@ class CorrectionHandler:
         for strategy in self.strategies:
             if strategy.can_handle(full_error_context):
                 app_logger.info(f"Using correction strategy: {strategy.__class__.__name__}")
-                return await strategy.generate_correction(failed_action, error_result)
+                corrected_action, events = await strategy.generate_correction(failed_action, error_result)
+                # Record the failed attempt so the tactical LLM sees the full correction history (Reflexion)
+                error_text = (error_summary or error_data_str)[:200].strip()
+                self.executor.correction_history.append({
+                    "attempt": len(self.executor.correction_history) + 1,
+                    "tool_name": failed_action.get("tool_name", "unknown"),
+                    "arguments": failed_action.get("arguments", {}),
+                    "error": error_text,
+                    "strategy": strategy.__class__.__name__,
+                })
+                return corrected_action, events
 
         app_logger.error("No correction strategy could handle the error.")
         return None, []
@@ -295,6 +306,21 @@ class PhaseExecutor:
     """
     def __init__(self, executor: 'PlanExecutor'):
         self.executor = executor
+
+    def _build_correction_history_section(self) -> str:
+        """Renders the accumulated correction history for the current phase into a prompt string."""
+        history = self.executor.correction_history
+        if not history:
+            return "None"
+        lines = ["The following tool calls have ALREADY been attempted in this phase and FAILED:"]
+        for entry in history:
+            args_str = json.dumps(entry.get("arguments", {}))
+            if len(args_str) > 150:
+                args_str = args_str[:150] + "..."
+            lines.append(f"  • Attempt {entry['attempt']}: {entry['tool_name']}({args_str})")
+            lines.append(f"    Error: {entry['error']}")
+        lines.append("You MUST NOT repeat any of the above failed calls. Analyze the errors and choose a fundamentally different approach.")
+        return "\n".join(lines)
 
     async def execute_phase(self, phase: dict):
         """
@@ -518,6 +544,18 @@ class PhaseExecutor:
                                     continue
                             expanded_loop_items.append({**table_item, "column_name": col_name})
                     else:
+                        error_msg = (cols_result or {}).get('error', '') if isinstance(cols_result, dict) else ''
+                        if 'timed out' in error_msg.lower():
+                            # MCP server is unresponsive — every remaining table will also time out.
+                            # Abort immediately instead of waiting N × 120 s.
+                            abort_event = {
+                                "step": "Column Expansion Aborted",
+                                "type": "plan_optimization",
+                                "details": f"MCP server timed out getting columns for '{table_name}'. Aborting column expansion for '{tool_name}' to avoid further delays."
+                            }
+                            self.executor._log_system_event(abort_event)
+                            yield self.executor._format_sse_with_depth(abort_event)
+                            break
                         app_logger.warning(f"Data expansion: Failed to get columns for table '{table_name}'. Tool `base_columnDescription` may have failed. Result: {cols_result}")
 
                 yield self.executor._format_sse_with_depth({"target": "db", "state": "idle"}, "status_indicator_update")
@@ -897,6 +935,10 @@ class PhaseExecutor:
 
     async def _execute_standard_phase(self, phase: dict, is_loop_iteration: bool = False, loop_item: dict = None):
         """Executes a single, non-looping phase or a single iteration of a complex loop."""
+        # Clear correction history at the start of each phase so the tactical LLM
+        # only sees failures from the current phase, not from prior phases.
+        self.executor.correction_history = []
+
         phase_goal = phase.get("goal", "No goal defined.")
         phase_num = phase.get("phase", self.executor.current_phase_index + 1)
         relevant_tools = phase.get("relevant_tools", [])
@@ -1465,7 +1507,15 @@ class PhaseExecutor:
             current_action_str = json.dumps(next_action, sort_keys=True)
             if current_action_str == self.executor.last_action_str:
                 app_logger.warning(f"LOOP DETECTED: Repeating action: {current_action_str}")
-                self.executor.last_failed_action_info = "Your last attempt failed because it was an exact repeat of the previous failed action. You MUST choose a different tool or different arguments."
+                error_msg = "Exact repeat of previous action detected. You MUST choose a different tool or different arguments."
+                self.executor.correction_history.append({
+                    "attempt": len(self.executor.correction_history) + 1,
+                    "tool_name": next_action.get("tool_name", "unknown") if isinstance(next_action, dict) else "unknown",
+                    "arguments": next_action.get("arguments", {}) if isinstance(next_action, dict) else {},
+                    "error": error_msg,
+                    "strategy": "LoopDetection",
+                })
+                self.executor.last_failed_action_info = error_msg
                 yield self.executor._format_sse_with_depth({"step": "System Error", "details": "Repetitive action detected.", "type": "error"}, "tool_result")
                 self.executor.last_action_str = None
                 continue
@@ -1502,7 +1552,15 @@ class PhaseExecutor:
                     mapping_keys = ['xField', 'yField', 'seriesField', 'angleField', 'colorField']
                     if not any(key in options for key in mapping_keys):
                         is_valid_chart = False
-                        self.executor.last_failed_action_info = "The last attempt to create a chart failed because the 'mapping' argument was incorrect or missing. You MUST provide a valid mapping with the correct keys (e.g., 'angle', 'color')."
+                        chart_error_msg = "Chart failed: 'mapping' argument was incorrect or missing. You MUST provide a valid mapping with the correct keys (e.g., 'angle', 'color')."
+                        self.executor.correction_history.append({
+                            "attempt": len(self.executor.correction_history) + 1,
+                            "tool_name": "TDA_Charting",
+                            "arguments": next_action.get("arguments", {}),
+                            "error": chart_error_msg,
+                            "strategy": "ChartValidation",
+                        })
+                        self.executor.last_failed_action_info = chart_error_msg
 
                     if is_valid_chart:
                         mapping = next_action.get("arguments", {}).get("mapping", {})
@@ -1514,7 +1572,15 @@ class PhaseExecutor:
                                 if role.lower() in numeric_roles:
                                     if column_name in first_row and not self._is_numeric(first_row[column_name]):
                                         is_valid_chart = False
-                                        self.executor.last_failed_action_info = f"The last attempt failed. You mapped the non-numeric column '{column_name}' to the '{role}' role, which requires a number. You MUST map a numeric column to this role."
+                                        chart_error_msg = f"Chart failed: non-numeric column '{column_name}' mapped to '{role}' role which requires a number. You MUST map a numeric column to this role."
+                                        self.executor.correction_history.append({
+                                            "attempt": len(self.executor.correction_history) + 1,
+                                            "tool_name": "TDA_Charting",
+                                            "arguments": next_action.get("arguments", {}),
+                                            "error": chart_error_msg,
+                                            "strategy": "ChartValidation",
+                                        })
+                                        self.executor.last_failed_action_info = chart_error_msg
                                         break
 
                     if not is_valid_chart:
@@ -2526,7 +2592,7 @@ class PhaseExecutor:
                     "workflow_goal": self.executor.workflow_goal_prompt,
                     "current_phase_goal": current_phase_goal,
                     "strategic_arguments_section": strategic_arguments_section,
-                    "last_attempt_info": self.executor.last_failed_action_info,
+                    "correction_history_section": self._build_correction_history_section(),
                     "loop_context_section": loop_context_section,
                     "context_enrichment_section": context_enrichment_section,
                     "permitted_prompts_with_details": permitted_prompts_with_details,
@@ -2557,7 +2623,7 @@ class PhaseExecutor:
                 "strategic_arguments_section": strategic_arguments_section,
                 "permitted_tools_with_details": permitted_tools_with_details,
                 "permitted_prompts_with_details": permitted_prompts_with_details,
-                "last_attempt_info": self.executor.last_failed_action_info,
+                "correction_history_section": self._build_correction_history_section(),
                 "turn_action_history": json.dumps(distilled_turn_history, indent=2),
                 "all_collected_data": json.dumps(distilled_workflow_state, indent=2),
                 "loop_context_section": loop_context_section,
@@ -2586,8 +2652,6 @@ class PhaseExecutor:
         if self.executor.is_dual_model_active:
             phase_num = getattr(self.executor, 'current_phase_index', '?')
             app_logger.info(f"[Tactical Execution] Phase {phase_num}: {tactical_provider}/{tactical_model}")
-
-        self.executor.last_failed_action_info = "None"
 
         if "FINAL_ANSWER:" in response_text.upper() or "SYSTEM_ACTION_COMPLETE" in response_text.upper():
             return "SYSTEM_ACTION_COMPLETE", input_tokens, output_tokens
