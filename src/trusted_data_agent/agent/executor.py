@@ -658,7 +658,8 @@ class PlanExecutor:
         self.tool_constraints_cache = {}
         self.globally_skipped_tools = set()
         self.temp_data_holder = None
-        self.last_failed_action_info = "None"
+        self.last_failed_action_info = "None"  # kept for logging compat; superseded by correction_history
+        self.correction_history: list = []   # accumulated failed attempts for current phase (Reflexion pattern)
         self.events_to_yield = []
         self.last_action_str = None
 
