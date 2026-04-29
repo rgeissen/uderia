@@ -286,7 +286,7 @@ schema/default_prompts.dat  # Encrypted system prompts (84KB)
 
 - **`src/trusted_data_agent/agent/`** - Agent execution engine
   - `executor.py` - Main orchestrator and shared infrastructure hub (~3,160 lines after engine extraction)
-  - `planner.py` - Strategic & tactical planning logic (10 rewrite passes)
+  - `planner.py` - Strategic & tactical planning logic (12 rewrite passes)
     - `json_utils.py` - `robust_json_parse()` — three-tier JSON extraction (direct → json_repair → None) used at all LLM response parse sites
   - `phase_executor.py` - Individual phase execution, FASTPATH, self-correction, parallel phase streaming
   - `orchestrators.py` - Specialized execution patterns (date range [parallelised], column iteration, hallucinated loop)
@@ -2164,7 +2164,7 @@ Custom Claude Code skills provide specialized knowledge for complex integration 
 - Tuning WORKFLOW_META_PLANNING_PROMPT or WORKFLOW_TACTICAL_PROMPT
 
 **Key topics covered:**
-- Complete execution flow (strategic planning → 10 rewrite passes → tactical execution → response)
+- Complete execution flow (strategic planning → 12 rewrite passes → tactical execution → response)
 - Core design principle: deterministic vs non-deterministic decision framework
 - All 6 enterprise safeguards with file:line locations, trigger conditions, and known limitations
 - TDA_SystemLog message catalog for execution trace analysis
@@ -2207,7 +2207,7 @@ Example: "Using the n8n-uderia skill, how do I configure profile override in a w
 
 ## Recent Major Changes
 
-- **Apr 2026**: `llm_filter_deloop` rewrite pass — new deterministic pass (inserted before `multi_loop_synthesis`) that converts any TDA_LLMFilter loop phase to a standalone filter phase; prevents `redundant_argument_pruning` from stripping `data_to_filter` when the planner incorrectly places TDA_LLMFilter inside a loop. Planner now has 10 rewrite passes. File: `planner.py:_rewrite_llm_filter_deloop()`
+- **Apr 2026**: `llm_filter_deloop` rewrite pass — new deterministic pass (inserted before `multi_loop_synthesis`) that converts any TDA_LLMFilter loop phase to a standalone filter phase; prevents `redundant_argument_pruning` from stripping `data_to_filter` when the planner incorrectly places TDA_LLMFilter inside a loop. Planner now has 12 rewrite passes. File: `planner.py:_rewrite_llm_filter_deloop()`
 - **Apr 2026**: Reflexion-pattern correction history — `correction_history: list` replaces single-overwrite `last_failed_action_info: str` on `PlanExecutor`; every failed tool call in a phase is appended (tool name, arguments, error, strategy); cleared at phase start; rendered into `{correction_history_section}` in `WORKFLOW_TACTICAL_PROMPT`; prevents oscillation where the tactical LLM repeats a previously failed call. Files: `executor.py`, `phase_executor.py:_build_correction_history_section()`, `WORKFLOW_TACTICAL_PROMPT.txt`
 - **Apr 2026**: Universal JSON parsing hardening — new `agent/json_utils.py` with `robust_json_parse()` (three-tier: direct `json.loads` → `json_repair` → return None + one-shot retry); replaces all 9 brittle bare `json.loads` sites in `planner.py` and `phase_executor.py`; `json-repair>=0.30.0` added to `requirements.txt`; handles trailing commas, truncated output, markdown fences, single-quoted strings, and surrounding prose across all providers
 - **Apr 2026**: Engine modularization — `PlanExecutor.run()` (formerly ~6,800 lines) split into 5 engine classes in `agent/engines/`: `IdeateEngine` (llm_only), `FocusEngine` (rag_focused), `CoordinateEngine` (genie), `OptimizeEngine` (tool_enabled), `ConversationEngine` (llm_only+tools). `EngineRegistry` provides a register decorator + resolve API. `executor.py` is now ~3,160 lines (shared infrastructure + dispatch only). See [Engine Modularization Architecture](docs/Architecture/ENGINE_MODULARIZATION_ARCHITECTURE.md)
@@ -2217,7 +2217,7 @@ Example: "Using the n8n-uderia skill, how do I configure profile override in a w
 - **Apr 2026**: LLM call timeout — every LLM call wrapped with `asyncio.wait_for(timeout=LLM_CALL_TIMEOUT_SECONDS)`; provider hangs raise `asyncio.TimeoutError` after the configured timeout (default 120 s) rather than blocking indefinitely
 - **Apr 2026**: Cycle detection for recursive prompt chains — `visited_prompts` set threaded through the execution tree; circular prompt graphs (A→B→A) detected and short-circuited before hitting depth limit
 - **Apr 2026**: RAG over-retrieval fix — `rag_retriever.py` fetch multiplier reduced from `k × 10` to `k × 3`; ~67% reduction in ChromaDB query + deserialization cost with no quality impact
-- **Apr 2026**: Plan rewrite diff events — `planner.py` emits a `plan_rewrite_diff` event after each of the 10 rewrite passes, capturing before/after plan state and a diff summary; full pass-level auditability in the Live Status historical trace
+- **Apr 2026**: Plan rewrite diff events — `planner.py` emits a `plan_rewrite_diff` event after each of the 12 rewrite passes, capturing before/after plan state and a diff summary; full pass-level auditability in the Live Status historical trace
 - **Apr 2026**: Consumption enforcement hardening — quota check changed from fail-open (silent bypass on exception) to fail-closed; enforcement failures surface a `consumption_warning` SSE event and increment an audit bypass counter
 - **Apr 2026**: Genie coordinator state fixes — 5 targeted fixes: lock creation atomicity via `dict.setdefault()`, memory leak cleanup in `finally` block, `clear_session_cache()` scope fix, `get_used_slave_sessions()` scope fix, sequential primer mode now iterates all statements
 - **Apr 2026**: Live Status parallel phase event sequencing — FASTPATH events carry `phase_num` in details dict for correct post-sort positioning; tactical LLM slow path `phase_end` now calls `_log_system_event()` consistently with all other 5 sites; `renderHistoricalTrace()` defensive footer via `_addDefensivePhaseFooter()` when closing phase containers implicitly

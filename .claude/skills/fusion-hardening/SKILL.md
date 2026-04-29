@@ -1,6 +1,6 @@
 ---
 name: fusion-hardening
-description: Deep knowledge skill for analyzing and hardening the Fusion Optimizer (tool_enabled) execution pipeline. Covers strategic planning, 10 plan rewrite passes, tactical execution, error recovery, orchestrators, enterprise safeguards, execution trace analysis, and prompt engineering guidance.
+description: Deep knowledge skill for analyzing and hardening the Fusion Optimizer (tool_enabled) execution pipeline. Covers strategic planning, 12 plan rewrite passes, tactical execution, error recovery, orchestrators, enterprise safeguards, execution trace analysis, and prompt engineering guidance.
 user-invocable: true
 ---
 
@@ -20,7 +20,7 @@ This skill provides deep, implementation-level knowledge of the Uderia Fusion Op
 
 **Core files:**
 - `src/trusted_data_agent/agent/executor.py` - Main orchestrator, proactive re-planning, context distillation
-- `src/trusted_data_agent/agent/planner.py` - Strategic planning, 10 rewrite passes, plan normalization
+- `src/trusted_data_agent/agent/planner.py` - Strategic planning, 12 rewrite passes, plan normalization
 - `src/trusted_data_agent/agent/phase_executor.py` - Tactical execution, fast-path, 3-tier error recovery with accumulated correction history
 - `src/trusted_data_agent/agent/json_utils.py` - `robust_json_parse()`: three-tier JSON extraction (direct → json_repair → None + retry) used at all LLM parse sites
 - `src/trusted_data_agent/agent/orchestrators.py` - Date range, column iteration, hallucinated loop orchestrators
@@ -173,26 +173,28 @@ User Query
     |       |--- _normalize_plan_syntax() - Template canonicalization
     |       |--- _inject_temporal_context() - Add TDA_CurrentDate for temporal queries
     |
-    |--- [2b-2k] 10 Plan Rewrite Passes (in order):
-    |       0. _rewrite_plan_for_temporal_data_flow()
-    |       1. _rewrite_plan_for_sql_consolidation()
-    |       2. _rewrite_llm_filter_deloop()            ← NEW: converts TDA_LLMFilter loop→standalone
-    |       3. _rewrite_plan_for_multi_loop_synthesis()
-    |       4. _rewrite_plan_for_corellmtask_loops()
-    |       5. _rewrite_plan_for_date_range_loops()
-    |       6. _validate_and_correct_plan()
-    |       7. _hydrate_plan_from_previous_turn()
-    |       8. _rewrite_plan_for_empty_context_report()
-    |       9. _ensure_final_report_phase()
+    |--- [2b-2m] 12 Plan Rewrite Passes (in order):
+    |       0. _rewrite_plan_for_temporal_data_flow()      - wire TDA_CurrentDate result to data tools
+    |       1. _rewrite_plan_for_sql_consolidation()       - merge consecutive SQL phases (conditional)
+    |       2. _rewrite_llm_filter_deloop()                - convert TDA_LLMFilter loop→standalone
+    |       3. _rewrite_plan_for_multi_loop_synthesis()    - add distillation before multi-loop summary
+    |       4. _rewrite_plan_for_corellmtask_loops()       - batch TDA_LLMTask loops into single call
+    |       5. _rewrite_plan_for_date_range_loops()        - wire date range for temporal loops
+    |       6. _validate_and_correct_plan()                - null prompt cleanup, tool/prompt swap fix
+    |       7. _rewrite_plan_collapse_chart_data_refetch() - remove redundant data-fetch before charting
+    |       8. _rewrite_plan_for_charting_phases()         - strip hallucinated mapping/data from TDA_Charting
+    |       9. _hydrate_plan_from_previous_turn()          - inject prior-turn data, skip redundant phases
+    |      10. _rewrite_plan_for_empty_context_report()    - add TDA_ContextReport when no data gathered
+    |      11. _ensure_final_report_phase()                - guarantee TDA_FinalReport as last phase
     |
     v
-[3] Proactive Re-Planning Check (executor.py:~3989)
+[3] Proactive Re-Planning Check (optimize_engine.py:~675)
     |--- If plan mixes executable_prompts with tools: trigger re-plan
     |--- max_replans = 1 (one re-plan attempt allowed)
     |--- Re-plan goes through ALL 8 passes again
     |
     v
-[4] Phase Execution Loop (executor.py:~4522)
+[4] Phase Execution Loop (executor.py:~2749)
     |--- For each phase in meta_plan:
     |       |
     |       |--- If delegated prompt phase: _run_sub_prompt()
@@ -496,7 +498,7 @@ Prior to this (single-overwrite `last_failed_action_info`), if the LLM oscillate
 
 **What:** Detects mixed plans containing both `executable_prompt` phases and significant tool phases. Forces a re-plan to produce a pure tool-only workflow.
 
-**Location:** `executor.py:~3989-4011`
+**Location:** `optimize_engine.py:~675-764`
 
 **Trigger conditions (ALL must be true):**
 - `execution_depth == 0` (top-level only)
@@ -512,7 +514,7 @@ Prior to this (single-overwrite `last_failed_action_info`), if the LLM oscillate
 - Only 1 re-plan attempt. If second plan still mixes, it proceeds as-is.
 - Granted prompts bypass entirely (configurable).
 
-**Cross-references:** Re-planned version goes through all 10 rewrite passes again.
+**Cross-references:** Re-planned version goes through all 12 rewrite passes again.
 
 **Trace signature:** "Re-planning for Efficiency" event.
 
@@ -1180,7 +1182,7 @@ Based on query type:
 From session file, extract:
 ```
 1. raw_llm_plan (workflow_history[N].raw_llm_plan)  ← LLM's actual output before any preprocessing/rewrites
-2. original_plan (workflow_history[N].original_plan) ← Plan after all 10 rewrite passes (what was executed)
+2. original_plan (workflow_history[N].original_plan) ← Plan after all 12 rewrite passes (what was executed)
 3. execution_trace (workflow_history[N].execution_trace)
 4. Token counts (turn_input_tokens, turn_output_tokens)
 5. tools_used list
