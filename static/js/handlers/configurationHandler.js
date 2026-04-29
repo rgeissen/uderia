@@ -6638,11 +6638,11 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             allPrompts = Object.values(resources.prompts || {}).flat().map(p => p.name);
 
             // For new profiles (isEdit=false), default all to checked
-            // For existing profiles with tools=null/undefined/[] (not yet configured), default all to checked
-            // For existing profiles with populated arrays (specific tools selected), respect their saved selections
-            // NOTE: Empty array [] is now treated as "not configured" (handles old bootstrap profiles)
-            const toolsNotYetConfigured = profile && (profile.tools === null || profile.tools === undefined || profile.tools.length === 0);
-            const promptsNotYetConfigured = profile && (profile.prompts === null || profile.prompts === undefined || profile.prompts.length === 0);
+            // For existing profiles with tools=null/undefined (not yet configured), default all to checked
+            // For existing profiles with [] (explicitly all disabled), respect that and show all unchecked
+            // For existing profiles with ['*'] or a populated array, respect their saved selections
+            const toolsNotYetConfigured = profile && (profile.tools === null || profile.tools === undefined);
+            const promptsNotYetConfigured = profile && (profile.prompts === null || profile.prompts === undefined);
 
             toolsContainer.innerHTML = allTools.map(tool => `
                 <label class="ind-toggle ind-toggle--sm gap-2 text-sm text-gray-300 w-full">
