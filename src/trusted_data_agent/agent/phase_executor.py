@@ -544,6 +544,18 @@ class PhaseExecutor:
                                     continue
                             expanded_loop_items.append({**table_item, "column_name": col_name})
                     else:
+                        error_msg = (cols_result or {}).get('error', '') if isinstance(cols_result, dict) else ''
+                        if 'timed out' in error_msg.lower():
+                            # MCP server is unresponsive — every remaining table will also time out.
+                            # Abort immediately instead of waiting N × 120 s.
+                            abort_event = {
+                                "step": "Column Expansion Aborted",
+                                "type": "plan_optimization",
+                                "details": f"MCP server timed out getting columns for '{table_name}'. Aborting column expansion for '{tool_name}' to avoid further delays."
+                            }
+                            self.executor._log_system_event(abort_event)
+                            yield self.executor._format_sse_with_depth(abort_event)
+                            break
                         app_logger.warning(f"Data expansion: Failed to get columns for table '{table_name}'. Tool `base_columnDescription` may have failed. Result: {cols_result}")
 
                 yield self.executor._format_sse_with_depth({"target": "db", "state": "idle"}, "status_indicator_update")
