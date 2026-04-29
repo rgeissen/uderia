@@ -1700,14 +1700,8 @@ export async function handleStreamRequest(endpoint, body) {
         }
         UI.addMessage('user', `Executing prompt: ${body.prompt_name}`, null, true, 'text', profileTag);
     }
+    if (window.cancelRagSuggestions) window.cancelRagSuggestions();
     DOM.userInput.value = '';
-
-    // Hide suggestions and profile selector when clearing input
-    const suggestionsContainer = document.getElementById('rag-suggestions-container');
-    if (suggestionsContainer) {
-        suggestionsContainer.innerHTML = '';
-        suggestionsContainer.classList.add('hidden');
-    }
 
     const profileTagSelector = document.getElementById('profile-tag-selector');
     if (profileTagSelector) {

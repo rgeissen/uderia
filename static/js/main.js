@@ -1605,7 +1605,10 @@ async function initializeRAGAutoCompletion() {
 
         // Fetch semantically ranked questions from backend
         const questions = await API.fetchRAGQuestions(queryText, profileId, 5);
-        showSuggestions(questions);
+        // Guard: discard stale results if input was cleared while request was in-flight
+        if (userInput.value.trim().length >= 2) {
+            showSuggestions(questions);
+        }
     }
 
     if (suggestionsContainer && userInput) {
@@ -1613,6 +1616,8 @@ async function initializeRAGAutoCompletion() {
             const inputValue = userInput.value.trim();
             if (inputValue.length >= 2) {
                 fetchAndShowSuggestions(inputValue);
+            } else {
+                showSuggestions([]);
             }
         });
 
@@ -1781,6 +1786,14 @@ async function initializeRAGAutoCompletion() {
                 showSuggestions([]);
             }
         });
+
+        window.cancelRagSuggestions = () => {
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+                debounceTimer = null;
+            }
+            showSuggestions([]);
+        };
 
         userInput.addEventListener('keydown', (e) => {
             // Handle skill param picker navigation and commit
