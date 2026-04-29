@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import math as _math
 import statistics as _stats
 import uuid
 from collections import Counter
@@ -160,8 +161,10 @@ def _compute_column_statistics(results_list: list[dict]) -> dict:
                 entry["p75"] = round(sorted_vals[p75_idx], 4)
             if n >= 3:
                 try:
-                    entry["stddev"] = round(_stats.stdev(sorted_vals), 4)
-                except _stats.StatisticsError:
+                    finite_vals = [v for v in sorted_vals if _math.isfinite(v)]
+                    if len(finite_vals) >= 3:
+                        entry["stddev"] = round(_stats.stdev(finite_vals), 4)
+                except (_stats.StatisticsError, AttributeError, ValueError):
                     pass
 
             col_stats[col] = entry
