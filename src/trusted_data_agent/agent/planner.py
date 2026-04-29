@@ -15,6 +15,7 @@ from trusted_data_agent.agent.prompts import (
     WORKFLOW_META_PLANNING_PROMPT,
 )
 from trusted_data_agent.agent.rag_access_context import RAGAccessContext  # --- MODIFICATION: Import RAGAccessContext ---
+from trusted_data_agent.agent.json_utils import robust_json_parse
 
 if TYPE_CHECKING:
     from trusted_data_agent.agent.executor import PlanExecutor
@@ -1531,11 +1532,11 @@ class Planner:
 
                         yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
-                        try:
-                            classification_data = json.loads(response_text)
+                        classification_data = robust_json_parse(response_text)
+                        if isinstance(classification_data, dict):
                             task_type = classification_data.get("classification", "synthesis")
-                        except (json.JSONDecodeError, AttributeError):
-                            app_logger.error(f"Failed to parse task classification. Defaulting to 'synthesis' to be safe. Response: {response_text}")
+                        else:
+                            app_logger.warning(f"Failed to parse task classification. Defaulting to 'synthesis'. Response: {response_text}")
                             task_type = "synthesis"
 
                 if task_type == "aggregation":
@@ -1938,10 +1939,9 @@ Respond with ONLY the answer text, no preamble or meta-commentary."""
                     yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id, "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0) }, "token_update")
 
                 try:
-                    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-                    if not json_match: raise ValueError("No JSON object found in consolidation response.")
-
-                    data = json.loads(json_match.group(0))
+                    data = robust_json_parse(response_text)
+                    if not isinstance(data, dict):
+                        raise ValueError("No JSON object found in consolidation response.")
                     consolidated_query = data.get("consolidated_query")
                     if not consolidated_query: raise ValueError("'consolidated_query' key not found.")
 
@@ -2230,12 +2230,10 @@ Ranking:"""
             )
             
             # Parse ranking
-            ranking_match = re.search(r'\[[\d,\s]+\]', response_text)
-            if not ranking_match:
+            ranking = robust_json_parse(response_text)
+            if not isinstance(ranking, list):
                 app_logger.warning("Failed to parse LLM reranking response, using original order")
                 return documents[:max_docs]
-            
-            ranking = json.loads(ranking_match.group())
             
             # Reorder documents based on ranking
             reranked = []
@@ -2947,71 +2945,85 @@ CRITICAL REQUIREMENTS:
         if updated_session:
             yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id, "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0), "planning_phase": "strategic", "provider": strategic_provider, "model": strategic_model }, "token_update")
 
-        try:
-            # Check for empty or invalid response from LLM
-            if not response_text or len(response_text.strip()) < 3:
-                raise ValueError(f"LLM returned an empty or invalid response: '{response_text}'. The model may be overloaded or the query may not be suitable for planning.")
+        if not response_text or len(response_text.strip()) < 3:
+            raise RuntimeError(
+                f"LLM returned an empty or invalid response: '{response_text}'. "
+                "The model may be overloaded or the query may not be suitable for planning."
+            )
 
-            json_str = response_text
+        plan_object = robust_json_parse(response_text)
 
-            # Look for ```json block ANYWHERE in the response (not just at start)
-            # Some LLMs add preamble text before the JSON block
-            if "```json" in response_text:
-                match = re.search(r"```json\s*\n?(.*?)\n?\s*```", response_text, re.DOTALL)
-                if match:
-                    json_str = match.group(1).strip()
-            elif "```" in response_text:
-                # Also handle generic ``` code blocks without json specifier
-                match = re.search(r"```\s*\n?(.*?)\n?\s*```", response_text, re.DOTALL)
-                if match:
-                    json_str = match.group(1).strip()
+        if plan_object is None:
+            # Inject the parse failure back to the LLM and retry once.
+            app_logger.warning("Strategic plan JSON parse failed on first attempt. Retrying with error context.")
+            yield self.executor._format_sse_with_depth({
+                "step": "System Correction", "type": "workaround",
+                "details": "Strategic plan response was not valid JSON. Retrying with error context."
+            })
+            retry_prompt = planning_prompt + (
+                "\n\nIMPORTANT: Your previous response could not be parsed as valid JSON.\n"
+                f"Partial response received:\n---\n{response_text[:400]}\n---\n"
+                "You MUST respond with ONLY a valid JSON array of phase objects. "
+                "No explanatory text, no markdown fences, no trailing commas."
+            )
+            yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
+            response_text, _, _ = await self.executor._call_llm_and_update_tokens(
+                prompt=retry_prompt,
+                reason=f"Generating strategic meta-plan (parse-error retry)",
+                disabled_history=True,
+                active_prompt_name_for_filter=self.executor.active_prompt_name,
+                source=self.executor.source,
+                current_provider=strategic_provider,
+                current_model=strategic_model,
+                planning_phase="strategic"
+            )
+            yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
+            plan_object = robust_json_parse(response_text)
 
-            # Validate json_str before parsing
-            if not json_str or len(json_str.strip()) < 2:
-                raise ValueError(f"Could not extract valid JSON from LLM response. Raw response: '{response_text[:200]}'")
+        if plan_object is None:
+            raise RuntimeError(
+                f"Failed to generate a valid meta-plan after 2 attempts. "
+                f"Last response: {response_text[:200]}"
+            )
 
-            plan_object = json.loads(json_str)
+        if isinstance(plan_object, dict) and plan_object.get("plan_type") == "conversational":
+            self.executor.is_conversational_plan = True
+            self.executor.temp_data_holder = plan_object.get("response", "I'm sorry, I don't have a response for that.")
+            event_data = {"step": "Conversational Response Identified", "type": "system_message", "details": self.executor.temp_data_holder}
+            self.executor._log_system_event(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
+            return
 
-            if isinstance(plan_object, dict) and plan_object.get("plan_type") == "conversational":
-                self.executor.is_conversational_plan = True
-                self.executor.temp_data_holder = plan_object.get("response", "I'm sorry, I don't have a response for that.")
-                event_data = {"step": "Conversational Response Identified", "type": "system_message", "details": self.executor.temp_data_holder}
-                self.executor._log_system_event(event_data)
-                yield self.executor._format_sse_with_depth(event_data)
-                return
+        plan_object_is_dict = isinstance(plan_object, dict)
+        is_direct_tool = plan_object_is_dict and "tool_name" in plan_object
+        is_direct_prompt = plan_object_is_dict and ("prompt_name" in plan_object or "executable_prompt" in plan_object)
 
-            plan_object_is_dict = isinstance(plan_object, dict)
-            is_direct_tool = plan_object_is_dict and "tool_name" in plan_object
-            is_direct_prompt = plan_object_is_dict and ("prompt_name" in plan_object or "executable_prompt" in plan_object)
+        if is_direct_tool or is_direct_prompt:
+            event_data = {
+                "step": "System Correction",
+                "type": "workaround",
+                "details": "Planner returned a direct action instead of a plan. System is correcting the format."
+            }
+            self.executor._log_system_event(event_data)
+            yield self.executor._format_sse_with_depth(event_data)
 
-            if is_direct_tool or is_direct_prompt:
-                event_data = {
-                    "step": "System Correction",
-                    "type": "workaround",
-                    "details": "Planner returned a direct action instead of a plan. System is correcting the format."
-                }
-                self.executor._log_system_event(event_data)
-                yield self.executor._format_sse_with_depth(event_data)
-
-                phase = {
-                    "phase": 1,
-                    "goal": f"Execute the action for the user's request: '{self.executor.original_user_input}'",
-                    "arguments": plan_object.get("arguments", {})
-                }
-
-                if is_direct_tool:
-                    phase["relevant_tools"] = [plan_object["tool_name"]]
-                elif is_direct_prompt:
-                    phase["executable_prompt"] = plan_object.get("prompt_name") or plan_object.get("executable_prompt")
-
-                self.executor.meta_plan = [phase]
-            elif not isinstance(plan_object, list) or not plan_object:
-                raise ValueError("LLM response for meta-plan was not a non-empty list.")
-            else:
-                self.executor.meta_plan = plan_object
-
-        except (json.JSONDecodeError, ValueError) as e:
-            raise RuntimeError(f"Failed to generate a valid meta-plan from the LLM. Response: {response_text}. Error: {e}")
+            phase = {
+                "phase": 1,
+                "goal": f"Execute the action for the user's request: '{self.executor.original_user_input}'",
+                "arguments": plan_object.get("arguments", {})
+            }
+            if is_direct_tool:
+                phase["relevant_tools"] = [plan_object["tool_name"]]
+            elif is_direct_prompt:
+                phase["executable_prompt"] = plan_object.get("prompt_name") or plan_object.get("executable_prompt")
+            self.executor.meta_plan = [phase]
+        elif not isinstance(plan_object, list) or not plan_object:
+            raise RuntimeError(
+                f"LLM response for meta-plan was not a non-empty list. "
+                f"Got type: {type(plan_object).__name__}. Response: {response_text[:200]}"
+            )
+        else:
+            self.executor.meta_plan = plan_object
 
         # --- NORMALIZATION: Convert all template syntaxes to canonical format ---
         if self.executor.meta_plan:

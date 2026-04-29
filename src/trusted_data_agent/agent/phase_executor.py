@@ -17,6 +17,7 @@ from trusted_data_agent.agent.prompts import (
 from trusted_data_agent.agent import orchestrators
 from trusted_data_agent.agent.response_models import CanonicalResponse
 from trusted_data_agent.core.utils import get_argument_by_canonical_name
+from trusted_data_agent.agent.json_utils import robust_json_parse
 
 
 if TYPE_CHECKING:
@@ -92,15 +93,8 @@ class CorrectionStrategy(ABC):
             final_answer_text = response_str.split("FINAL_ANSWER:", 1)[1].strip()
             return {"FINAL_ANSWER": final_answer_text}, events
 
-        try:
-            json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", response_str, re.DOTALL)
-            if not json_match: raise json.JSONDecodeError("No JSON object found", response_str, 0)
-
-            json_str = json_match.group(1) or json_match.group(2)
-            if not json_str: raise json.JSONDecodeError("Extracted JSON is empty", response_str, 0)
-
-            corrected_data = json.loads(json_str.strip())
-
+        corrected_data = robust_json_parse(response_str)
+        if isinstance(corrected_data, dict):
             if corrected_data.get("tool_name") == "TDA_LLMTask" and extra_args_for_llm_task:
                 if "arguments" not in corrected_data:
                     corrected_data["arguments"] = {}
@@ -121,7 +115,7 @@ class CorrectionStrategy(ABC):
                 events.append( ({"step": "System Self-Correction", "type": "workaround", "details": {"summary": "LLM proposed new arguments.", "details": new_args}}, None) )
                 return corrected_action, events
 
-        except (json.JSONDecodeError, TypeError):
+        else:
             events.append( ({"step": "System Self-Correction", "type": "error", "details": {"summary": "LLM failed to provide a valid JSON correction.", "details": response_str}}, None) )
 
         return None, events
@@ -1979,42 +1973,27 @@ class PhaseExecutor:
         if updated_session:
             yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id, "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0) }, "token_update")
 
-        try:
-            json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", response_text, re.DOTALL)
-            if not json_match: raise ValueError("No JSON object found in refinement response.")
-
-            json_str = json_match.group(1) or json_match.group(2)
-            if not json_str: raise ValueError("Extracted JSON string is empty.")
-
-            corrected_args = json.loads(json_str.strip())
-
-            if isinstance(corrected_args, dict):
-                if is_llm_task_in_loop and focused_data_payload is not None:
-                    corrected_args['data'] = focused_data_payload
-                    app_logger.info("Restored focused 'data' payload after argument refinement.")
-
-                action['arguments'] = corrected_args
-                app_logger.debug(f"Argument refinement successful. New args for '{tool_name}': {corrected_args}")
-                yield self.executor._format_sse_with_depth({
-                    "step": "System Correction",
-                    "type": "workaround",
-                    "details": {
-                        "summary": f"Arguments for '{tool_name}' proactively corrected.",
-                        "correction_type": "argument_refinement_applied",
-                        "new_arguments": corrected_args
-                    }
-                })
-            else:
-                 app_logger.warning("Argument refinement failed: LLM did not return a valid dictionary.")
-                 if is_llm_task_in_loop and focused_data_payload is not None:
-                     action['arguments']['data'] = focused_data_payload
-                     app_logger.debug("Restored focused 'data' payload after failed refinement.")
-
-        except (json.JSONDecodeError, ValueError, AttributeError) as e:
-            app_logger.error(f"Failed to parse argument refinement response: {e}. Original arguments will be used. Response: {response_text}")
+        corrected_args = robust_json_parse(response_text)
+        if isinstance(corrected_args, dict):
+            if is_llm_task_in_loop and focused_data_payload is not None:
+                corrected_args['data'] = focused_data_payload
+                app_logger.info("Restored focused 'data' payload after argument refinement.")
+            action['arguments'] = corrected_args
+            app_logger.debug(f"Argument refinement successful. New args for '{tool_name}': {corrected_args}")
+            yield self.executor._format_sse_with_depth({
+                "step": "System Correction",
+                "type": "workaround",
+                "details": {
+                    "summary": f"Arguments for '{tool_name}' proactively corrected.",
+                    "correction_type": "argument_refinement_applied",
+                    "new_arguments": corrected_args
+                }
+            })
+        else:
+            app_logger.warning(f"Argument refinement failed: could not parse JSON response. Original arguments will be used. Response: {response_text[:200]}")
             if is_llm_task_in_loop and focused_data_payload is not None:
                 action['arguments']['data'] = focused_data_payload
-                app_logger.debug("Restored focused 'data' payload after refinement parsing error.")
+                app_logger.debug("Restored focused 'data' payload after failed refinement.")
 
 
     async def _execute_tool(self, action: dict, phase: dict, is_fast_path: bool = False):
@@ -2613,80 +2592,104 @@ class PhaseExecutor:
         if "FINAL_ANSWER:" in response_text.upper() or "SYSTEM_ACTION_COMPLETE" in response_text.upper():
             return "SYSTEM_ACTION_COMPLETE", input_tokens, output_tokens
 
-        try:
-            json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", response_text, re.DOTALL)
-            if not json_match: raise json.JSONDecodeError("No JSON object found", response_text, 0)
+        raw_action = robust_json_parse(response_text)
 
-            json_str = json_match.group(1) or json_match.group(2)
-            if not json_str: raise json.JSONDecodeError("Extracted JSON is empty", response_text, 0)
+        if raw_action is None:
+            # Inject the parse failure into the system prompt and retry once.
+            app_logger.warning("Tactical action JSON parse failed. Retrying with error context.")
+            retry_system_prompt = tactical_system_prompt + (
+                "\n\nIMPORTANT: Your previous response could not be parsed as valid JSON.\n"
+                f"Partial response received:\n---\n{response_text[:400]}\n---\n"
+                "You MUST respond with ONLY a single valid JSON object for the tool or prompt call."
+            )
+            response_text, _, _ = await self.executor._call_llm_and_update_tokens(
+                prompt="Determine the next action based on the instructions and state provided in the system prompt.",
+                reason=f"Deciding tactical action (parse-error retry)",
+                system_prompt_override=retry_system_prompt,
+                disabled_history=True,
+                source=self.executor.source,
+                current_provider=tactical_provider,
+                current_model=tactical_model,
+                planning_phase="tactical"
+            )
+            raw_action = robust_json_parse(response_text)
 
+        if raw_action is None:
+            raise RuntimeError(
+                f"Failed to get a valid JSON action from the tactical LLM after 2 attempts. "
+                f"Last response: {response_text[:200]}"
+            )
 
-            raw_action = json.loads(json_str.strip())
+        if not isinstance(raw_action, dict):
+            raise RuntimeError(
+                f"Tactical LLM returned a non-object JSON value. "
+                f"Expected a dict, got {type(raw_action).__name__}. Response: {response_text[:200]}"
+            )
 
-            action_details = raw_action
-            tool_name_synonyms = ["tool_name", "name", "tool", "action_name"]
-            prompt_name_synonyms = ["prompt_name", "prompt"]
-            arg_synonyms = ["arguments", "args", "tool_input", "action_input", "parameters"]
+        action_details = raw_action
+        tool_name_synonyms = ["tool_name", "name", "tool", "action_name"]
+        prompt_name_synonyms = ["prompt_name", "prompt"]
+        arg_synonyms = ["arguments", "args", "tool_input", "action_input", "parameters"]
 
-            possible_wrapper_keys = ["action", "tool_call", "tool", "prompt_call", "prompt"]
-            for key in possible_wrapper_keys:
-                if key in action_details and isinstance(action_details[key], dict):
-                    action_details = action_details[key]
-                    break
+        possible_wrapper_keys = ["action", "tool_call", "tool", "prompt_call", "prompt"]
+        for key in possible_wrapper_keys:
+            if key in action_details and isinstance(action_details[key], dict):
+                action_details = action_details[key]
+                break
 
-            found_tool_name = None
-            for key in tool_name_synonyms:
-                if key in action_details:
-                    found_tool_name = action_details.pop(key)
-                    break
+        found_tool_name = None
+        for key in tool_name_synonyms:
+            if key in action_details:
+                found_tool_name = action_details.pop(key)
+                break
 
-            found_prompt_name = None
-            for key in prompt_name_synonyms:
-                if key in action_details:
-                    found_prompt_name = action_details.pop(key)
-                    break
+        found_prompt_name = None
+        for key in prompt_name_synonyms:
+            if key in action_details:
+                found_prompt_name = action_details.pop(key)
+                break
 
-            found_args = None
-            for key in arg_synonyms:
-                if key in action_details and isinstance(action_details[key], dict):
-                    found_args = action_details[key]
-                    break
+        found_args = None
+        for key in arg_synonyms:
+            if key in action_details and isinstance(action_details[key], dict):
+                found_args = action_details[key]
+                break
 
-            if found_args is None:
-                if isinstance(action_details, dict) and not any(k in action_details for k in tool_name_synonyms + prompt_name_synonyms):
-                    found_args = action_details
+        if found_args is None:
+            if isinstance(action_details, dict) and not any(k in action_details for k in tool_name_synonyms + prompt_name_synonyms):
+                found_args = action_details
 
-            normalized_action = {
-                "tool_name": found_tool_name,
-                "prompt_name": found_prompt_name,
-                "arguments": found_args if isinstance(found_args, dict) else {}
-            }
+        normalized_action = {
+            "tool_name": found_tool_name,
+            "prompt_name": found_prompt_name,
+            "arguments": found_args if isinstance(found_args, dict) else {}
+        }
 
+        if not normalized_action.get("tool_name") and not normalized_action.get("prompt_name"):
+            if len(relevant_tools) == 1:
+                normalized_action["tool_name"] = relevant_tools[0]
+                self.executor.events_to_yield.append(self.executor._format_sse_with_depth({
+                    "step": "System Correction",
+                    "type": "workaround",
+                    "correction_type": "inferred_tool_name",
+                    "details": f"LLM omitted tool_name. System inferred '{relevant_tools[0]}'."
+                }))
+            elif executable_prompt:
+                normalized_action["prompt_name"] = executable_prompt
+                self.executor.events_to_yield.append(self.executor._format_sse_with_depth({
+                    "step": "System Correction",
+                    "type": "workaround",
+                    "correction_type": "inferred_prompt_name",
+                    "details": f"LLM omitted prompt_name. System inferred '{executable_prompt}'."
+                }))
 
-            if not normalized_action.get("tool_name") and not normalized_action.get("prompt_name"):
-                if len(relevant_tools) == 1:
-                    normalized_action["tool_name"] = relevant_tools[0]
-                    self.executor.events_to_yield.append(self.executor._format_sse_with_depth({
-                        "step": "System Correction",
-                        "type": "workaround",
-                        "correction_type": "inferred_tool_name",
-                        "details": f"LLM omitted tool_name. System inferred '{relevant_tools[0]}'."
-                    }))
-                elif executable_prompt:
-                    normalized_action["prompt_name"] = executable_prompt
-                    self.executor.events_to_yield.append(self.executor._format_sse_with_depth({
-                        "step": "System Correction",
-                        "type": "workaround",
-                        "correction_type": "inferred_prompt_name",
-                        "details": f"LLM omitted prompt_name. System inferred '{executable_prompt}'."
-                    }))
+        if not normalized_action.get("tool_name") and not normalized_action.get("prompt_name"):
+            raise RuntimeError(
+                f"Could not determine tool_name or prompt_name from tactical LLM response. "
+                f"Response: {response_text[:200]}"
+            )
 
-            if not normalized_action.get("tool_name") and not normalized_action.get("prompt_name"):
-                 raise ValueError("Could not determine tool_name or prompt_name from LLM response.")
-
-            return normalized_action, input_tokens, output_tokens
-        except (json.JSONDecodeError, ValueError) as e:
-            raise RuntimeError(f"Failed to get a valid JSON action from the tactical LLM. Response: {response_text}. Error: {e}")
+        return normalized_action, input_tokens, output_tokens
 
     def _is_date_query_candidate(self, command: dict) -> tuple[bool, str, bool]:
         """Checks if a command is a candidate for the date-range orchestrator."""
@@ -2745,13 +2748,8 @@ class PhaseExecutor:
         # --- MODIFICATION END ---
         if updated_session:
             yield self.executor._format_sse_with_depth({ "statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id, "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0) }, "token_update")
-        try:
-            json_match = re.search(r"```json\s*\n(.*?)\n\s*```|(\{.*\})", response_str, re.DOTALL)
-            if not json_match: raise json.JSONDecodeError("No JSON found in LLM response", response_str, 0)
-            json_str = json_match.group(1) or json_match.group(2)
-            self.executor.temp_data_holder = json.loads(json_str)
-        except (json.JSONDecodeError, KeyError, AttributeError):
-            self.executor.temp_data_holder = {'type': 'single', 'phrase': self.executor.original_user_input}
+        parsed = robust_json_parse(response_str)
+        self.executor.temp_data_holder = parsed if isinstance(parsed, dict) else {'type': 'single', 'phrase': self.executor.original_user_input}
 
 
     async def _recover_from_phase_failure(self, failed_phase_goal: str):
@@ -2826,41 +2824,32 @@ class PhaseExecutor:
         if updated_session:
             yield self.executor._format_sse_with_depth({"statement_input": input_tokens, "statement_output": output_tokens, "turn_input": self.executor.turn_input_tokens, "turn_output": self.executor.turn_output_tokens, "total_input": updated_session.get("input_tokens", 0), "total_output": updated_session.get("output_tokens", 0), "call_id": call_id, "cost_usd": self.executor._last_call_metadata.get("cost_usd", 0)}, "token_update")
 
-        try:
-            json_match = re.search(r"```json\s*\n(.*?)```|(\[.*?\]|\{.*?\})", response_text, re.DOTALL)
-            if not json_match:
-                raise ValueError("No valid JSON plan or action found in the recovery response.")
+        plan_object = robust_json_parse(response_text)
+        if plan_object is None:
+            raise RuntimeError(f"LLM-based recovery failed: could not parse JSON from response. Response: {response_text[:200]}")
 
-            json_str = next(g for g in json_match.groups() if g is not None)
-            if not json_str:
-                 raise ValueError("Extracted JSON string for recovery plan is empty.")
+        if isinstance(plan_object, dict) and ("tool_name" in plan_object or "prompt_name" in plan_object):
+            app_logger.warning("Recovery LLM returned a direct action; wrapping it in a plan.")
+            tool_name = plan_object.get("tool_name") or plan_object.get("prompt_name")
+            new_plan = [{
+                "phase": 1,
+                "goal": f"Recovered plan: Execute the action for the user's request: '{self.executor.original_user_input}'",
+                "relevant_tools": [tool_name],
+                "arguments": plan_object.get("arguments", {})
+            }]
+        elif isinstance(plan_object, list):
+            new_plan = plan_object
+        else:
+            raise RuntimeError(
+                f"LLM-based recovery failed: response was not a plan list or action object. "
+                f"Got type: {type(plan_object).__name__}. Response: {response_text[:200]}"
+            )
 
-            plan_object = json.loads(json_str.strip())
+        yield self.executor._format_sse_with_depth({"step": "Recovery Plan Generated", "type": "system_message", "details": new_plan})
 
-
-            if isinstance(plan_object, dict) and ("tool_name" in plan_object or "prompt_name" in plan_object):
-                app_logger.warning("Recovery LLM returned a direct action; wrapping it in a plan.")
-                tool_name = plan_object.get("tool_name") or plan_object.get("prompt_name")
-                new_plan = [{
-                    "phase": 1,
-                    "goal": f"Recovered plan: Execute the action for the user's request: '{self.executor.original_user_input}'",
-                    "relevant_tools": [tool_name], # Use the extracted tool_name
-                    "arguments": plan_object.get("arguments", {}) # Include arguments
-                }]
-
-            elif isinstance(plan_object, list):
-                new_plan = plan_object
-            else:
-                raise ValueError("Recovered plan is not a valid list or action object.")
-
-            yield self.executor._format_sse_with_depth({"step": "Recovery Plan Generated", "type": "system_message", "details": new_plan})
-
-            self.executor.meta_plan = new_plan
-            self.executor.current_phase_index = 0
-            self.executor.turn_action_history.append({"action": "RECOVERY_REPLAN", "result": {"status": "success"}})
-
-        except (json.JSONDecodeError, ValueError) as e:
-            raise RuntimeError(f"LLM-based recovery failed. The LLM did not return a valid new plan. Response: {response_text}. Error: {e}")
+        self.executor.meta_plan = new_plan
+        self.executor.current_phase_index = 0
+        self.executor.turn_action_history.append({"action": "RECOVERY_REPLAN", "result": {"status": "success"}})
 
     async def _attempt_tool_self_correction(self, failed_action: dict, error_result: dict) -> tuple[dict | None, list]:
         """
