@@ -1,6 +1,6 @@
 ---
 name: fusion-hardening
-description: Deep knowledge skill for analyzing and hardening the Fusion Optimizer (tool_enabled) execution pipeline. Covers strategic planning, plan rewrite passes, tactical execution, error recovery, orchestrators, enterprise safeguards, execution trace analysis, and prompt engineering guidance.
+description: Deep knowledge skill for analyzing and hardening the Fusion Optimizer (tool_enabled) execution pipeline. Covers strategic planning, 10 plan rewrite passes, tactical execution, error recovery, orchestrators, enterprise safeguards, execution trace analysis, and prompt engineering guidance.
 user-invocable: true
 ---
 
@@ -20,8 +20,9 @@ This skill provides deep, implementation-level knowledge of the Uderia Fusion Op
 
 **Core files:**
 - `src/trusted_data_agent/agent/executor.py` - Main orchestrator, proactive re-planning, context distillation
-- `src/trusted_data_agent/agent/planner.py` - Strategic planning, 9 rewrite passes, plan normalization
-- `src/trusted_data_agent/agent/phase_executor.py` - Tactical execution, fast-path, 3-tier error recovery
+- `src/trusted_data_agent/agent/planner.py` - Strategic planning, 10 rewrite passes, plan normalization
+- `src/trusted_data_agent/agent/phase_executor.py` - Tactical execution, fast-path, 3-tier error recovery with accumulated correction history
+- `src/trusted_data_agent/agent/json_utils.py` - `robust_json_parse()`: three-tier JSON extraction (direct → json_repair → None + retry) used at all LLM parse sites
 - `src/trusted_data_agent/agent/orchestrators.py` - Date range, column iteration, hallucinated loop orchestrators
 - `src/trusted_data_agent/agent/profile_prompt_resolver.py` - Profile-aware prompt resolution
 
@@ -172,16 +173,17 @@ User Query
     |       |--- _normalize_plan_syntax() - Template canonicalization
     |       |--- _inject_temporal_context() - Add TDA_CurrentDate for temporal queries
     |
-    |--- [2b-2j] 9 Plan Rewrite Passes (in order):
+    |--- [2b-2k] 10 Plan Rewrite Passes (in order):
     |       0. _rewrite_plan_for_temporal_data_flow()
     |       1. _rewrite_plan_for_sql_consolidation()
-    |       2. _rewrite_plan_for_multi_loop_synthesis()
-    |       3. _rewrite_plan_for_corellmtask_loops()
-    |       4. _rewrite_plan_for_date_range_loops()
-    |       5. _validate_and_correct_plan()
-    |       6. _hydrate_plan_from_previous_turn()
-    |       7. _rewrite_plan_for_empty_context_report()
-    |       8. _ensure_final_report_phase()
+    |       2. _rewrite_llm_filter_deloop()            ← NEW: converts TDA_LLMFilter loop→standalone
+    |       3. _rewrite_plan_for_multi_loop_synthesis()
+    |       4. _rewrite_plan_for_corellmtask_loops()
+    |       5. _rewrite_plan_for_date_range_loops()
+    |       6. _validate_and_correct_plan()
+    |       7. _hydrate_plan_from_previous_turn()
+    |       8. _rewrite_plan_for_empty_context_report()
+    |       9. _ensure_final_report_phase()
     |
     v
 [3] Proactive Re-Planning Check (executor.py:~3989)
@@ -435,6 +437,8 @@ If attempt < max_retries - 1 (max 2 correction attempts within 3 retries):
     |
     v
 CorrectionHandler.attempt_correction() (phase_executor.py:268)
+    |--- Appends to executor.correction_history (Reflexion pattern):
+    |       { attempt, tool_name, arguments, error[:200], strategy }
     |--- Iterates strategies in order:
     |
     |--- [Tier 1] TableNotFoundStrategy (L125)
@@ -463,6 +467,27 @@ Correction result:
     |--- None --> Abort ("Unable to find a correction")
 ```
 
+**Reflexion Pattern — Accumulated Correction History:**
+
+Every failed attempt within a phase is appended to `executor.correction_history` (list), not just the most recent one. This prevents oscillation where the tactical LLM alternates between two bad choices. Sources that append to the history:
+- `CorrectionHandler.attempt_correction()` — after each strategy call
+- Loop detection (`_execute_standard_phase`) — with `strategy: "LoopDetection"`
+- Chart validation — with `strategy: "ChartValidation"`
+
+The list is cleared at the start of each new phase. `_build_correction_history_section()` (phase_executor.py) renders it into `{correction_history_section}` in `WORKFLOW_TACTICAL_PROMPT`:
+
+```
+The following tool calls have ALREADY been attempted in this phase and FAILED:
+  • Attempt 1: base_readQuery({"sql": "SELECT TOP 1 ..."})
+    Error: Table 'product' does not exist
+  • Attempt 2: base_readQuery({"sql": "SELECT TOP 1 ... FROM products ..."})
+    Error: Syntax error near 'TOP'
+You MUST NOT repeat any of the above failed calls. Analyze the errors and choose a fundamentally different approach.
+```
+
+Prior to this (single-overwrite `last_failed_action_info`), if the LLM oscillated between two bad choices, only the last error was visible. Now all failures are accumulated, making the "do not repeat" directive enforceable.
+```
+
 ---
 
 ## Section 2: Enterprise Safeguards Reference
@@ -487,7 +512,7 @@ Correction result:
 - Only 1 re-plan attempt. If second plan still mixes, it proceeds as-is.
 - Granted prompts bypass entirely (configurable).
 
-**Cross-references:** Re-planned version goes through all 9 rewrite passes again.
+**Cross-references:** Re-planned version goes through all 10 rewrite passes again.
 
 **Trace signature:** "Re-planning for Efficiency" event.
 
@@ -979,6 +1004,26 @@ grep "System Self-Correction" session.json
 
 ---
 
+### Anti-Pattern 12: TDA_LLMFilter Placed in a Loop Phase
+
+**Symptom:** All loop iterations fail with `"TDA_LLMFilter requires 'goal' and 'data_to_filter' arguments."` Phase produces no output; downstream phases run without expected scoping (e.g., base_tableList returns all tables across all databases).
+
+**Root cause:** The strategic planner placed TDA_LLMFilter as a `type: "loop"` phase. `redundant_argument_pruning` in `phase_executor.py` strips `data_to_filter` because its value matches the `loop_over_key` — and individual loop items don't carry a `data_to_filter` key, so every iteration fails.
+
+**Correct form:** TDA_LLMFilter must be a standalone (non-loop) phase:
+```json
+{ "goal": "Find the database matching ...", "data_to_filter": "result_of_phase_1" }
+```
+`_resolve_arguments()` resolves `"result_of_phase_N"` to the actual phase result at execution time.
+
+**Fix (deterministic):** Pass 2 `_rewrite_llm_filter_deloop` (planner.py) detects this pattern and converts the loop phase to a standalone filter phase before execution. The FILTERING RULE in `WORKFLOW_META_PLANNING_PROMPT.txt` already forbids this; the pass enforces it in code regardless of LLM output.
+
+**Trace indicator (before fix):** All loop iterations show `"TDA_LLMFilter requires 'goal' and 'data_to_filter' arguments."` in correction history. Phase result empty. Next phase returns unscoped data (e.g., 1270+ tables).
+
+**Trace indicator (after fix):** `plan_rewrite_diff` event for pass `llm_filter_deloop` with `delta: -0` (phase count unchanged, type changed). Phase shows single TDA_LLMFilter call, no loop items.
+
+---
+
 ## Section 5.1: Model Selection for Structured Workflows (Feb 2026)
 
 ### Lower-Intelligence Models Outperform for MCP Prompts
@@ -1135,7 +1180,7 @@ Based on query type:
 From session file, extract:
 ```
 1. raw_llm_plan (workflow_history[N].raw_llm_plan)  ← LLM's actual output before any preprocessing/rewrites
-2. original_plan (workflow_history[N].original_plan) ← Plan after all 9 rewrite passes (what was executed)
+2. original_plan (workflow_history[N].original_plan) ← Plan after all 10 rewrite passes (what was executed)
 3. execution_trace (workflow_history[N].execution_trace)
 4. Token counts (turn_input_tokens, turn_output_tokens)
 5. tools_used list
@@ -1381,6 +1426,7 @@ The shared analyzer (`lib/prompt_analyzer.py`) applies fusion hardening patterns
 |----------------|---------------|-----------------|
 | `temporal_data_flow` | `_rewrite_plan_for_temporal_data_flow` | "temporal data flow", "temporal preprocessing" |
 | `sql_consolidation` | `_rewrite_plan_for_sql_consolidation` | "sql consolidation", "sql plan was inefficient" |
+| `llm_filter_deloop` | `_rewrite_llm_filter_deloop` | "Converted TDA_LLMFilter loop phase", "to standalone filter phase" |
 | `multi_loop_synthesis` | `_rewrite_plan_for_multi_loop_synthesis` | "multi-loop", "distillation step" |
 | `date_range_wiring` | `_rewrite_plan_for_date_range_loops` | "date range natively", "wired start_date", "unwrapped llm-generated loop" |
 | `date_range_loop` | `_rewrite_plan_for_date_range_loops` | "process each item in the date range" |
@@ -1431,6 +1477,13 @@ python test/performance/mcp_tool_test.py --profile-tag OPTIM --tag column-scope
 ---
 
 ## Changelog
+
+**v1.6.0 (2026-04-29)**
+- **Pass 2: `llm_filter_deloop`** — new deterministic rewrite pass inserted before `multi_loop_synthesis`; converts TDA_LLMFilter loop phases to standalone filter phases; prevents `redundant_argument_pruning` from stripping `data_to_filter`; pass count updated to 10 throughout
+- **Anti-Pattern 12: TDA_LLMFilter in loop** — root cause, symptoms, trace indicators, and fix documented
+- **Reflexion pattern** — `correction_history` list replaces `last_failed_action_info` string; all failed attempts per phase accumulated and rendered into `{correction_history_section}` in WORKFLOW_TACTICAL_PROMPT; prevents LLM oscillation across retries
+- **Universal JSON parsing hardening** — `json_utils.py:robust_json_parse()` replaces bare `json.loads` at all LLM response parse sites; handles markdown fences, trailing commas, truncated output, single-quoted strings via `json_repair`; `json_utils.py` added to core files list
+- Updated canonical rewrite pass names table with `llm_filter_deloop`
 
 **v1.5.0 (2026-02-17)**
 - **Live tool event detection**: Analyzer now captures `tool_intent`/`tool_result` SSE events from phase_executor and orchestrators (previously invisible — tool names only came from named SSE events or session trace)
