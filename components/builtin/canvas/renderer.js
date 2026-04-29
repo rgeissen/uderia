@@ -2348,6 +2348,7 @@ async function autoPopOutCanvas(spec) {
     applyCanvasLightClass(panel);
 
     // Show the panel with animation
+    const alreadyOpen = panel.classList.contains('canvas-split--open');
     panel.style.display = 'flex';
     panel.offsetHeight; // Force reflow
     panel.classList.add('canvas-split--open');
@@ -2371,9 +2372,13 @@ async function autoPopOutCanvas(spec) {
     // creating CodeMirror — rendering during the transition triggers the
     // "Measure loop restarted >5 times" warning and leaves the editor at
     // content height instead of filling the panel.
-    await new Promise(resolve => {
-        panel.addEventListener('transitionend', resolve, { once: true });
-    });
+    // Skip the wait when the panel was already open — classList.add() is a no-op
+    // in that case so no transition fires and the Promise would never resolve.
+    if (!alreadyOpen) {
+        await new Promise(resolve => {
+            panel.addEventListener('transitionend', resolve, { once: true });
+        });
+    }
 
     // Render a full canvas into the split panel
     const splitCanvasState = await renderCanvasFull(renderTarget.id, spec);

@@ -438,6 +438,30 @@ function _restoreHandlerState(h) {
 }
 
 /**
+ * Restore canvas split panel for a session if it had one open when last left.
+ * Canvas spec is persisted to localStorage (canvas_state_<sessionId>) whenever
+ * the panel is closed during a session switch.  Only reopens when canvasSplitMode
+ * is active so the panel is available.
+ */
+function _restoreCanvasState(sessionId) {
+    try {
+        const saved = localStorage.getItem(`canvas_state_${sessionId}`);
+        if (!saved || !state.canvasSplitMode) return;
+        const spec = JSON.parse(saved);
+        import('/api/v1/components/canvas/renderer').then(({ renderCanvas }) => {
+            const tempId = `canvas-restore-${Date.now()}`;
+            const tempDiv = document.createElement('div');
+            tempDiv.id = tempId;
+            tempDiv.style.display = 'none';
+            document.body.appendChild(tempDiv);
+            renderCanvas(tempId, { component: 'canvas', ...spec }).finally(() => {
+                tempDiv.remove();
+            });
+        }).catch(() => { /* canvas component unavailable */ });
+    } catch (e) { /* parse error or unavailable */ }
+}
+
+/**
  * Replays buffered REST events into the Live Status window for a child session.
  * Contains its own event-type routing logic (mirrors _dispatchRestEvent from
  * notifications.js) to avoid circular dependency issues. The replay version
@@ -609,11 +633,16 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         console.log(`[handleLoadSession] Cached full UI state for active session ${previousSessionId}`);
     }
 
-    // Close canvas split panel when switching sessions (prevents cross-session contamination)
+    // Close canvas split panel when switching sessions (prevents cross-session contamination).
+    // Save the canvas spec to localStorage first so we can restore it when switching back.
     try {
         const splitPanel = document.getElementById('canvas-split-panel');
         if (splitPanel && splitPanel.classList.contains('canvas-split--open')) {
-            const { closeSplitPanel } = await import('/api/v1/components/canvas/renderer');
+            const { getOpenCanvasState, closeSplitPanel } = await import('/api/v1/components/canvas/renderer');
+            const canvasState = getOpenCanvasState();
+            if (canvasState && previousSessionId) {
+                localStorage.setItem(`canvas_state_${previousSessionId}`, JSON.stringify(canvasState));
+            }
             closeSplitPanel();
         }
     } catch (e) { /* canvas component may not be loaded */ }
@@ -678,6 +707,9 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         if (nameSpan) {
             updateActiveSessionTitle(nameSpan.textContent.trim());
         }
+
+        // Restore canvas state if this session had one open
+        _restoreCanvasState(sessionId);
 
         DOM.userInput.focus();
         return;
@@ -1054,6 +1086,9 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
             }
         }
 
+        // Restore canvas state if this session had one open
+        _restoreCanvasState(sessionId);
+
         // Mark conversation as initialized after successful session load
         if (window.__conversationInitState) {
             window.__conversationInitState.initialized = true;
@@ -1160,6 +1195,12 @@ export async function handleDeleteSessionClick(deleteButton) {
                 const result = await deleteSession(sessionId);
                 const deletedChildren = result?.deleted_children || [];
                 const wasActiveSession = state.currentSessionId === sessionId || deletedChildren.includes(state.currentSessionId);
+
+                // Clean up persisted canvas state for deleted sessions
+                localStorage.removeItem(`canvas_state_${sessionId}`);
+                for (const childId of deletedChildren) {
+                    localStorage.removeItem(`canvas_state_${childId}`);
+                }
 
                 // Refresh the session list to show archived state.
                 // refreshSessionsList() already handles switching away from the deleted session
