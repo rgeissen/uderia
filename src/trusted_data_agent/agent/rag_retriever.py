@@ -1733,11 +1733,11 @@ class RAGRetriever:
                     where_filter = {"$and": base_filters}
                 
                 # Log collection state before query (debug level)
-                logger.debug(f"Querying collection '{collection_id}' with where_filter, n_results={k * 3}")
+                logger.debug(f"Querying collection '{collection_id}' with where_filter, n_results={k * 10}")
 
                 query_results = collection.query(
                     query_texts=[query],
-                    n_results=k * 3,  # 3x buffer for similarity threshold filtering (was 10x — too aggressive)
+                    n_results=k * 10,  # 10x buffer ensures enough candidates survive similarity threshold filtering
                     where=where_filter,
                     include=["metadatas", "distances", "documents"]
                 )

@@ -386,39 +386,11 @@ class AgentPackManager:
                                 f"(id={existing_prof['id']})"
                             )
 
-                    # After profile removal, check which collections are now orphaned
-                    # (not referenced by any remaining profile)
-                    if orphan_collection_ids:
-                        remaining_profiles = config_manager.get_profiles(user_uuid)
-                        still_used_ids = set()
-                        for rp in remaining_profiles:
-                            for cid in rp.get("ragCollections", []):
-                                if cid != '*':
-                                    still_used_ids.add(int(cid))
-                            for kc in rp.get("knowledgeConfig", {}).get("collections", []):
-                                if kc.get("id"):
-                                    still_used_ids.add(int(kc["id"]))
-
-                        for coll_id in orphan_collection_ids:
-                            if coll_id in still_used_ids:
-                                app_logger.info(f"  Kept collection id={coll_id} (still referenced by another profile)")
-                                continue
-                            # Also check pack-managed status
-                            if pack_db.is_pack_managed("collection", str(coll_id)):
-                                app_logger.info(f"  Kept collection id={coll_id} (still referenced by another pack)")
-                                continue
-                            if retriever:
-                                try:
-                                    success = await retriever.remove_collection(coll_id, user_id=user_uuid)
-                                    if success:
-                                        app_logger.info(f"  Deleted orphaned collection id={coll_id}")
-                                    else:
-                                        app_logger.warning(f"  Collection id={coll_id} not found or already deleted")
-                                except Exception as e:
-                                    app_logger.warning(f"  Failed to delete collection {coll_id}: {e}")
-
                     # Delete orphaned pack installation records whose profiles
-                    # were all just replaced (prevents name dedup creating "(2)", "(3)")
+                    # were all just replaced (prevents name dedup creating "(2)", "(3)").
+                    # Must run BEFORE the orphan collection check so that
+                    # is_pack_managed() returns False for collections that were only
+                    # held by these now-replaced packs (not by any other pack).
                     old_pack_ids = set()
                     for pid in replaced_profile_ids:
                         for pack_info in pack_db.get_packs_for_resource("profile", str(pid)):
@@ -448,6 +420,37 @@ class AgentPackManager:
                                 )
                             finally:
                                 conn_tmp.close()
+
+                    # After profile removal and pack record cleanup, delete collections
+                    # that are now truly orphaned (not referenced by any profile or other pack).
+                    if orphan_collection_ids:
+                        remaining_profiles = config_manager.get_profiles(user_uuid)
+                        still_used_ids = set()
+                        for rp in remaining_profiles:
+                            for cid in rp.get("ragCollections", []):
+                                if cid != '*':
+                                    still_used_ids.add(int(cid))
+                            for kc in rp.get("knowledgeConfig", {}).get("collections", []):
+                                if kc.get("id"):
+                                    still_used_ids.add(int(kc["id"]))
+
+                        for coll_id in orphan_collection_ids:
+                            if coll_id in still_used_ids:
+                                app_logger.info(f"  Kept collection id={coll_id} (still referenced by another profile)")
+                                continue
+                            # Check if referenced by a pack other than the ones just replaced
+                            if pack_db.is_pack_managed("collection", str(coll_id)):
+                                app_logger.info(f"  Kept collection id={coll_id} (still referenced by another pack)")
+                                continue
+                            if retriever:
+                                try:
+                                    success = await retriever.remove_collection(coll_id, user_id=user_uuid)
+                                    if success:
+                                        app_logger.info(f"  Deleted orphaned collection id={coll_id}")
+                                    else:
+                                        app_logger.warning(f"  Collection id={coll_id} not found or already deleted")
+                                except Exception as e:
+                                    app_logger.warning(f"  Failed to delete collection {coll_id}: {e}")
 
                     # Refresh existing_tags after deletions
                     existing_profiles = config_manager.get_profiles(user_uuid)
