@@ -639,10 +639,23 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             # Get MCP server configuration
             mcp_server_id = profile.get('mcpServerId')
             if not mcp_server_id:
-                return {
-                    "status": "error",
-                    "message": f"Profile {profile_id} has no mcpServerId configured"
-                }
+                # Capabilities-only profile: no data source server but platform MCP tools may be active.
+                # Allow activation if at least one platform server tool is enabled for this profile.
+                try:
+                    from trusted_data_agent.core.platform_mcp_registry import has_effective_tools
+                    if not has_effective_tools(profile_id):
+                        return {
+                            "status": "error",
+                            "message": f"Profile {profile_id} has no mcpServerId and no platform MCP tools enabled"
+                        }
+                    app_logger.info(f"Profile {profile_id} has no mcpServerId but platform MCP tools are active — allowing capabilities-only activation")
+                    mcp_server_id = None  # signal to adapter: load platform tools only
+                except Exception as _e:
+                    app_logger.warning(f"Could not check platform MCP tools for profile {profile_id}: {_e}")
+                    return {
+                        "status": "error",
+                        "message": f"Profile {profile_id} has no mcpServerId configured"
+                    }
 
             mcp_servers = config_manager.get_mcp_servers(user_uuid)
             mcp_server = next((s for s in mcp_servers if s.get('id') == mcp_server_id), None)

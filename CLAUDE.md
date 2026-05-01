@@ -1453,8 +1453,9 @@ grep "Token count" logs/app.log
 **The system migrated from file-based config to database schema (Dec 2024)**:
 
 - Old: `tda_config.json` (read-write user config)
-- New: Database tables in `tda_auth.db`
-- Bootstrap: `tda_config.json` is now a read-only template copied on first user login
+- New: Per-user configuration stored as JSON in `user_preferences.preferences_json` (in `tda_auth.db`)
+- Bootstrap: `tda_config.json` is a **read-only** template used only to initialise a new user's `user_preferences` row on first login — it is never written to again
+- **Profiles are stored in `user_preferences.preferences_json`** under the `"profiles"` key — there is no separate `profiles` table. Use `config_manager.get_profiles(user_uuid)` / `get_profile(profile_id, user_uuid)` to read them. To inspect directly: `SELECT preferences_json FROM user_preferences WHERE user_id = '<uuid>';`
 
 Schema files in `schema/`:
 - `00_master.sql` - Database initialization
@@ -2063,6 +2064,51 @@ npx tailwindcss build
 ```
 
 ## Project-Specific Conventions
+
+### Theme-Aware UI Styling (MANDATORY)
+
+**All UI elements must use CSS variables, not hardcoded colours.** The platform supports both dark and light themes; hardcoded Tailwind colour classes (e.g. `text-purple-300/60`, `bg-gray-800`) will break in light mode.
+
+**Required CSS variables:**
+
+| Variable | Purpose |
+|---|---|
+| `var(--text-primary)` | Primary text |
+| `var(--text-muted)` | Secondary / dimmed text |
+| `var(--card-bg)` | Card / panel background |
+| `var(--border-primary)` | Primary border |
+| `var(--border-secondary)` | Subtle border |
+| `var(--bg-overlay)` / `var(--bg-primary)` | Panel overlay backgrounds |
+| `var(--hover-bg-strong)` | Hover state backgrounds |
+| `var(--teradata-orange)` | Brand accent (`#F15F22`) |
+
+**Rules:**
+- **Inline styles**: Use `color: var(--text-primary)`, `border-color: var(--border-primary)`, etc.
+- **Injected CSS** (e.g. renderer `_injectCSS()`): Reference the same CSS variables throughout.
+- **Tailwind utility classes**: Use only for layout/spacing/sizing (`flex`, `gap-2`, `px-3`, `rounded-lg`). Never use Tailwind for colours, backgrounds, or borders on elements that must adapt to the theme.
+- **Accent colours** (purple for scheduler, orange for brand): Use `rgba(...)` with low opacity for backgrounds and explicit hex for text so they degrade gracefully in both themes.
+- **Auth token in JS**: Always use `localStorage.getItem('tda_auth_token')` — never `auth_token`, `jwt_token`, or `window.state.authToken`.
+
+**Example (correct):**
+```javascript
+badge.style.color = 'var(--text-muted, #94a3b8)';
+badge.style.background = 'rgba(168,85,247,0.08)';
+badge.style.borderColor = 'rgba(168,85,247,0.2)';
+```
+
+**Example (wrong — breaks light mode):**
+```javascript
+badge.className = 'text-purple-300/60 bg-purple-500/10 border-purple-500/20';
+```
+
+### Icon Style (MANDATORY)
+
+**All icons must be monochrome industrial-style SVGs. Multi-colour icons and emoji are strictly forbidden in the Uderia UI.**
+
+- **Use only**: inline SVG icons with a single `stroke` or `fill` colour driven by `currentColor` or a single CSS variable. The `ICONS` object in component renderers is the canonical source.
+- **Never use**: emoji characters (⏸ ▶ 🔴 📅 etc.), system icon fonts with colour glyphs, or multi-colour SVGs.
+- **In LLM-facing instructions** (`instructions.json`): explicitly tell the LLM not to use emoji in its text responses. Keep status labels as plain text ("Disabled", "Active") — the component renders the visual state; the LLM response should only carry words.
+- **Rationale**: emoji render differently across platforms/OS, break light/dark theming, and conflict with the platform's neutral enterprise visual identity.
 
 ### Code Organization
 

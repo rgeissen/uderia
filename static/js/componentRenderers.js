@@ -11,6 +11,7 @@
 import { renderChart } from './utils.js';
 import { renderCanvas } from '/api/v1/components/canvas/renderer';
 import { renderKnowledgeGraph } from '/api/v1/components/knowledge_graph/renderer';
+import { renderScheduler } from '/api/v1/components/scheduler/renderer';
 
 // ---------------------------------------------------------------------------
 // Registry
@@ -37,6 +38,9 @@ _renderers.set('canvas', renderCanvas);
 
 // Knowledge Graph — D3.js force-directed graph visualization
 _renderers.set('knowledge_graph', renderKnowledgeGraph);
+
+// Scheduler — interactive scheduling canvas
+_renderers.set('scheduler', renderScheduler);
 
 // ---------------------------------------------------------------------------
 // Public API

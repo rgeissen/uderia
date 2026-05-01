@@ -1,0 +1,40 @@
+{
+  "id": "uderia-browser",
+  "name": "uderia-browser",
+  "display_name": "Uderia Browser",
+  "description": "Headless browser automation via Playwright. Provides navigate, click, fill_form, screenshot, scrape, and extract_data tools.",
+  "version": "1.0.0",
+  "transport": "stdio",
+  "install_type": "builtin",
+  "entry_point": "mcp_servers/builtin/uderia-browser/server.py",
+  "tools": ["navigate", "click", "fill_form", "screenshot", "scrape", "extract_data"],
+  "credential_schema": {},
+  "config_schema": {
+    "ALLOWED_DOMAINS": {
+      "label": "Allowed domains",
+      "description": "Comma-separated domain allowlist (e.g. example.com,docs.company.com). Leave empty to allow all.",
+      "type": "string",
+      "default": ""
+    },
+    "HEADLESS": {
+      "label": "Headless mode",
+      "description": "Run browser in headless mode (recommended for server deployments).",
+      "type": "boolean",
+      "default": true
+    },
+    "PAGE_TIMEOUT_SECONDS": {
+      "label": "Page timeout (seconds)",
+      "description": "Maximum time to wait for page load.",
+      "type": "integer",
+      "default": 30,
+      "min": 5,
+      "max": 120
+    }
+  },
+  "dependencies": ["playwright>=1.40.0"],
+  "setup_command": "playwright install chromium",
+  "requires_docker": false,
+  "requires_user_auth": false,
+  "security_acknowledgment_required": false,
+  "tags": ["browser", "automation", "scraping"]
+}

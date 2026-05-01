@@ -145,6 +145,12 @@ def init_database():
         # Create canvas connector credentials table
         _create_canvas_connector_tables()
 
+        # Create platform MCP server registry tables (admin-governed capability servers)
+        _create_platform_mcp_tables()
+
+        # Create scheduled tasks tables (Track B — autonomous scheduling)
+        _create_scheduled_tasks_tables()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -1615,6 +1621,148 @@ def _create_canvas_connector_tables():
 
     except Exception as e:
         logger.error(f"Error creating canvas connector tables: {e}", exc_info=True)
+
+
+def _create_platform_mcp_tables():
+    """
+    Create platform MCP server registry tables.
+    These tables govern admin-installed capability servers (browser, files, shell, web, google)
+    and are strictly separate from user-configured data source servers.
+    Safe to call multiple times (CREATE TABLE IF NOT EXISTS).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "27_platform_mcp_servers.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 27_platform_mcp_servers.sql")
+        else:
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS mcp_registry_sources (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    enabled INTEGER DEFAULT 1,
+                    is_builtin INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS platform_mcp_servers (
+                    id TEXT PRIMARY KEY,
+                    source_id TEXT NOT NULL REFERENCES mcp_registry_sources(id),
+                    name TEXT NOT NULL,
+                    display_name TEXT,
+                    description TEXT,
+                    version TEXT NOT NULL DEFAULT '0.0.0',
+                    registry_metadata TEXT,
+                    install_spec TEXT,
+                    install_status TEXT DEFAULT 'not_installed',
+                    enabled INTEGER DEFAULT 0,
+                    config TEXT,
+                    credentials TEXT,
+                    available_tools TEXT,
+                    auto_opt_in INTEGER DEFAULT 0,
+                    user_can_opt_out INTEGER DEFAULT 1,
+                    user_can_configure_tools INTEGER DEFAULT 0,
+                    requires_user_auth INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS profile_platform_mcp_settings (
+                    profile_id TEXT NOT NULL,
+                    server_id TEXT NOT NULL REFERENCES platform_mcp_servers(id) ON DELETE CASCADE,
+                    opted_in INTEGER,
+                    user_tools TEXT,
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (profile_id, server_id)
+                );
+                INSERT OR IGNORE INTO mcp_registry_sources (id, name, url, enabled, is_builtin)
+                VALUES ('builtin', 'Uderia Built-in', 'builtin://', 1, 1);
+            """)
+            logger.info("Created platform_mcp_servers tables (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating platform_mcp_servers tables: {e}", exc_info=True)
+
+
+def _create_scheduled_tasks_tables():
+    """
+    Create scheduled task tables for the autonomous scheduling component (Track B).
+    Safe to call multiple times (CREATE TABLE IF NOT EXISTS).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "28_scheduled_tasks.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 28_scheduled_tasks.sql")
+        else:
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                    id TEXT PRIMARY KEY,
+                    user_uuid TEXT NOT NULL,
+                    profile_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    schedule TEXT NOT NULL,
+                    enabled INTEGER DEFAULT 1,
+                    last_run_at TEXT,
+                    last_run_status TEXT,
+                    next_run_at TEXT,
+                    output_channel TEXT,
+                    output_config TEXT,
+                    max_tokens_per_run INTEGER,
+                    overlap_policy TEXT DEFAULT 'skip',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS scheduled_task_runs (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+                    bg_task_id TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    status TEXT,
+                    skip_reason TEXT,
+                    result_summary TEXT,
+                    tokens_used INTEGER,
+                    cost_usd REAL
+                );
+                CREATE TABLE IF NOT EXISTS messaging_identities (
+                    user_uuid TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    platform_user_id TEXT NOT NULL,
+                    access_token TEXT,
+                    refresh_token TEXT,
+                    token_expiry TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (user_uuid, platform)
+                );
+            """)
+            logger.info("Created scheduled_tasks tables (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating scheduled_tasks tables: {e}", exc_info=True)
 
 
 def _run_user_table_migrations():

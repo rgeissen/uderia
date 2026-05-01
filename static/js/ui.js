@@ -1284,6 +1284,13 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
         author.appendChild(restTag);
     }
 
+    if (role === 'user' && source === 'scheduler') {
+        const schedTag = document.createElement('span');
+        schedTag.className = 'scheduled-task-tag';
+        schedTag.textContent = 'Scheduled';
+        author.appendChild(schedTag);
+    }
+
     // Add Session Primer badge for primer messages (both user and assistant)
     if (isSessionPrimer) {
         const primerTag = document.createElement('span');
@@ -2637,7 +2644,12 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             }
             return; // Exit early - we updated existing step, no need to create new one
         } else {
-            console.warn('[LiveStatus] conversation_tool_completed did NOT find executing step for tool:', toolName, '- will create new step instead');
+            // During historical replay this is expected — completed events arrive without prior started steps
+            if (state.isViewingHistoricalTurn) {
+                console.debug('[LiveStatus] Historical replay: creating new step for tool_completed:', toolName);
+            } else {
+                console.warn('[LiveStatus] conversation_tool_completed did NOT find executing step for tool:', toolName, '- will create new step instead');
+            }
         }
     }
 
@@ -6156,11 +6168,18 @@ function performViewSwitch(viewId) {
         console.error(`[UI DEBUG] View with ID '${viewId}' not found!`);
     }
     
-    // 4a. Lazy-load components when entering Components view
+    // 4a. Lazy-load components when entering Platform Components view
     if (viewId === 'components-view') {
         import('./handlers/componentHandler.js').then(({ loadComponentsView }) => {
             loadComponentsView();
         });
+        // If the MCP Servers sub-tab is active, also load it
+        const activePlatformTab = document.querySelector('.platform-component-tab.active');
+        if (activePlatformTab && activePlatformTab.dataset.tab === 'mcp-servers') {
+            if (typeof window.loadPlatformMcpPanel === 'function') {
+                window.loadPlatformMcpPanel();
+            }
+        }
     }
 
     // 4. Initialize dirty tracking when entering configuration view
@@ -8178,3 +8197,42 @@ export async function deleteKnowledgeRepository(collectionId, collectionName) {
         }
     );
 }
+
+/**
+ * Switch between Platform Components sub-tabs (UI Components / MCP Servers).
+ * Called by onclick handlers on the tab buttons in the components-view.
+ */
+window.switchPlatformComponentsTab = function switchPlatformComponentsTab(tabName) {
+    // Update tab button active states
+    document.querySelectorAll('.platform-component-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+
+    // Show/hide content panes
+    document.querySelectorAll('.platform-component-content').forEach(pane => {
+        pane.classList.add('hidden');
+    });
+    const target = document.getElementById(
+        tabName === 'mcp-servers' ? 'platform-content-mcp-servers' : 'platform-content-ui-components'
+    );
+    if (target) target.classList.remove('hidden');
+
+    // Show/hide header action areas
+    const uiActions = document.getElementById('platform-ui-components-actions');
+    const mcpActions = document.getElementById('platform-mcp-servers-actions');
+    if (uiActions) uiActions.classList.toggle('hidden', tabName === 'mcp-servers');
+    if (mcpActions) {
+        mcpActions.classList.toggle('hidden', tabName !== 'mcp-servers');
+        // flex is needed when not hidden
+        if (tabName === 'mcp-servers') {
+            mcpActions.classList.add('flex');
+        } else {
+            mcpActions.classList.remove('flex');
+        }
+    }
+
+    // Lazy-load MCP panel on first activation
+    if (tabName === 'mcp-servers' && typeof window.loadPlatformMcpPanel === 'function') {
+        window.loadPlatformMcpPanel();
+    }
+};

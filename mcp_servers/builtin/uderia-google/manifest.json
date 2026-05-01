@@ -1,0 +1,43 @@
+{
+  "id": "uderia-google",
+  "name": "uderia-google",
+  "display_name": "Uderia Google",
+  "description": "Gmail and Google Calendar integration. Provides read_emails, send_email, search_emails, list_calendar, create_event, and get_contacts tools. Requires user OAuth connection.",
+  "version": "1.0.0",
+  "transport": "stdio",
+  "install_type": "builtin",
+  "entry_point": "mcp_servers/builtin/uderia-google/server.py",
+  "tools": ["read_emails", "send_email", "search_emails", "list_calendar", "create_event", "get_contacts"],
+  "credential_schema": {
+    "GOOGLE_CLIENT_ID": {
+      "label": "Google OAuth Client ID",
+      "description": "OAuth 2.0 Client ID from Google Cloud Console (APIs & Services → Credentials).",
+      "required": true,
+      "sensitive": false
+    },
+    "GOOGLE_CLIENT_SECRET": {
+      "label": "Google OAuth Client Secret",
+      "description": "OAuth 2.0 Client Secret from Google Cloud Console.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "config_schema": {
+    "SCOPES": {
+      "label": "OAuth Scopes",
+      "description": "Comma-separated Google OAuth scopes. Defaults to gmail.readonly, gmail.send, gmail.modify, calendar.readonly, calendar.events.",
+      "type": "string",
+      "default": "https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/gmail.modify,https://www.googleapis.com/auth/calendar.readonly,https://www.googleapis.com/auth/calendar.events"
+    }
+  },
+  "dependencies": [
+    "google-auth>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
+    "google-api-python-client>=2.0.0"
+  ],
+  "requires_docker": false,
+  "requires_user_auth": true,
+  "oauth_provider": "google",
+  "security_acknowledgment_required": false,
+  "tags": ["google", "gmail", "calendar", "email", "productivity"]
+}

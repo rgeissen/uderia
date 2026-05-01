@@ -7193,6 +7193,11 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     // Populate Skills tab
     await _populateSkillsTab(modal, profile);
 
+    // Populate Platform MCP Servers section (fine-grained tool selection per profile)
+    if (profile && typeof window.loadProfilePlatformMcpSection === 'function') {
+        await window.loadProfilePlatformMcpSection(modal, profile.id);
+    }
+
     // Show the modal
     modal.classList.remove('hidden');
 
@@ -7288,6 +7293,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             promptsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
         };
     }
+
+    // Stamp current profile ID onto save button so platform MCP tool selector can read it
+    const saveBtn = modal.querySelector('#profile-modal-save');
+    if (saveBtn) saveBtn.dataset.profileId = profileId || '';
 
     // Attach event listeners for save/cancel
     modal.querySelector('#profile-modal-cancel').onclick = () => modal.classList.add('hidden');

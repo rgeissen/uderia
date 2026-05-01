@@ -1737,6 +1737,21 @@ select:disabled, input:disabled, button:disabled, fieldset:disabled {
 }
 /* --- MODIFICATION END --- */
 
+/* Scheduled task tag on user messages (purple accent) */
+.scheduled-task-tag {
+    background-color: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+    font-size: 0.65rem;
+    font-weight: bold;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.375rem;
+    margin-left: 0.5rem;
+    display: inline-block;
+    line-height: 1.2;
+    vertical-align: middle;
+    border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
 /* Extension tag on user messages (amber/yellow accent) */
 .extension-tag {
     background-color: rgba(251, 191, 36, 0.2);

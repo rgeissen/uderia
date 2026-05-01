@@ -671,7 +671,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
                     </svg>
-                    <span class="nav-link-text font-semibold">Components</span>
+                    <span class="nav-link-text font-semibold">Platform</span>
                 </a>
                 <!-- NEW: RAG Marketplace View Link -->
                 <a href="#" id="view-switch-rag-marketplace" data-view="rag-marketplace-view" class="view-switch-button flex items-center gap-x-3 px-3 py-3 text-sm text-gray-200 rounded-md hover:bg-white/10">
@@ -1727,6 +1727,24 @@
                                 </div>
                                 <div id="kg-split-content" class="kg-split-body"></div>
                             </aside>
+
+                            <!-- Scheduler Split Panel — side-by-side with chat, hidden by default -->
+                            <aside id="scheduler-split-panel" style="display:none;">
+                                <div class="sched-split-header">
+                                    <div class="sched-split-header-left">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" style="color:#a855f7;flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                                        <span id="scheduler-split-title" class="sched-split-title-text">Task Scheduler</span>
+                                    </div>
+                                    <div class="sched-split-header-actions">
+                                        <button id="scheduler-split-close" class="sched-split-action-btn" title="Close scheduler panel">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="scheduler-split-content" class="sched-split-body"></div>
+                            </aside>
                           </div>
 
                             <footer id="chat-footer" class="p-4">
@@ -2323,17 +2341,18 @@
                 </div>
             </div>
 
-            <!-- VIEW: Components Gallery -->
+            <!-- VIEW: Platform Components -->
             <div id="components-view" class="app-view w-full h-full overflow-y-auto">
                 <div class="max-w-7xl mx-auto p-8">
 
                     <!-- Page Header -->
-                    <div class="flex items-center justify-between mb-8">
+                    <div class="flex items-center justify-between mb-6">
                         <div>
-                            <h1 class="text-3xl font-bold text-white header-title mb-2">Generative UI Components</h1>
-                            <p class="text-gray-400">Manage visual components for LLM output rendering</p>
+                            <h1 class="text-3xl font-bold text-white header-title mb-2">Platform Components</h1>
+                            <p class="text-gray-400">Manage visual components and platform capability servers</p>
                         </div>
-                        <div class="flex items-center gap-3">
+                        <!-- UI Components tab actions (hidden when MCP Servers tab is active) -->
+                        <div id="platform-ui-components-actions" class="flex items-center gap-3">
                             <button id="import-component-btn-top" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5" style="display: none;">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
@@ -2347,36 +2366,84 @@
                                 Reload
                             </button>
                         </div>
-                    </div>
-
-                    <!-- Filter Pills -->
-                    <div class="flex items-center gap-4 mb-6">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs text-gray-400 uppercase tracking-wide">Category:</span>
-                            <div class="flex gap-1.5" id="component-category-filters-top">
-                                <button class="filter-pill filter-pill--active" data-filter="all">All</button>
-                                <button class="filter-pill" data-filter="action">Action</button>
-                                <button class="filter-pill" data-filter="structural">Structural</button>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs text-gray-400 uppercase tracking-wide">Status:</span>
-                            <div class="flex gap-1.5" id="component-status-filters-top">
-                                <button class="filter-pill filter-pill--active" data-filter="all">All</button>
-                                <button class="filter-pill" data-filter="active">Active</button>
-                                <button class="filter-pill" data-filter="inactive">Inactive</button>
-                            </div>
+                        <!-- MCP Servers tab actions -->
+                        <div id="platform-mcp-servers-actions" class="items-center gap-3 hidden">
+                            <button id="refresh-platform-mcp-btn" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5"
+                                    onclick="if(window.loadPlatformMcpPanel) window.loadPlatformMcpPanel()">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Refresh
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Component Gallery (cards grid) -->
-                    <div id="components-grid-top" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                        <!-- Cards rendered by componentHandler.js -->
+                    <!-- Sub-tab Navigation -->
+                    <div class="mb-6 border-b border-white/10">
+                        <div class="flex gap-4">
+                            <button id="platform-tab-ui-components"
+                                    class="platform-component-tab ind-tab ind-tab--underline active"
+                                    data-tab="ui-components"
+                                    onclick="window.switchPlatformComponentsTab('ui-components')">
+                                <div class="flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                                    </svg>
+                                    UI Components
+                                </div>
+                            </button>
+                            <button id="platform-tab-mcp-servers"
+                                    class="platform-component-tab ind-tab ind-tab--underline"
+                                    data-tab="mcp-servers"
+                                    onclick="window.switchPlatformComponentsTab('mcp-servers')">
+                                <div class="flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                                    </svg>
+                                    MCP Servers
+                                </div>
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- Component Detail Panel (hidden until a card is selected) -->
-                    <div id="component-detail-panel" class="hidden transition-all duration-200">
-                        <!-- Rendered dynamically by componentHandler.js when a card is clicked -->
+                    <!-- UI Components Content -->
+                    <div id="platform-content-ui-components" class="platform-component-content">
+                        <!-- Filter Pills -->
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-400 uppercase tracking-wide">Category:</span>
+                                <div class="flex gap-1.5" id="component-category-filters-top">
+                                    <button class="filter-pill filter-pill--active" data-filter="all">All</button>
+                                    <button class="filter-pill" data-filter="action">Action</button>
+                                    <button class="filter-pill" data-filter="structural">Structural</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-400 uppercase tracking-wide">Status:</span>
+                                <div class="flex gap-1.5" id="component-status-filters-top">
+                                    <button class="filter-pill filter-pill--active" data-filter="all">All</button>
+                                    <button class="filter-pill" data-filter="active">Active</button>
+                                    <button class="filter-pill" data-filter="inactive">Inactive</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Component Gallery (cards grid) -->
+                        <div id="components-grid-top" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                            <!-- Cards rendered by componentHandler.js -->
+                        </div>
+
+                        <!-- Component Detail Panel (hidden until a card is selected) -->
+                        <div id="component-detail-panel" class="hidden transition-all duration-200">
+                            <!-- Rendered dynamically by componentHandler.js when a card is clicked -->
+                        </div>
+                    </div>
+
+                    <!-- MCP Servers Content -->
+                    <div id="platform-content-mcp-servers" class="platform-component-content hidden">
+                        <div id="platform-mcp-container">
+                            <!-- Loaded by platformMcpHandler.js on tab activation -->
+                        </div>
                     </div>
 
                 </div>
@@ -4140,6 +4207,14 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                                 </svg>
                                 Optimizer
+                            </div>
+                        </button>
+                        <button class="admin-tab ind-tab ind-tab--underline" data-tab="platform-mcp-tab">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                </svg>
+                                Components
                             </div>
                         </button>
                         <button class="admin-tab ind-tab ind-tab--underline" data-tab="cost-management-tab">
@@ -6866,6 +6941,99 @@
                             </div>
                         </div>
 
+                        <!-- Platform MCP Servers Tab -->
+                        <div id="platform-mcp-tab" class="admin-tab-content hidden">
+                            <div class="flex gap-6">
+                                <!-- Vertical Tab Bar -->
+                                <div class="w-48 flex-shrink-0">
+                                    <nav class="space-y-1 sticky top-4">
+                                        <button type="button" data-platform-tab="mcp-servers" class="platform-comp-subtab ind-tab ind-tab--sidebar active"
+                                                onclick="window.switchPlatformComponentsAdminTab('mcp-servers')">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                                            </svg>
+                                            <span class="text-sm font-medium">MCP Servers</span>
+                                        </button>
+                                        <button type="button" data-platform-tab="task-scheduler" class="platform-comp-subtab ind-tab ind-tab--sidebar"
+                                                onclick="window.switchPlatformComponentsAdminTab('task-scheduler')">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                            </svg>
+                                            <span class="text-sm font-medium">Task Scheduler</span>
+                                        </button>
+                                    </nav>
+                                </div>
+
+                                <!-- Content Area -->
+                                <div class="flex-1 min-w-0">
+                                    <!-- MCP Servers panel -->
+                                    <div id="platform-comp-panel-mcp-servers" class="platform-comp-panel space-y-6">
+                                        <!-- Section header -->
+                                        <div class="border-b border-gray-700 pb-3 flex items-center justify-between">
+                                            <div>
+                                                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                                                    </svg>
+                                                    MCP Servers
+                                                </h2>
+                                                <p class="text-sm text-gray-400 mt-1">Install and govern platform-level capability servers. Separate from user data source servers.</p>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <button onclick="openPlatformMcpMarketplace()"
+                                                        class="card-btn card-btn--sm flex items-center gap-1.5"
+                                                        style="background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.3);color:#818cf8">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                                                    </svg>
+                                                    Browse Registry
+                                                </button>
+                                                <button onclick="if(window.loadPlatformMcpAdminPanel) window.loadPlatformMcpAdminPanel()"
+                                                        class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                    </svg>
+                                                    Refresh
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Dynamic content injected by platformMcpAdminHandler.js -->
+                                        <div id="platform-mcp-admin-container">
+                                            <div class="text-center text-gray-400 py-8">Loading platform MCP servers…</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Task Scheduler admin panel -->
+                                    <div id="platform-comp-panel-task-scheduler" class="platform-comp-panel space-y-6 hidden">
+                                        <!-- Section header -->
+                                        <div class="border-b border-gray-700 pb-3 flex items-center justify-between">
+                                            <div>
+                                                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                                    </svg>
+                                                    Task Scheduler
+                                                </h2>
+                                                <p class="text-sm text-gray-400 mt-1">Autonomous scheduling engine. Users can create scheduled tasks when this component is enabled for their profile.</p>
+                                            </div>
+                                            <button onclick="window.loadSchedulerAdminPanel && window.loadSchedulerAdminPanel()"
+                                                    class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                </svg>
+                                                Refresh
+                                            </button>
+                                        </div>
+
+                                        <div id="scheduler-admin-container">
+                                            <div class="text-center text-gray-400 py-8">Loading scheduler…</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Tab 7: Cost Management -->
                         <div id="cost-management-tab" class="admin-tab-content hidden">
                             <!-- Cost Analytics Dashboard (Header KPIs) -->
@@ -8554,6 +8722,11 @@
     <script src="{{ url_for('static', filename='js/handlers/vectorStoreHandler.js') }}"></script>
     <script src="{{ url_for('static', filename='js/oauth.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/userProfileHandler.js') }}"></script>
+    <!-- Platform MCP Server Handlers -->
+    <script defer src="{{ url_for('static', filename='js/handlers/platformMcpAdminHandler.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='js/handlers/platformMcpHandler.js') }}"></script>
+    <!-- Task Scheduler Handler -->
+    <script defer src="{{ url_for('static', filename='js/handlers/schedulerHandler.js') }}"></script>
     <!-- RAG Case Modal -->
     <div id="rag-case-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden opacity-0">
         <div id="rag-case-modal-content" class="glass-panel rounded-xl shadow-2xl w-full max-w-4xl p-6 transform scale-95 opacity-0 flex flex-col" style="height: 90vh;">
@@ -8622,6 +8795,12 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
                             </svg>
                             <span class="text-sm font-medium">Resources</span>
+                        </button>
+                        <button type="button" class="profile-nav-item ind-tab ind-tab--sidebar" data-profile-section="platform-mcp" id="profile-nav-platform-mcp">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                            </svg>
+                            <span class="text-sm font-medium">MCP Tools</span>
                         </button>
                     </nav>
                 </div>
@@ -9641,6 +9820,25 @@
                         </div>
 
                     </div><!-- End profile-section-resources -->
+
+                    <!-- ============================================================ -->
+                    <!-- SECTION: PLATFORM MCP SERVERS -->
+                    <!-- ============================================================ -->
+                    <div id="profile-section-platform-mcp" class="profile-modal-section space-y-4 hidden">
+                        <div class="border-b border-gray-700/60 pb-2 mb-2">
+                            <h2 class="text-base font-bold text-white flex items-center gap-2">
+                                <svg class="h-5 w-5" fill="none" stroke="#818cf8" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                                </svg>
+                                Platform MCP Servers
+                            </h2>
+                            <p class="text-xs text-gray-500 mt-1">Fine-tune which platform tools are active for this profile. Enable/disable servers in Platform Components → MCP Servers.</p>
+                        </div>
+                        <!-- Populated by platformMcpHandler.js → loadProfilePlatformMcpSection() -->
+                        <div id="profile-platform-mcp-content">
+                            <div class="text-center text-gray-500 text-sm py-6">Loading platform MCP configuration…</div>
+                        </div>
+                    </div><!-- End profile-section-platform-mcp -->
 
                 </div><!-- End right panel -->
             </div><!-- End two-column body -->

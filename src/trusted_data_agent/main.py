@@ -375,6 +375,13 @@ def create_app():
         _sm = get_skill_manager()
         app_logger.info(f"Skills loaded from: {_sm.user_dir} ({len(_sm.manifests)} skill(s))")
 
+        # Start Task Scheduler (Track B — autonomous scheduling component)
+        try:
+            from trusted_data_agent.core.task_scheduler import start_scheduler
+            await start_scheduler()
+        except Exception as e:
+            app_logger.warning(f"Task Scheduler failed to start (non-fatal): {e}")
+
         # Print ready message now that all initialization is complete
         host = APP_STATE.get('server_host', '127.0.0.1')
         port = APP_STATE.get('server_port', 5050)
@@ -383,6 +390,15 @@ def create_app():
         print(f"  Navigate to http://{host}:{port}")
         print(f"{'='*60}\n")
     # --- MODIFICATION END ---
+
+    @app.after_serving
+    async def shutdown():
+        """Graceful shutdown of background services."""
+        try:
+            from trusted_data_agent.core.task_scheduler import stop_scheduler
+            await stop_scheduler()
+        except Exception:
+            pass
 
     return app
 

@@ -1,0 +1,33 @@
+{
+  "id": "uderia-files",
+  "name": "uderia-files",
+  "display_name": "Uderia Files",
+  "description": "Filesystem access. Provides read_file, write_file, list_dir, and search_files tools. Admin configures an allowed path list.",
+  "version": "1.0.0",
+  "transport": "stdio",
+  "install_type": "builtin",
+  "entry_point": "mcp_servers/builtin/uderia-files/server.py",
+  "tools": ["read_file", "write_file", "list_dir", "search_files"],
+  "credential_schema": {},
+  "config_schema": {
+    "ALLOWED_PATHS": {
+      "label": "Allowed base paths",
+      "description": "Comma-separated list of absolute directory paths the agent is permitted to access. E.g. /data/reports,/tmp/agent",
+      "type": "string",
+      "default": "/tmp/uderia-agent",
+      "required": true
+    },
+    "MAX_FILE_SIZE_KB": {
+      "label": "Max file size (KB)",
+      "description": "Maximum file size in KB for read/write operations.",
+      "type": "integer",
+      "default": 512,
+      "min": 1,
+      "max": 10240
+    }
+  },
+  "requires_docker": false,
+  "requires_user_auth": false,
+  "security_acknowledgment_required": false,
+  "tags": ["files", "filesystem", "storage"]
+}

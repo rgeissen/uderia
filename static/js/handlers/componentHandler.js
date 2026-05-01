@@ -122,6 +122,7 @@ function _renderComponentCard(comp) {
     const typeClasses = {
         action: 'bg-blue-500/20 text-blue-300 comp-lt-blue',
         structural: 'bg-gray-500/20 text-gray-300 comp-lt-gray',
+        service: 'bg-purple-500/20 text-purple-300 comp-lt-purple',
     };
 
     const sourceBadge = sourceClasses[comp.source] || sourceClasses.builtin;
@@ -231,6 +232,7 @@ function _renderDetailPanel(comp) {
     const typeClasses = {
         action: 'bg-blue-500/20 text-blue-300 comp-lt-blue',
         structural: 'bg-gray-500/20 text-gray-300 comp-lt-gray',
+        service: 'bg-purple-500/20 text-purple-300 comp-lt-purple',
     };
     const sourceBadge = sourceClasses[comp.source] || sourceClasses.builtin;
     const typeBadge = typeClasses[comp.component_type] || typeClasses.action;
@@ -576,15 +578,21 @@ async function _loadProfileAssignments(comp) {
             const intensityTooltip = intensityLevels
                 .map(l => `${l.charAt(0).toUpperCase() + l.slice(1)} — ${manifestTooltips[l] || (l === 'medium' ? 'Use when appropriate' : 'Proactively use at every opportunity')}`)
                 .join('\n');
-            const intensitySelect = isAction ? `
+            // Scheduler: replace intensity selector with a task count badge (loaded async after render)
+            const isScheduler = componentId === 'scheduler';
+            const intensitySelect = (isAction && !isScheduler) ? `
                 <select class="profile-comp-intensity text-xs bg-gray-800 border border-gray-600 text-gray-300 comp-lt-select rounded px-2 py-1"
                         data-profile-id="${profile.id}" ${!isEnabled ? 'disabled' : ''}
                         data-tooltip="${intensityTooltip}">
                     ${intensityOptions}
                 </select>` : '';
+            const taskCountBadge = isScheduler
+                ? `<span class="profile-sched-task-count" data-profile-id="${profile.id}" style="font-size:11px;padding:2px 10px;border-radius:20px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.2);color:var(--text-muted,#94a3b8);white-space:nowrap;">…</span>`
+                : '';
 
             return `
-                <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-800/30 border border-gray-700/20 comp-lt-row">
+                <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-800/30 border border-gray-700/20 comp-lt-row"
+                     data-profile-id="${profile.id}">
                     <div class="flex items-center gap-3 min-w-0">
                         <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 comp-lt-cyan flex-shrink-0">@${_escapeHtml(profile.tag || '?')}</span>
                         <span class="text-sm truncate" style="color:var(--text-primary)">${_escapeHtml(profile.name || profile.id)}</span>
@@ -592,6 +600,7 @@ async function _loadProfileAssignments(comp) {
                     </div>
                     <div class="flex items-center gap-3 flex-shrink-0">
                         ${intensitySelect}
+                        ${taskCountBadge}
                         <label class="ind-toggle ind-toggle--sm">
                             <input type="checkbox" class="profile-comp-toggle"
                                    data-profile-id="${profile.id}" ${isEnabled ? 'checked' : ''}>
@@ -626,15 +635,42 @@ async function _loadProfileAssignments(comp) {
             });
         });
 
-        // Wire intensity handlers
+        // Wire intensity handlers (not used for scheduler)
         container.querySelectorAll('.profile-comp-intensity').forEach(select => {
             select.addEventListener('change', async (e) => {
                 const profileId = e.target.dataset.profileId;
                 const intensity = e.target.value;
-
                 await _updateProfileComponentConfig(profileId, componentId, { intensity }, profiles);
             });
         });
+
+        // For scheduler: fetch task counts per profile asynchronously
+        if (componentId === 'scheduler') {
+            const badges = container.querySelectorAll('.profile-sched-task-count');
+            badges.forEach(async badge => {
+                const profileId = badge.dataset.profileId;
+                try {
+                    const token = localStorage.getItem('tda_auth_token') || '';
+                    const resp = await fetch(`/api/v1/scheduled-tasks?profile_id=${encodeURIComponent(profileId)}`, {
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        const count = (data.tasks || []).length;
+                        badge.textContent = count === 0 ? 'No tasks' : `${count} task${count !== 1 ? 's' : ''}`;
+                        if (count > 0) {
+                            badge.style.background = 'rgba(168,85,247,0.15)';
+                            badge.style.borderColor = 'rgba(168,85,247,0.4)';
+                            badge.style.color = '#c084fc';
+                        } else {
+                            badge.style.color = 'var(--text-muted, #94a3b8)';
+                        }
+                    } else {
+                        badge.textContent = '';
+                    }
+                } catch (_) { badge.textContent = ''; }
+            });
+        }
 
     } catch (err) {
         console.error('[ComponentHandler] Error loading profiles:', err);

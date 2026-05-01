@@ -572,7 +572,9 @@ export function subscribeToNotifications() {
                 break;
             }
             case 'rest_task_complete': {
-                const { session_id, turn_id, user_input, final_answer, profile_tag, extension_specs, skill_specs } = data.payload;
+                const { session_id, turn_id, user_input, final_answer, profile_tag, extension_specs, skill_specs, source } = data.payload;
+                // source is optional — 'scheduler' for background task sessions, 'rest' otherwise
+                const msgSource = source || 'rest';
 
                 // --- Definitive cleanup for REST session tracking ---
                 state.activeRestSessions.delete(session_id);
@@ -581,9 +583,15 @@ export function subscribeToNotifications() {
                 }
 
                 if (session_id === state.currentSessionId) {
-                    // User is viewing this session — render Q&A and clean up
-                    UI.addMessage('user', user_input, turn_id, true, 'rest', profile_tag, false, extension_specs || null, skill_specs || null);
-                    UI.addMessage('assistant', final_answer, turn_id, true);
+                    // User is viewing this session — render Q&A and clean up.
+                    // Guard: skip rendering if server load already added this turn to the DOM
+                    // (race: handleLoadSession sets currentSessionId before API.loadSession resolves,
+                    // so both paths can fire for the same turn_id).
+                    const turnAlreadyRendered = turn_id && DOM.chatLog?.querySelector(`[data-turn-id="${turn_id}"]`);
+                    if (!turnAlreadyRendered) {
+                        UI.addMessage('user', user_input, turn_id, true, msgSource, profile_tag, false, extension_specs || null, skill_specs || null);
+                        UI.addMessage('assistant', final_answer, turn_id, true);
+                    }
                     UI.moveSessionToTop(session_id);
                     UI.setExecutionState(false);
 

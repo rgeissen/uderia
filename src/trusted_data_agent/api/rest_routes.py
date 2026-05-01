@@ -15592,3 +15592,360 @@ async def kg_assignments_activate(current_user):
     except Exception as e:
         app_logger.error(f"KG assignment activation failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# =============================================================================
+# Platform MCP Server Registry
+# Admin-governed capability servers (browser, files, shell, web, google).
+# Strictly separate from user-configured data source servers.
+# =============================================================================
+
+@rest_api_bp.route("/v1/mcp-registry/sources", methods=["GET"])
+@require_auth
+async def list_mcp_registry_sources(current_user):
+    """List all configured registry sources (Uderia built-in, official, enterprise private)."""
+    try:
+        from trusted_data_agent.core.platform_mcp_registry import list_registry_sources
+        return jsonify({"sources": list_registry_sources()}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to list MCP registry sources: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/mcp-registry/sources", methods=["POST"])
+@require_admin
+async def add_mcp_registry_source():
+    """Add an enterprise private registry source. Admin only."""
+    try:
+        data = await request.get_json()
+        name = (data or {}).get("name", "").strip()
+        url = (data or {}).get("url", "").strip()
+        if not name or not url:
+            return jsonify({"error": "name and url are required"}), 400
+        from trusted_data_agent.core.platform_mcp_registry import add_registry_source
+        source = add_registry_source(name, url)
+        return jsonify({"source": source}), 201
+    except Exception as e:
+        app_logger.error(f"Failed to add MCP registry source: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/mcp-registry/sources/<source_id>", methods=["DELETE"])
+@require_admin
+async def delete_mcp_registry_source(source_id):
+    """Delete a non-builtin registry source. Admin only."""
+    try:
+        from trusted_data_agent.core.platform_mcp_registry import delete_registry_source
+        ok = delete_registry_source(source_id)
+        if not ok:
+            return jsonify({"error": "Source not found or is a built-in source"}), 404
+        return jsonify({"status": "deleted"}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to delete MCP registry source: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/mcp-registry/servers", methods=["GET"])
+@require_auth
+async def browse_mcp_registry_servers(current_user):
+    """Browse servers from a registry source."""
+    try:
+        source_id = request.args.get("source", "builtin")
+        search = request.args.get("search", "")
+        page = int(request.args.get("page", 1))
+        cursor = request.args.get("cursor", "")
+        from trusted_data_agent.core.platform_mcp_registry import list_registry_servers
+        result = await list_registry_servers(source_id, search, page, cursor=cursor)
+        return jsonify(result), 200
+    except Exception as e:
+        app_logger.error(f"Failed to browse MCP registry: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/mcp-registry/servers/install", methods=["POST"])
+@require_admin
+async def install_mcp_registry_server():
+    """Register (install/connect) a server from a registry source. Admin only."""
+    try:
+        data = await request.get_json() or {}
+        source_id = data.get("source_id", "builtin")
+        server_id = data.get("server_id", "").strip()
+        server_data = data.get("server_data", {})
+        if not server_id:
+            return jsonify({"error": "server_id is required"}), 400
+        from trusted_data_agent.core.platform_mcp_registry import install_server
+        server = install_server(source_id, server_id, server_data)
+        return jsonify({"server": server}), 201
+    except Exception as e:
+        app_logger.error(f"Failed to install MCP server: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/platform-mcp-servers", methods=["GET"])
+@require_auth
+async def list_platform_mcp_servers(current_user):
+    """List all installed platform MCP servers with governance settings."""
+    try:
+        from trusted_data_agent.core.platform_mcp_registry import list_installed_servers
+        return jsonify({"servers": list_installed_servers()}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to list platform MCP servers: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/platform-mcp-servers/<server_id>", methods=["GET"])
+@require_auth
+async def get_platform_mcp_server(current_user, server_id):
+    """Get a single platform MCP server."""
+    try:
+        from trusted_data_agent.core.platform_mcp_registry import get_server
+        server = get_server(server_id)
+        if not server:
+            return jsonify({"error": "Server not found"}), 404
+        return jsonify({"server": server}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get platform MCP server {server_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/platform-mcp-servers/<server_id>", methods=["PUT"])
+@require_admin
+async def update_platform_mcp_server(server_id):
+    """Update governance settings for a platform MCP server. Admin only."""
+    try:
+        data = await request.get_json() or {}
+        from trusted_data_agent.core.platform_mcp_registry import (
+            update_server_governance, update_server_credentials, get_server
+        )
+        if not get_server(server_id):
+            return jsonify({"error": "Server not found"}), 404
+
+        # Credentials are updated separately and never returned
+        credentials = data.pop("credentials", None)
+        if credentials:
+            update_server_credentials(server_id, credentials)
+
+        server = update_server_governance(server_id, data)
+        return jsonify({"server": server}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to update platform MCP server {server_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/platform-mcp-servers/<server_id>", methods=["DELETE"])
+@require_admin
+async def delete_platform_mcp_server(server_id):
+    """Remove a platform MCP server and all profile settings. Admin only."""
+    try:
+        from trusted_data_agent.core.platform_mcp_registry import delete_server, get_server
+        if not get_server(server_id):
+            return jsonify({"error": "Server not found"}), 404
+        delete_server(server_id)
+        return jsonify({"status": "deleted"}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to delete platform MCP server {server_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/platform-mcp-servers/<server_id>/tools", methods=["GET"])
+@require_auth
+async def get_platform_mcp_server_tools(current_user, server_id):
+    """Get tool schemas for a platform MCP server (from manifest; live discovery coming later)."""
+    try:
+        from trusted_data_agent.core.platform_mcp_registry import (
+            get_server, invalidate_tool_cache, _get_cached_tool_schemas
+        )
+        if not get_server(server_id):
+            return jsonify({"error": "Server not found"}), 404
+        if request.args.get("refresh") == "true":
+            invalidate_tool_cache(server_id)
+        tools = _get_cached_tool_schemas(server_id)
+        return jsonify({"tools": tools, "server_id": server_id}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get tools for platform MCP server {server_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/profiles/<profile_id>/platform-mcp-settings", methods=["GET"])
+@require_auth
+async def get_profile_platform_mcp_settings(current_user, profile_id):
+    """Get the user's platform MCP server opt-in state for a profile."""
+    try:
+        from trusted_data_agent.core.platform_mcp_registry import get_profile_server_settings
+        settings = get_profile_server_settings(profile_id)
+        return jsonify({"settings": settings, "profile_id": profile_id}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get profile platform MCP settings: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/profiles/<profile_id>/platform-mcp-settings/<server_id>", methods=["PUT"])
+@require_auth
+async def update_profile_platform_mcp_setting(current_user, profile_id, server_id):
+    """Update a profile's opt-in state and tool selection for a platform MCP server."""
+    try:
+        data = await request.get_json() or {}
+        opted_in = data.get("opted_in")   # None | 1 | 0
+        user_tools = data.get("user_tools")  # list of tool names | None
+        from trusted_data_agent.core.platform_mcp_registry import (
+            update_profile_server_setting, get_server
+        )
+        server = get_server(server_id)
+        if not server:
+            return jsonify({"error": "Server not found"}), 404
+        # Enforce governance: if user cannot opt out, ignore opt-out requests
+        if server.get("auto_opt_in") and not server.get("user_can_opt_out") and opted_in == 0:
+            return jsonify({"error": "This server cannot be disabled by users"}), 403
+        # Enforce governance: if user cannot configure tools, ignore tool selection
+        if not server.get("user_can_configure_tools"):
+            user_tools = None
+        update_profile_server_setting(profile_id, server_id, opted_in, user_tools)
+        return jsonify({"status": "updated", "profile_id": profile_id, "server_id": server_id}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to update profile platform MCP setting: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Scheduled Tasks (Track B) ─────────────────────────────────────────────────
+
+@rest_api_bp.route("/v1/scheduled-tasks", methods=["GET"])
+@require_auth
+async def list_scheduled_tasks(current_user):
+    """List scheduled tasks for the current user. Optional ?profile_id= filter."""
+    try:
+        from trusted_data_agent.core.task_scheduler import list_tasks
+        user_uuid = current_user.id
+        profile_id = request.args.get("profile_id")
+        tasks = list_tasks(user_uuid, profile_id=profile_id)
+        return jsonify({"tasks": tasks}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to list scheduled tasks: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks", methods=["POST"])
+@require_auth
+async def create_scheduled_task(current_user):
+    """Create a new scheduled task."""
+    try:
+        from trusted_data_agent.core.task_scheduler import create_task, is_scheduler_globally_enabled
+        if not is_scheduler_globally_enabled():
+            return jsonify({"error": "Task Scheduler component is disabled by admin"}), 403
+
+        data = await request.get_json() or {}
+        required = ["name", "prompt", "schedule", "profile_id"]
+        missing = [f for f in required if not data.get(f)]
+        if missing:
+            return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+
+        task = create_task(
+            user_uuid=current_user.id,
+            profile_id=data["profile_id"],
+            name=data["name"],
+            prompt=data["prompt"],
+            schedule=data["schedule"],
+            output_channel=data.get("output_channel"),
+            output_config=data.get("output_config"),
+            max_tokens_per_run=data.get("max_tokens_per_run"),
+            overlap_policy=data.get("overlap_policy", "skip"),
+        )
+        return jsonify({"task": task}), 201
+    except Exception as e:
+        app_logger.error(f"Failed to create scheduled task: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks/<task_id>", methods=["GET"])
+@require_auth
+async def get_scheduled_task(current_user, task_id):
+    """Get a scheduled task."""
+    try:
+        from trusted_data_agent.core.task_scheduler import get_task
+        task = get_task(task_id, current_user.id)
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+        return jsonify({"task": task}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get scheduled task: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks/<task_id>", methods=["PUT"])
+@require_auth
+async def update_scheduled_task(current_user, task_id):
+    """Update a scheduled task (name, prompt, schedule, enabled, output channel, etc.)."""
+    try:
+        from trusted_data_agent.core.task_scheduler import update_task
+        data = await request.get_json() or {}
+        task = update_task(task_id, current_user.id, data)
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+        return jsonify({"task": task}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to update scheduled task: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks/<task_id>", methods=["DELETE"])
+@require_auth
+async def delete_scheduled_task(current_user, task_id):
+    """Delete a scheduled task and deregister it from the scheduler."""
+    try:
+        from trusted_data_agent.core.task_scheduler import delete_task
+        ok = delete_task(task_id, current_user.id)
+        if not ok:
+            return jsonify({"error": "Task not found"}), 404
+        return jsonify({"status": "deleted"}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to delete scheduled task: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks/<task_id>/runs", methods=["GET"])
+@require_auth
+async def get_scheduled_task_runs(current_user, task_id):
+    """Get run history for a scheduled task."""
+    try:
+        from trusted_data_agent.core.task_scheduler import list_runs
+        limit = min(int(request.args.get("limit", 20)), 100)
+        runs = list_runs(task_id, current_user.id, limit=limit)
+        return jsonify({"runs": runs}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get scheduled task runs: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks/<task_id>/run-now", methods=["POST"])
+@require_auth
+async def run_scheduled_task_now(current_user, task_id):
+    """Manually trigger a scheduled task to run immediately."""
+    try:
+        from trusted_data_agent.core.task_scheduler import run_task_now, get_task
+        task = get_task(task_id, current_user.id)
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+        await run_task_now(task_id, current_user.id)
+        return jsonify({"status": "triggered", "task_id": task_id}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to trigger scheduled task: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduler/status", methods=["GET"])
+@require_auth
+async def get_scheduler_status(current_user):
+    """Return scheduler health: running, job count, global enable state."""
+    try:
+        from trusted_data_agent.core.task_scheduler import (
+            get_scheduler, is_scheduler_globally_enabled
+        )
+        sched = get_scheduler()
+        jobs = sched.get_jobs() if sched and sched.running else []
+        return jsonify({
+            "running": bool(sched and sched.running),
+            "globally_enabled": is_scheduler_globally_enabled(),
+            "job_count": len(jobs),
+        }), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get scheduler status: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500

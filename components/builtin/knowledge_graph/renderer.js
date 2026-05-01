@@ -216,6 +216,19 @@ export function openKGSplitPanel(spec) {
         }, 350);
     }
 
+    // Mutual exclusion: close scheduler split panel if open
+    const schedPanel = document.getElementById('scheduler-split-panel');
+    if (schedPanel && schedPanel.classList.contains('sched-split--open')) {
+        schedPanel.classList.remove('sched-split--open');
+        setTimeout(() => {
+            if (!schedPanel.classList.contains('sched-split--open')) {
+                schedPanel.style.display = 'none';
+                const sc = document.getElementById('scheduler-split-content');
+                if (sc) sc.innerHTML = '';
+            }
+        }, 350);
+    }
+
     _activeSpec = spec;
 
     // Update title

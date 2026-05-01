@@ -4277,5 +4277,28 @@ window.EventHandlers = {
     getLlmOnlyTitle,
     getRagFocusedTitle,
     getGenieTitle,
-    getLifecycleTitle
+    getLifecycleTitle,
+
+    // Called by external components (e.g. scheduler renderer) to submit a query in the current session
+    triggerChatQuery: async (prompt) => {
+        if (!prompt || !state.currentSessionId) {
+            console.warn('[triggerChatQuery] Cannot submit — no prompt or no active session');
+            return false;
+        }
+        const inputEl = DOM.userInput;
+        if (!inputEl) return false;
+        inputEl.value = prompt;
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        const syntheticEvent = { preventDefault: () => {}, type: 'submit' };
+        await handleChatSubmit(syntheticEvent, 'component');
+        return true;
+    },
 };
+
+// Refresh sessions list when a background scheduler task fires
+window.addEventListener('scheduler-background-run', async () => {
+    try {
+        const { refreshSessionsList } = await import('./handlers/configManagement.js');
+        await refreshSessionsList(false);
+    } catch (_) {}
+});

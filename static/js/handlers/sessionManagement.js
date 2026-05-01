@@ -656,6 +656,15 @@ export async function handleLoadSession(sessionId, isNewSession = false) {
         }
     } catch (e) { /* knowledge_graph component may not be loaded */ }
 
+    // Close scheduler split panel when switching sessions
+    try {
+        const schedPanel = document.getElementById('scheduler-split-panel');
+        if (schedPanel && schedPanel.classList.contains('sched-split--open')) {
+            const { closeSchedulerSplitPanel } = await import('/api/v1/components/scheduler/renderer');
+            closeSchedulerSplitPanel();
+        }
+    } catch (e) { /* scheduler component may not be loaded */ }
+
     // --- MODIFICATION START: Clear task ID display on session load ---
     UI.updateTaskIdDisplay(null);
     // --- MODIFICATION END ---

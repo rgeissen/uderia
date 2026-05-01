@@ -1,0 +1,96 @@
+{
+  "component_id": "scheduler",
+  "display_name": "Task Scheduler",
+  "description": "Talk to the scheduler — create, manage, and monitor scheduled agent tasks through natural conversation; results render as an interactive scheduling canvas in the chat",
+  "version": "2.0.0",
+  "component_type": "action",
+  "category": "Automation",
+
+  "tool_definition": {
+    "name": "TDA_Scheduler",
+    "description": "Manages scheduled tasks. Call when user wants to schedule, automate, list, cancel, pause, resume, trigger, or inspect task history.",
+    "args": {
+      "action": {
+        "type": "string",
+        "description": "'create' | 'list' | 'update' | 'delete' | 'enable' | 'disable' | 'run_now' | 'history'",
+        "required": true
+      },
+      "name": {
+        "type": "string",
+        "description": "Task name (e.g. 'Daily Sales Report'). Required for create.",
+        "required": false
+      },
+      "prompt": {
+        "type": "string",
+        "description": "Query the agent will run on schedule. Required for create.",
+        "required": false
+      },
+      "schedule": {
+        "type": "string",
+        "description": "Cron (e.g. '0 9 * * *') or interval (e.g. 'interval:1h', 'interval:30m'). Required for create.",
+        "required": false
+      },
+      "task_id": {
+        "type": "string",
+        "description": "Task ID. Required for update/delete/enable/disable/run_now/history.",
+        "required": false
+      },
+      "output_channel": {
+        "type": "string",
+        "description": "'email' | 'webhook' | null",
+        "required": false
+      },
+      "output_config": {
+        "type": "dict",
+        "description": "email: {'to': 'addr'}  webhook: {'url': '...', 'token': '...'}",
+        "required": false
+      },
+      "overlap_policy": {
+        "type": "string",
+        "description": "'skip' (default) | 'queue' | 'allow'",
+        "required": false
+      },
+      "max_tokens_per_run": {
+        "type": "integer",
+        "description": "Token budget per run. Null = unlimited.",
+        "required": false
+      },
+      "session_context": {
+        "type": "string",
+        "description": "'new' (default — fresh session each run, no history) | 'current' (run inside the user's current session, inheriting conversation history and profile context). Ask the user which they prefer when creating a task.",
+        "required": false
+      }
+    }
+  },
+
+  "instructions": {
+    "file": "instructions.json",
+    "format": "intensity_keyed",
+    "intensity_levels": ["none", "medium", "heavy"],
+    "intensity_tooltips": {
+      "medium": "Use TDA_Scheduler when user explicitly asks about scheduling",
+      "heavy": "Proactively suggest scheduling for recurring or time-based queries"
+    }
+  },
+
+  "backend": {
+    "handler_file": "handler.py",
+    "handler_class": "SchedulerComponentHandler",
+    "fast_path": true
+  },
+
+  "frontend": {
+    "renderer_file": "renderer.js",
+    "renderer_export": "renderScheduler"
+  },
+
+  "render_targets": {
+    "default": "inline",
+    "supports": ["inline"]
+  },
+
+  "profile_defaults": {
+    "enabled_for": ["llm_only", "rag_focused", "tool_enabled", "genie"],
+    "default_enabled": false
+  }
+}
