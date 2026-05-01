@@ -86,7 +86,11 @@
 
   "render_targets": {
     "default": "inline",
-    "supports": ["inline"]
+    "supports": ["inline", "sub_window"],
+    "sub_window": {
+      "title_template": "Scheduler",
+      "default_size": { "width": 640, "height": 520 }
+    }
   },
 
   "profile_defaults": {

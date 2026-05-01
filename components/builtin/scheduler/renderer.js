@@ -24,12 +24,13 @@ const C = {
 // ── CSS injection (once) ──────────────────────────────────────────────────────
 
 function _injectCSS() {
-  if (document.getElementById('sched-split-css-v3')) return;
+  if (document.getElementById('sched-split-css-v4')) return;
   // Remove stale versions
   document.getElementById('sched-split-css')?.remove();
   document.getElementById('sched-split-css-v2')?.remove();
+  document.getElementById('sched-split-css-v3')?.remove();
   const s = document.createElement('style');
-  s.id = 'sched-split-css-v3';
+  s.id = 'sched-split-css-v4';
   s.textContent = `
 /* ── Split panel layout ───────────────────────────────────────────── */
 #scheduler-split-panel {
@@ -345,6 +346,37 @@ function _injectCSS() {
 .sched-toast-sub   { font-size: 11px; color: var(--text-muted, #64748b); margin-top: 3px; display: flex; align-items: center; gap: 4px; }
 .sched-toast-badge { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 20px; font-size: 10px; font-weight: 600; flex-shrink: 0; margin-left: auto; }
 
+/* ── Prompt preview ───────────────────────────────────────────────── */
+.sched-prompt {
+  padding: 0 16px 10px 34px;
+}
+.sched-prompt-text {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-muted, #64748b);
+  font-style: italic;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sched-prompt-text.collapsed { -webkit-line-clamp: 2; }
+.sched-prompt-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #a855f7;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity .15s;
+}
+.sched-prompt-expand:hover { opacity: 1; }
+
 /* ── Light mode overrides ─────────────────────────────────────────── */
 /* All low-alpha rgba values designed for dark backgrounds need      */
 /* higher contrast equivalents when rendered on white/light surfaces  */
@@ -526,8 +558,8 @@ function _taskCard(task, highlight) {
 
   const isCurrent = task._session_context === 'current';
   const sessionBadge = isCurrent
-    ? `<span class="sched-badge sched-badge--session" title="Runs inside the session where this task was created">⬡ current session</span>`
-    : `<span class="sched-badge sched-badge--new-sess" title="Creates a fresh isolated session on each run">◇ new session</span>`;
+    ? `<span class="sched-badge sched-badge--session" title="Runs inside the session where this task was created">current session</span>`
+    : `<span class="sched-badge sched-badge--new-sess" title="Creates a fresh isolated session on each run">new session</span>`;
 
   const chips = (task._next_runs || []).map((iso, i) =>
     `<span class="sched-run-chip${i === 0 ? ' sched-run-chip--first' : ''}">${esc(timeUntil(iso))}</span>`
@@ -539,6 +571,20 @@ function _taskCard(task, highlight) {
   const badgeContent = [sessionBadge, channelBadge].filter(Boolean).join('');
   const badges = `<div class="sched-card-badges">${badgeContent}</div>`;
 
+  const PREVIEW_LEN = 120;
+  const prompt = task.prompt || '';
+  const promptNeedsExpand = prompt.length > PREVIEW_LEN;
+  const promptPreview = promptNeedsExpand ? prompt.slice(0, PREVIEW_LEN).trimEnd() + '…' : prompt;
+  const promptId = `sched-prompt-${esc(task.id)}`;
+  const promptRow = prompt ? `
+  <div class="sched-prompt">
+    <div id="${promptId}" class="sched-prompt-text${promptNeedsExpand ? ' collapsed' : ''}" data-full="${esc(prompt)}" data-preview="${esc(promptPreview)}">${esc(promptPreview)}</div>
+    ${promptNeedsExpand ? `<button class="sched-prompt-expand" data-prompt-id="${promptId}" data-expanded="false">
+      <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      Show more
+    </button>` : ''}
+  </div>` : '';
+
   return `
 <div class="sched-card${highlight ? ' sched-card--highlight' : ''}" id="sched-card-${esc(task.id)}">
   <div class="sched-card-header">
@@ -547,6 +593,7 @@ function _taskCard(task, highlight) {
     <span class="sched-card-status-badge sched-card-status-badge--${badgeMod}">${badgeTxt}</span>
   </div>
   <div class="sched-card-meta">${ICONS.clock} ${esc(task._human_schedule || task.schedule)}</div>
+  ${promptRow}
   ${badges}
   ${nextRow}
   <div class="sched-actions">
@@ -715,6 +762,27 @@ function _renderPanelBody(spec) {
 }
 
 function _wireCardActions(root, spec) {
+  // Prompt expand/collapse
+  root.querySelectorAll('.sched-prompt-expand').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const promptId = btn.dataset.promptId;
+      const textEl = document.getElementById(promptId);
+      if (!textEl) return;
+      const expanded = btn.dataset.expanded === 'true';
+      if (expanded) {
+        textEl.textContent = textEl.dataset.preview;
+        textEl.classList.add('collapsed');
+        btn.dataset.expanded = 'false';
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg> Show more`;
+      } else {
+        textEl.textContent = textEl.dataset.full;
+        textEl.classList.remove('collapsed');
+        btn.dataset.expanded = 'true';
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg> Show less`;
+      }
+    });
+  });
+
   root.querySelectorAll('[data-action]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const action = btn.dataset.action;
@@ -759,9 +827,12 @@ function _wireCardActions(root, spec) {
           await fetch(`/api/v1/scheduled-tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE', headers: hdrs });
           const card = document.getElementById(`sched-card-${taskId}`);
           if (card) { card.style.transition = 'opacity .25s, transform .25s'; card.style.opacity = '0'; card.style.transform = 'translateX(-6px)'; setTimeout(() => card.remove(), 280); }
-          // Refresh panel spec
+          // Refresh panel spec and update header count
           if (_currentSpec) {
             _currentSpec = { ..._currentSpec, tasks: (_currentSpec.tasks || []).filter(t => t.id !== taskId) };
+            const remaining = _currentSpec.tasks.length;
+            const hdrTitle = document.querySelector('#scheduler-split-content .sched-section-hdr-title');
+            if (hdrTitle) hdrTitle.textContent = `${remaining} Task${remaining !== 1 ? 's' : ''}`;
           }
           return;
         }
@@ -848,12 +919,13 @@ function _renderInlineToast(container, spec) {
 </div>`;
 
   if (isPanel) {
-    // Auto-open the split panel
-    setTimeout(() => openSchedulerSplitPanel(spec), 80);
+    // Auto-open the split panel — use _currentSpec if a subsequent mutation already updated
+    // it within this 80ms window (e.g. list + delete in the same LLM turn), otherwise fall
+    // back to the spec captured at toast render time.
+    setTimeout(() => openSchedulerSplitPanel(_currentSpec || spec), 80);
     // Wire manual open button too
     container.querySelector('.sched-open-panel-btn')?.addEventListener('click', () => {
-      if (_currentSpec) openSchedulerSplitPanel(_currentSpec);
-      else openSchedulerSplitPanel(spec);
+      openSchedulerSplitPanel(_currentSpec || spec);
     });
   }
 }
@@ -868,11 +940,15 @@ export function renderScheduler(containerId, payload) {
   const spec = typeof payload === 'string' ? JSON.parse(payload) : payload;
   _renderInlineToast(container, spec);
 
-  // If the panel is already open and this wasn't a list/history action (those auto-open/refresh
-  // via openSchedulerSplitPanel already), refresh the panel body so mutations are reflected.
+  // Always keep _currentSpec up-to-date so click handlers and subsequent opens
+  // always reflect the latest server state (even when the panel is closed).
+  _currentSpec = spec;
+
+  // If the panel is already open, refresh it immediately.
+  // For list/history: openSchedulerSplitPanel (called via setTimeout in _renderInlineToast)
+  // will also re-render shortly, but we update now to eliminate the stale-data window.
   const panel = document.getElementById('scheduler-split-panel');
-  if (panel?.classList.contains('sched-split--open') && spec.action !== 'list' && spec.action !== 'history') {
-    _currentSpec = spec;
+  if (panel?.classList.contains('sched-split--open')) {
     _renderPanelBody(spec);
   }
 }

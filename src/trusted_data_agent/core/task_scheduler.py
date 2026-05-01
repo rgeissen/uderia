@@ -30,10 +30,19 @@ _scheduler = None
 
 
 def _ensure_columns():
-    """Auto-migrate: add new columns to scheduled_tasks if missing."""
+    """Auto-migrate: add new columns to scheduled_tasks if missing.
+
+    Called at import time AND deferred via _ensure_columns_deferred() once the app
+    has bootstrapped the schema. The import-time call may fail silently when the
+    table does not exist yet (fresh DB); the deferred call runs after schema init
+    and always succeeds on existing tables.
+    """
     try:
         with _get_conn() as conn:
             cols = {row[1] for row in conn.execute("PRAGMA table_info(scheduled_tasks)").fetchall()}
+            if not cols:
+                # Table doesn't exist yet — schema init hasn't run; skip silently.
+                return
             if "session_id" not in cols:
                 conn.execute("ALTER TABLE scheduled_tasks ADD COLUMN session_id TEXT")
                 conn.commit()
@@ -396,7 +405,7 @@ async def _emit_notification(user_uuid: str, notification: dict):
         asyncio.create_task(q.put(notification))
 
 
-async def _execute_task_async(task_id: str):
+async def _execute_task_async(task_id: str, preflight_run_id: Optional[str] = None):
     """Execute a scheduled task through the standard execution pipeline.
 
     Emits the same new_session_created / rest_task_update / rest_task_complete
@@ -431,7 +440,7 @@ async def _execute_task_async(task_id: str):
             except asyncio.TimeoutError:
                 pass
 
-    run_id = _record_run_start(task_id)
+    run_id = preflight_run_id or _record_run_start(task_id)
     asyncio_task = asyncio.current_task()
     if asyncio_task:
         _running_tasks[task_id] = asyncio_task
@@ -561,6 +570,17 @@ async def _execute_task_async(task_id: str):
         result_summary = (final_answer or "")[:500]
         tokens_used = total_input_tokens + total_output_tokens
 
+        # Post-run token budget check (mid-run cancellation not yet supported)
+        max_tokens = task.get("max_tokens_per_run")
+        if max_tokens and tokens_used > max_tokens:
+            logger.warning(
+                f"Task '{task.get('name', task_id)}' exceeded token budget: "
+                f"{tokens_used} used > {max_tokens} limit."
+            )
+            _record_run_end(run_id, "error", result_summary=f"Token budget exceeded ({tokens_used} > {max_tokens})", tokens_used=tokens_used)
+            _running_tasks.pop(task_id, None)
+            return
+
         # --- Emit rest_task_complete so the frontend renders the Q&A and cleans up state ---
         try:
             session_data = await session_manager.get_session(user_uuid, session_id)
@@ -611,12 +631,8 @@ async def _deliver_result(task: dict, result: str, session_id: str):
             if not to_addr:
                 logger.warning(f"Task '{task_name}': email channel configured but no to_address.")
                 return
-            from trusted_data_agent.auth.email_service import get_email_service
-            svc = get_email_service()
-            if svc:
-                await asyncio.get_event_loop().run_in_executor(
-                    None, svc.send_email, to_addr, subject, result
-                )
+            from trusted_data_agent.auth.email_service import EmailService
+            await EmailService.send_email(to_addr, subject, result)
 
         elif channel == "webhook":
             import httpx
@@ -652,6 +668,6 @@ async def run_task_now(task_id: str, user_uuid: str) -> str:
     task = get_task(task_id, user_uuid)
     if not task:
         raise ValueError(f"Task '{task_id}' not found.")
-    asyncio.create_task(_execute_task_async(task_id))
-    # Return the next run_id that will be created (best effort)
-    return task_id
+    run_id = _record_run_start(task_id)
+    asyncio.create_task(_execute_task_async(task_id, preflight_run_id=run_id))
+    return run_id

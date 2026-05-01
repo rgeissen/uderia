@@ -1722,6 +1722,7 @@ def _create_scheduled_tasks_tables():
                     prompt TEXT NOT NULL,
                     schedule TEXT NOT NULL,
                     enabled INTEGER DEFAULT 1,
+                    session_id TEXT,
                     last_run_at TEXT,
                     last_run_status TEXT,
                     next_run_at TEXT,
@@ -1760,6 +1761,13 @@ def _create_scheduled_tasks_tables():
 
         conn.commit()
         conn.close()
+
+        # Run column migrations after schema is guaranteed to exist
+        try:
+            from trusted_data_agent.core.task_scheduler import _ensure_columns
+            _ensure_columns()
+        except Exception:
+            pass
 
     except Exception as e:
         logger.error(f"Error creating scheduled_tasks tables: {e}", exc_info=True)

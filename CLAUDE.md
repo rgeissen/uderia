@@ -1955,6 +1955,7 @@ static/js/main.js                           # Frontend initialization
 docs/
   ├── Architecture/
   │   ├── CONTEXT_WINDOW_ARCHITECTURE.md    # Context window management (comprehensive)
+  │   ├── SCHEDULER_ARCHITECTURE.md         # Task Scheduler: APScheduler, execution pipeline, renderer
   │   ├── PROMPT_ENCRYPTION.md              # Encryption architecture
   │   └── NESTED_GENIE_UPGRADE_GUIDE.md     # Genie coordinator guide
   ├── RestAPI/restAPI.md                    # REST API reference

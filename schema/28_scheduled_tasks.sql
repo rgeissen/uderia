@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     prompt           TEXT NOT NULL,
     schedule         TEXT NOT NULL,           -- cron expression (e.g. "0 9 * * 1-5") or "interval:Ns"
     enabled          INTEGER DEFAULT 1,
+    session_id       TEXT,                    -- pinned session to reuse; NULL = create fresh each run
     last_run_at      TEXT,
     last_run_status  TEXT,                    -- success | error | timeout | skipped
     next_run_at      TEXT,
