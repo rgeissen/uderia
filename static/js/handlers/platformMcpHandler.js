@@ -128,34 +128,32 @@ function _renderFullPanel(container) {
     }
 
     container.innerHTML = `
-        <!-- Filter pills -->
-        <div class="flex items-center gap-6 mb-6" id="pmcp-filter-row">
-            <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-400 uppercase tracking-wide">Type:</span>
-                <div class="flex gap-1.5" id="pmcp-type-filters">
-                    <button class="filter-pill filter-pill--active" data-filter="all"
-                            onclick="window._pmcpSetTypeFilter('all', this)">All</button>
-                    <button class="filter-pill" data-filter="builtin"
-                            onclick="window._pmcpSetTypeFilter('builtin', this)">Built-in</button>
-                    <button class="filter-pill" data-filter="remote"
-                            onclick="window._pmcpSetTypeFilter('remote', this)">Remote</button>
-                </div>
+        <!-- Platform connectors section -->
+        <div class="mb-6">
+            <div class="flex items-center gap-2 mb-3">
+                <svg class="w-4 h-4 text-indigo-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
+                </svg>
+                <span class="text-xs font-semibold uppercase tracking-wider" style="color:var(--text-muted)">Platform Connectors</span>
+                <span class="text-xs" style="color:var(--text-muted)">— authenticated by admin, shared across users</span>
             </div>
-            <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-400 uppercase tracking-wide">Status:</span>
-                <div class="flex gap-1.5" id="pmcp-status-filters">
-                    <button class="filter-pill filter-pill--active" data-filter="all"
-                            onclick="window._pmcpSetStatusFilter('all', this)">All</button>
-                    <button class="filter-pill" data-filter="active"
-                            onclick="window._pmcpSetStatusFilter('active', this)">Active</button>
-                    <button class="filter-pill" data-filter="inactive"
-                            onclick="window._pmcpSetStatusFilter('inactive', this)">Inactive</button>
-                </div>
+            <div id="${PMCP_GRID_ID}-platform" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             </div>
         </div>
 
-        <!-- Card grid -->
-        <div id="${PMCP_GRID_ID}" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <!-- User connectors section -->
+        <div class="mb-6">
+            <div class="flex items-center gap-2 mb-3">
+                <svg class="w-4 h-4 text-yellow-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                </svg>
+                <span class="text-xs font-semibold uppercase tracking-wider" style="color:var(--text-muted)">User Connectors</span>
+                <span class="text-xs" style="color:var(--text-muted)">— each user connects their own account</span>
+            </div>
+            <div id="${PMCP_GRID_ID}-user" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            </div>
         </div>
 
         <!-- Detail panel (hidden until a card is selected) -->
@@ -164,8 +162,8 @@ function _renderFullPanel(container) {
 
     _renderGrid();
 
-    // Auto-select first visible card
-    const firstVisible = _filteredServers()[0];
+    // Auto-select first available card (platform first, then user)
+    const firstVisible = _pmcpuServers[0];
     if (firstVisible) _selectServer(firstVisible.id);
 }
 
@@ -202,25 +200,29 @@ function _isServerActiveForProfile(server, profileId) {
 }
 
 function _renderGrid() {
-    const grid = document.getElementById(PMCP_GRID_ID);
-    if (!grid) return;
+    const platformGrid = document.getElementById(`${PMCP_GRID_ID}-platform`);
+    const userGrid     = document.getElementById(`${PMCP_GRID_ID}-user`);
+    if (!platformGrid || !userGrid) return;
 
-    const servers = _filteredServers();
-    if (servers.length === 0) {
-        grid.innerHTML = `
-            <div class="col-span-full text-center py-10 text-gray-400 text-sm">
-                No servers match the current filter.
-            </div>`;
-        _hideDetailPanel();
-        return;
-    }
+    const platformServers = _pmcpuServers.filter(s => !s.requires_user_auth);
+    const userServers     = _pmcpuServers.filter(s =>  s.requires_user_auth);
 
-    grid.innerHTML = servers.map(s => _renderServerCard(s)).join('');
+    const emptyMsg = `<div class="col-span-full text-sm py-2" style="color:var(--text-muted)">None available.</div>`;
 
-    // Attach click handlers
-    grid.querySelectorAll('.pmcp-server-card').forEach(card => {
-        card.style.cursor = 'pointer';
-        card.addEventListener('click', () => _selectServer(card.dataset.serverId));
+    platformGrid.innerHTML = platformServers.length === 0
+        ? emptyMsg
+        : platformServers.map(s => _renderServerCard(s)).join('');
+
+    userGrid.innerHTML = userServers.length === 0
+        ? emptyMsg
+        : userServers.map(s => _renderServerCard(s)).join('');
+
+    // Attach click handlers across both grids
+    [platformGrid, userGrid].forEach(grid => {
+        grid.querySelectorAll('.pmcp-server-card').forEach(card => {
+            card.style.cursor = 'pointer';
+            card.addEventListener('click', () => _selectServer(card.dataset.serverId));
+        });
     });
 
     // Re-apply selection highlight
@@ -315,9 +317,7 @@ function _selectServer(serverId) {
 }
 
 function _applyCardSelection(serverId) {
-    const grid = document.getElementById(PMCP_GRID_ID);
-    if (!grid) return;
-    grid.querySelectorAll('.pmcp-server-card').forEach(card => {
+    document.querySelectorAll('.pmcp-server-card').forEach(card => {
         if (card.dataset.serverId === serverId) {
             card.style.outline       = `2px solid rgba(129,140,248,0.65)`;
             card.style.outlineOffset = '-2px';
@@ -341,7 +341,12 @@ function _renderDetailPanel(server) {
     try { tools = JSON.parse(server.available_tools || '[]'); } catch (_) {}
 
     const isBuiltin = server.id.startsWith('uderia-');
-    const isGoogleServer = server.id === 'uderia-google' || (server.name || '').toLowerCase().includes('google');
+    // Servers with requires_user_auth need a per-user OAuth connection section.
+    // Platform name derived by stripping the 'uderia-' prefix from the server ID.
+    const requiresUserAuth = !!server.requires_user_auth;
+    const connectorPlatform = requiresUserAuth
+        ? (server.id.startsWith('uderia-') ? server.id.slice('uderia-'.length) : server.id)
+        : null;
 
     // ── Profile assignment rows ──
     const profileRows = _pmcpuProfiles.length === 0
@@ -359,25 +364,19 @@ function _renderDetailPanel(server) {
            </div>`
         : '<p class="text-gray-500 text-sm">No tools defined.</p>';
 
-    // ── Google OAuth section (Track C — not yet available) ──
-    const googleSection = isGoogleServer ? `
-        <div class="p-4 rounded-xl flex items-center gap-4 mb-2"
-             style="background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.15)">
-            <svg class="w-6 h-6 flex-shrink-0 opacity-60" viewBox="0 0 24 24" fill="none">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-            </svg>
-            <div class="flex-1 min-w-0">
-                <p class="text-sm text-yellow-200/80 font-semibold">Google Account Connection</p>
-                <p class="text-xs text-gray-500 mt-0.5">Per-user Google OAuth (Gmail &amp; Calendar) is coming in a future update.</p>
-            </div>
-            <span class="text-[10px] px-2 py-0.5 rounded font-medium flex-shrink-0"
-                  style="background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.2)">
-                Coming soon
-            </span>
-        </div>` : '';
+    // ── User-auth connector OAuth section ──
+    // For any server with requires_user_auth, render a spinner placeholder that is
+    // replaced with live connection status after the DOM is inserted.
+    const googleSection = requiresUserAuth
+        ? `<div id="pmcp-connector-oauth-section" class="mb-4">
+               <div class="flex items-center gap-2 text-xs text-gray-500 py-2">
+                   <svg class="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                   </svg>
+                   Loading connection status…
+               </div>
+           </div>`
+        : '';
 
     panel.classList.remove('hidden');
     panel.innerHTML = `
@@ -424,15 +423,6 @@ function _renderDetailPanel(server) {
                     </h3>
                     ${toolList}
 
-                    ${server.requires_user_auth ? `
-                    <div class="mt-4 flex items-center gap-2 text-xs text-yellow-400">
-                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
-                        </svg>
-                        Requires user authentication
-                    </div>` : ''}
-
                     ${!server.user_can_opt_out && server.auto_opt_in ? `
                     <div class="mt-4 flex items-center gap-2 text-xs text-gray-400">
                         <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -453,11 +443,176 @@ function _renderDetailPanel(server) {
                     </div>
                     ${!server.user_can_configure_tools ? '' : `
                     <p class="text-[11px] text-gray-500 mt-3">
-                        Tool-level configuration is available in Profile Edit → Platform MCP Servers.
+                        Tool-level configuration is available in Profile Edit → Connectors.
                     </p>`}
                 </div>
             </div>
         </div>`;
+
+    // Fetch and render live connector status after the DOM is inserted
+    if (requiresUserAuth && connectorPlatform) {
+        requestAnimationFrame(() => _loadConnectorOAuthSection(connectorPlatform, server.id));
+    }
+}
+
+// ── Generic connector OAuth section ──────────────────────────────────────────
+// All functions take (platform, serverId) and use /api/v1/connectors/{platform}/...
+// Adding a new user-auth connector requires only server manifest requires_user_auth: true.
+
+async function _loadConnectorOAuthSection(platform, serverId) {
+    const section = document.getElementById('pmcp-connector-oauth-section');
+    if (!section) return;
+
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const resp = await fetch(`/api/v1/connectors/${encodeURIComponent(platform)}/status`, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (!resp.ok) throw new Error(`Status ${resp.status}`);
+        const status = await resp.json();
+        section.innerHTML = _renderConnectorOAuthCard(platform, serverId, status);
+        _wireConnectorOAuthCard(platform, serverId);
+    } catch (err) {
+        const display = platform.charAt(0).toUpperCase() + platform.slice(1);
+        section.innerHTML = `<p class="text-xs text-gray-500 py-1">Could not load ${display} connection status.</p>`;
+    }
+}
+
+function _connectorIcon(platform) {
+    if (platform === 'google') {
+        return `<svg class="w-6 h-6 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>`;
+    }
+    // Generic connector icon
+    return `<svg class="w-6 h-6 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"/>
+    </svg>`;
+}
+
+function _renderConnectorOAuthCard(platform, serverId, status) {
+    const display = platform.charAt(0).toUpperCase() + platform.slice(1);
+    const icon = _connectorIcon(platform);
+
+    if (!status.configured) {
+        const clientIdKey = `${platform.toUpperCase()}_CLIENT_ID`;
+        const clientSecretKey = `${platform.toUpperCase()}_CLIENT_SECRET`;
+        return `
+        <div class="p-4 rounded-xl flex items-center gap-4 mb-4"
+             style="background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.15)">
+            ${icon}
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold" style="color:#fbbf24">${_esc(display)} Account Connection</p>
+                <p class="text-xs mt-0.5" style="color:var(--text-muted)">
+                    Admin must configure <code class="font-mono">${_esc(clientIdKey)}</code> and
+                    <code class="font-mono">${_esc(clientSecretKey)}</code> in the credentials section before users can connect.
+                </p>
+            </div>
+        </div>`;
+    }
+
+    if (status.connected) {
+        return `
+        <div class="p-4 rounded-xl flex items-center gap-4 mb-4"
+             style="background:rgba(52,211,153,0.05);border:1px solid rgba(52,211,153,0.2)">
+            ${icon}
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold" style="color:#34d399">${_esc(display)} Account Connected</p>
+                <p class="text-xs mt-0.5" style="color:var(--text-muted)">${_esc(status.email || '')}</p>
+            </div>
+            <button id="pmcp-connector-disconnect-btn"
+                    class="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+                    style="background:rgba(248,113,113,0.12);color:#f87171;border:1px solid rgba(248,113,113,0.25)">
+                Disconnect
+            </button>
+        </div>`;
+    }
+
+    return `
+    <div class="p-4 rounded-xl flex items-center gap-4 mb-4"
+         style="background:rgba(129,140,248,0.05);border:1px solid rgba(129,140,248,0.2)">
+        ${icon}
+        <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold" style="color:var(--text-primary)">${_esc(display)} Account Connection</p>
+            <p class="text-xs mt-0.5" style="color:var(--text-muted)">
+                Connect your ${_esc(display)} account to enable its tools.
+            </p>
+        </div>
+        <button id="pmcp-connector-connect-btn"
+                class="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+                style="background:rgba(129,140,248,0.15);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3)">
+            Connect ${_esc(display)} account
+        </button>
+    </div>`;
+}
+
+function _wireConnectorOAuthCard(platform, serverId) {
+    const connectBtn = document.getElementById('pmcp-connector-connect-btn');
+    if (connectBtn) {
+        connectBtn.addEventListener('click', () => _connectAccount(platform, serverId));
+    }
+    const disconnectBtn = document.getElementById('pmcp-connector-disconnect-btn');
+    if (disconnectBtn) {
+        disconnectBtn.addEventListener('click', () => _disconnectAccount(platform, serverId));
+    }
+    // Listen for OAuth success message from popup window
+    const listenerKey = `_connectorOAuthListener_${platform}`;
+    if (window[listenerKey]) {
+        window.removeEventListener('message', window[listenerKey]);
+    }
+    window[listenerKey] = (event) => {
+        if (event.data && event.data.type === `${platform}_oauth_success`) {
+            window.removeEventListener('message', window[listenerKey]);
+            window[listenerKey] = null;
+            _loadConnectorOAuthSection(platform, serverId);
+        }
+    };
+    window.addEventListener('message', window[listenerKey]);
+}
+
+async function _connectAccount(platform, serverId) {
+    const display = platform.charAt(0).toUpperCase() + platform.slice(1);
+    const btn = document.getElementById('pmcp-connector-connect-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Opening…'; }
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        const resp = await fetch(`/api/v1/connectors/${encodeURIComponent(platform)}/auth`, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || `HTTP ${resp.status}`);
+        }
+        const { auth_url } = await resp.json();
+        const popup = window.open(auth_url, `${platform}_oauth`, 'width=520,height=640,menubar=no,toolbar=no,location=no');
+        if (!popup) {
+            throw new Error('Popup was blocked. Please allow popups for this site and try again.');
+        }
+    } catch (err) {
+        if (btn) { btn.disabled = false; btn.textContent = `Connect ${display} account`; }
+        alert(`Could not start ${display} authorization:\n${err.message}`);
+    }
+}
+
+async function _disconnectAccount(platform, serverId) {
+    const display = platform.charAt(0).toUpperCase() + platform.slice(1);
+    if (!confirm(`Disconnect your ${display} account? Its tools will stop working.`)) return;
+    const btn = document.getElementById('pmcp-connector-disconnect-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Disconnecting…'; }
+    try {
+        const token = localStorage.getItem('tda_auth_token');
+        await fetch(`/api/v1/connectors/${encodeURIComponent(platform)}/connection`, {
+            method: 'DELETE',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        await _loadConnectorOAuthSection(platform, serverId);
+    } catch (err) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Disconnect'; }
+    }
 }
 
 function _renderDetailProfileRow(server, profile) {
@@ -623,7 +778,6 @@ async function togglePlatformMcpProfileAssignment(serverId, profileId, enabled) 
     }
 }
 
-// connectGoogleAccount: implemented in Track C (Google OAuth connector)
 
 // ── Profile Edit Modal: Platform MCP Section ───────────────────────────────────
 
@@ -663,7 +817,7 @@ async function loadProfilePlatformMcpSection(modal, profileId) {
             container.innerHTML = `
                 <div class="text-center py-6">
                     <p class="text-gray-400 text-sm">No platform servers are enabled for this profile.</p>
-                    <p class="text-gray-500 text-xs mt-1">Go to Platform Components → MCP Servers to assign servers.</p>
+                    <p class="text-gray-500 text-xs mt-1">Go to Platform Components → Connectors to assign servers.</p>
                 </div>`;
             return;
         }

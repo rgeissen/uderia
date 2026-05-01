@@ -93,18 +93,7 @@ function renderPlatformMcpAdminPanel() {
 
     container.innerHTML = `
         <div class="space-y-3">
-            ${_renderCollapsibleSection({
-                id:        'pmcp-section-installed',
-                open:      true,
-                icon:      `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
-                            </svg>`,
-                title:     'Installed MCP Servers',
-                subtitle:  `${_pmcpInstalledServers.length} server${_pmcpInstalledServers.length !== 1 ? 's' : ''} installed`,
-                body:      _pmcpInstalledServers.length === 0
-                               ? _renderEmptyState()
-                               : `<div class="space-y-3">${_pmcpInstalledServers.map(_renderServerCard).join('')}</div>`,
-            })}
+            ${_renderInstalledSections()}
             ${_renderCollapsibleSection({
                 id:        'pmcp-section-sources',
                 open:      false,
@@ -120,6 +109,42 @@ function renderPlatformMcpAdminPanel() {
         ${_renderAddSourceModal()}
         ${_renderCredentialsModal()}
     `;
+}
+
+function _renderInstalledSections() {
+    const platformServers = _pmcpInstalledServers.filter(s => !s.requires_user_auth);
+    const userServers     = _pmcpInstalledServers.filter(s =>  s.requires_user_auth);
+
+    const platformIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
+    </svg>`;
+    const userIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+    </svg>`;
+
+    const platformSection = _renderCollapsibleSection({
+        id:       'pmcp-section-platform',
+        open:     true,
+        icon:     platformIcon,
+        title:    'Platform Connectors',
+        subtitle: 'Authenticated by admin — shared credentials, available to all authorised users',
+        body:     platformServers.length === 0
+                      ? `<p class="text-sm text-gray-500 py-2">No platform connectors installed. Browse the registry to add one.</p>`
+                      : `<div class="space-y-3">${platformServers.map(_renderServerCard).join('')}</div>`,
+    });
+
+    const userSection = _renderCollapsibleSection({
+        id:       'pmcp-section-user',
+        open:     true,
+        icon:     userIcon,
+        title:    'User Connectors',
+        subtitle: 'Authenticated per user — each user connects their own account via OAuth',
+        body:     userServers.length === 0
+                      ? `<p class="text-sm text-gray-500 py-2">No user connectors installed. Browse the registry to add one.</p>`
+                      : `<div class="space-y-3">${userServers.map(_renderServerCard).join('')}</div>`,
+    });
+
+    return platformSection + userSection;
 }
 
 function _renderCollapsibleSection({ id, open, icon, title, subtitle, body }) {

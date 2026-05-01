@@ -1944,6 +1944,22 @@ async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, ses
     # --- MODIFICATION END ---
 
 
+    # --- Route platform MCP server tools (browser, files, shell, web, google, etc.) ---
+    # These bypass the primary MCP server session and go directly to the platform server subprocess.
+    try:
+        from trusted_data_agent.core.platform_mcp_registry import (
+            get_server_for_tool as _get_server_for_tool,
+            invoke_platform_tool as _invoke_platform_tool,
+        )
+        platform_server_id = _get_server_for_tool(tool_name)
+        if platform_server_id:
+            app_logger.info(f"[Platform MCP] Routing '{tool_name}' → '{platform_server_id}'")
+            result = await _invoke_platform_tool(platform_server_id, tool_name, aligned_args, user_uuid=user_uuid)
+            return result, 0, 0
+    except Exception as _pe:
+        app_logger.warning(f"Platform tool routing failed for '{tool_name}': {_pe}")
+    # --- End platform tool routing ---
+
     app_logger.debug(f"[MCP] Calling tool '{tool_name}' with args: {aligned_args}")
     try:
         # Use server ID instead of name for session management

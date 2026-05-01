@@ -523,3 +523,232 @@ def _row_to_server(row) -> dict:
 def _now() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Platform tool invocation (per-call stdio subprocess)
+# ---------------------------------------------------------------------------
+
+_INVOKE_TIMEOUT = 30  # seconds per tool call
+
+
+async def invoke_platform_tool(
+    server_id: str,
+    tool_name: str,
+    args: dict,
+    user_uuid: Optional[str] = None,
+) -> dict:
+    """
+    Invoke a tool on a builtin platform MCP server.
+
+    Spawns the server process once per call (stateless, no persistent session),
+    sends initialize + tools/call over stdio, and returns the parsed result dict.
+
+    For servers with requires_user_auth (e.g. uderia-google), injects user OAuth
+    tokens from messaging_identities alongside the admin credentials.
+    """
+    import asyncio
+    import sys
+
+    server = get_server(server_id)
+    if not server:
+        return {"status": "error", "error": f"Platform server '{server_id}' not found."}
+
+    # Resolve the server entry point
+    repo_root = Path(__file__).resolve().parents[3]
+    install_spec = server.get("install_spec") or {}
+    if isinstance(install_spec, str):
+        try:
+            install_spec = json.loads(install_spec)
+        except Exception:
+            install_spec = {}
+
+    cmd_args = install_spec.get("args", [])
+    if not cmd_args:
+        # Fall back: derive from manifest entry_point
+        builtin_dir = repo_root / "mcp_servers" / "builtin" / server_id
+        entry = builtin_dir / "server.py"
+        if not entry.exists():
+            return {"status": "error", "error": f"Server entry point not found for '{server_id}'."}
+        cmd_args = [str(entry)]
+
+    # Build environment: inherit current env + admin credentials + user tokens
+    env = dict(os.environ)
+    creds = get_server_credentials(server_id)
+    for k, v in creds.items():
+        if v:
+            env[k] = str(v)
+
+    # Inject user OAuth tokens for servers that require per-user auth
+    if server.get("requires_user_auth") and user_uuid:
+        _inject_user_tokens(server_id, user_uuid, env)
+
+    # Spawn the MCP server process
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, *cmd_args,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+    except Exception as exc:
+        logger.error(f"Failed to spawn platform server '{server_id}': {exc}")
+        return {"status": "error", "error": f"Could not start '{server_id}': {exc}"}
+
+    try:
+        return await asyncio.wait_for(
+            _call_via_stdio(proc, tool_name, args),
+            timeout=_INVOKE_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        proc.kill()
+        return {"status": "error", "error": f"Tool '{tool_name}' timed out after {_INVOKE_TIMEOUT}s."}
+    except Exception as exc:
+        logger.error(f"Platform tool '{tool_name}' invocation error: {exc}", exc_info=True)
+        return {"status": "error", "error": str(exc)}
+    finally:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def _inject_user_tokens(server_id: str, user_uuid: str, env: dict):
+    """Inject per-user OAuth tokens into the subprocess environment.
+
+    Delegates to the connector module registered for this server_id, if any.
+    The connector module must expose an `inject_env_tokens(user_uuid, env)` function.
+    Falls back to a direct DB lookup for connectors that don't implement that function.
+    """
+    try:
+        from trusted_data_agent.connectors.registry import server_id_to_platform, get as get_connector
+        platform = server_id_to_platform(server_id)
+        if not platform:
+            return  # Not a user-auth connector
+        mod = get_connector(platform)
+        if mod is None:
+            return
+        if hasattr(mod, "inject_env_tokens"):
+            mod.inject_env_tokens(user_uuid, env)
+        else:
+            # Generic fallback: read encrypted tokens from messaging_identities and
+            # set PLATFORM_ACCESS_TOKEN / PLATFORM_REFRESH_TOKEN env vars.
+            with _get_conn() as conn:
+                row = conn.execute(
+                    "SELECT access_token, refresh_token FROM messaging_identities "
+                    "WHERE user_uuid = ? AND platform = ?",
+                    (user_uuid, platform),
+                ).fetchone()
+            if not row:
+                return
+            f = _platform_fernet()
+            prefix = platform.upper()
+            if row["access_token"]:
+                env[f"{prefix}_ACCESS_TOKEN"] = f.decrypt(row["access_token"].encode()).decode()
+            if row["refresh_token"]:
+                env[f"{prefix}_REFRESH_TOKEN"] = f.decrypt(row["refresh_token"].encode()).decode()
+    except Exception as exc:
+        logger.warning(f"Could not inject user tokens for server '{server_id}' / user {user_uuid}: {exc}")
+
+
+async def _call_via_stdio(proc: asyncio.subprocess.Process, tool_name: str, args: dict) -> dict:
+    """
+    Run MCP initialize + tools/call over the process stdin/stdout and return parsed result.
+    """
+    import json
+
+    def _send(obj: dict) -> bytes:
+        return (json.dumps(obj) + "\n").encode("utf-8")
+
+    init_req = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {},
+        "clientInfo": {"name": "uderia-platform", "version": "1.0.0"},
+    }}
+    call_req = {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+        "name": tool_name,
+        "arguments": args,
+    }}
+    init_done = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+
+    # Write all requests at once
+    stdin_data = _send(init_req) + _send(init_done) + _send(call_req)
+    proc.stdin.write(stdin_data)
+    await proc.stdin.drain()
+    proc.stdin.close()
+
+    # Read responses
+    init_resp = None
+    call_resp = None
+    async for raw_line in proc.stdout:
+        line = raw_line.decode("utf-8", errors="replace").strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        rid = msg.get("id")
+        if rid == 1:
+            init_resp = msg
+        elif rid == 2:
+            call_resp = msg
+            break  # Got what we need
+
+    if call_resp is None:
+        # Read stderr for diagnostics
+        try:
+            stderr_raw = await proc.stderr.read(2000)
+            stderr_txt = stderr_raw.decode("utf-8", errors="replace").strip()
+        except Exception:
+            stderr_txt = ""
+        err_msg = stderr_txt or "No response from server."
+        return {"status": "error", "error": err_msg}
+
+    if "error" in call_resp:
+        return {"status": "error", "error": call_resp["error"].get("message", str(call_resp["error"]))}
+
+    # Extract text content from MCP result
+    result = call_resp.get("result", {})
+    content_list = result.get("content", [])
+    if content_list:
+        text = content_list[0].get("text", "")
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict) and "status" not in parsed:
+                parsed["status"] = "success"
+            return parsed if isinstance(parsed, dict) else {"status": "success", "result": parsed}
+        except json.JSONDecodeError:
+            return {"status": "success", "result": text}
+
+    return {"status": "success", "result": result}
+
+
+def get_server_for_tool(tool_name: str) -> Optional[str]:
+    """
+    Return the server_id that owns the given tool name across all enabled platform servers.
+    Used by invoke_mcp_tool to route platform tool calls.
+    """
+    builtin_result = _list_builtin_servers("", 1)
+    builtin_map = {s["id"]: s.get("tools", []) for s in builtin_result["servers"]}
+
+    with _get_conn() as conn:
+        servers = conn.execute(
+            "SELECT id FROM platform_mcp_servers WHERE enabled = 1"
+        ).fetchall()
+
+    for row in servers:
+        sid = row["id"]
+        tools = builtin_map.get(sid, [])
+        if tool_name in tools:
+            return sid
+
+    # Also check against cached tool schemas
+    for sid in list(_tool_schema_cache.keys()):
+        cached = _tool_schema_cache[sid]
+        for t in cached.get("tools", []):
+            if (isinstance(t, dict) and t.get("name") == tool_name) or t == tool_name:
+                return sid
+
+    return None

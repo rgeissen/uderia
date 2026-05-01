@@ -654,8 +654,39 @@ async def _deliver_result(task: dict, result: str, session_id: str):
                 await client.post(url, json=payload, headers=headers)
 
         elif channel == "google_mail":
-            # Deferred to Track C
-            logger.info(f"Task '{task_name}': google_mail channel — Track C not yet available.")
+            user_uuid = task.get("user_uuid")
+            if not user_uuid:
+                logger.warning(f"Task '{task_name}': google_mail channel — no user_uuid on task, cannot send.")
+                return
+            from trusted_data_agent.connectors.google_connector import get_tokens
+            tokens = await get_tokens(user_uuid)
+            if not tokens or not tokens.get("access_token"):
+                logger.warning(f"Task '{task_name}': google_mail — no Google account connected for user {user_uuid}.")
+                return
+            from trusted_data_agent.core.platform_mcp_registry import get_server_credentials
+            creds = get_server_credentials("uderia-google")
+            to_addr = cfg.get("to_address") or tokens.get("email") or ""
+            if not to_addr:
+                logger.warning(f"Task '{task_name}': google_mail — no recipient address configured.")
+                return
+            import base64
+            from email.mime.text import MIMEText
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build as _gapi_build
+            google_creds = Credentials(
+                token=tokens["access_token"],
+                refresh_token=tokens.get("refresh_token"),
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=creds.get("GOOGLE_CLIENT_ID", ""),
+                client_secret=creds.get("GOOGLE_CLIENT_SECRET", ""),
+            )
+            msg = MIMEText(result)
+            msg["to"] = to_addr
+            msg["subject"] = subject
+            raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
+            service = _gapi_build("gmail", "v1", credentials=google_creds, cache_discovery=False)
+            service.users().messages().send(userId="me", body={"raw": raw}).execute()
+            logger.info(f"Task '{task_name}': google_mail delivered to {to_addr}.")
 
     except Exception as e:
         logger.warning(f"Failed to deliver result for task '{task_name}' via {channel}: {e}")

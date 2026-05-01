@@ -201,6 +201,9 @@ def create_app():
     from trusted_data_agent.api.kg_marketplace_routes import kg_marketplace_bp
     app.register_blueprint(kg_marketplace_bp, url_prefix="/api")  # KG marketplace
 
+    from trusted_data_agent.api.connector_routes import connector_bp
+    app.register_blueprint(connector_bp)  # Google OAuth connector (Track C)
+
     @app.route('/favicon.ico')
     async def favicon():
         """Serve favicon.ico from root path for browser compatibility"""
