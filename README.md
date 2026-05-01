@@ -262,6 +262,7 @@ Build trust through complete visibility into every decision, action, and data po
   - **Canvas Component:** Interactive code editor powered by CodeMirror 6 with syntax highlighting (SQL, Python, JavaScript), live database connectors, in-place query execution, split-panel and fullscreen modes, and result rendering directly in chat
   - **Chart Component:** Data visualization via G2Plot with 16 chart types (bar, line, pie, scatter, heatmap, gauge, radar, treemap, and more), 5-stage mapping resolution pipeline with cardinality-aware column selection, deterministic fast-path execution, and LLM-assisted fallback
   - **Knowledge Graph:** Entity-relationship visualization for context enrichment and document structure exploration
+  - **Task Scheduler:** Autonomous agent scheduling via natural conversation — cron and interval tasks run through the identical execution pipeline as interactive queries, with an interactive scheduling canvas, per-task governance (overlap policy, token budget), and multi-channel result delivery (email, webhook)
   - Self-contained component architecture with manifest-driven discovery and hot-reload
   - Profile-level intensity control and admin governance
   - 3 render targets: inline (chat bubble), sub_window (persistent canvas panel), status_panel (Live Status area)
@@ -1796,6 +1797,21 @@ The Knowledge Graph component (`TDA_KnowledgeGraph`) maintains a living, queryab
 - **Progressive Enrichment:** Graphs grow through LLM-inferred entities during conversation, manual JSON import, or (V2) MCP schema auto-discovery
 - **Intensity Control:** At `medium` intensity, graph context is advisory; at `heavy` intensity, the LLM strictly validates against known relationships
 
+**Task Scheduler — Autonomous Agent Scheduling**
+
+The Task Scheduler component (`TDA_Scheduler`) transforms Uderia from a reactive assistant into an always-on autonomous agent. Users create, manage, and monitor scheduled tasks through natural conversation; results render as an interactive scheduling canvas in the chat.
+
+- **Same Pipeline, No Special Runner:** Scheduled tasks execute through the identical `run_agent_execution()` path as interactive queries — same LLM, same profile, same MCP tools. Every platform improvement automatically benefits scheduled tasks
+- **Two Schedule Formats:** Standard cron expressions (`0 9 * * 1-5` = weekdays at 9 AM) and interval shorthand (`interval:30m`, `interval:2h`, `interval:1d`) backed by APScheduler `AsyncIOScheduler`
+- **Session Context:** `session_context='new'` creates a fresh ephemeral session per run (appears in sidebar); `session_context='current'` pins the task to the user's active session, inheriting full conversation history and profile context
+- **Concurrency Governance:** Three overlap policies — `skip` (default, prevents burst catch-up), `queue` (waits up to 300s for prior run), `allow` (concurrent execution)
+- **Token Budget:** Optional `max_tokens_per_run` limit; enforced post-run — runs that exceed the budget are marked as errors and skip result delivery
+- **Result Delivery:** Results route to `email` (via the platform's existing SMTP/SendGrid/SES) or `webhook` (POST with optional bearer token) in addition to the live notification feed
+- **Interactive Canvas:** Split-panel scheduling canvas with task cards showing live status, upcoming fire times, prompt preview with expand/collapse, and in-panel enable/disable/delete/history actions
+- **8 Conversational Actions:** `create` · `list` · `update` · `delete` · `enable` · `disable` · `run_now` · `history`
+
+Architecture details: [**Scheduler Architecture (docs/Architecture/SCHEDULER_ARCHITECTURE.md)**](docs/Architecture/SCHEDULER_ARCHITECTURE.md)
+
 **Component Architecture:**
 - **Self-contained modules** — each component is a directory with `manifest.json`, `instructions.json`, `handler.py`, and `renderer.js`
 - **Two handler tiers** — Action (LLM explicitly calls `TDA_*` tool) and Structural (automatic rendering from data type)
@@ -1805,7 +1821,7 @@ The Knowledge Graph component (`TDA_KnowledgeGraph`) maintains a living, queryab
 - **Admin governance** — platform-wide component control (all/selective mode, user imports, marketplace access)
 - **Third-party extensibility** — add custom components without modifying core files; manifest-driven discovery with hot-reload
 
-Architecture details: [**Component Architecture (docs/Architecture/COMPONENT_ARCHITECTURE.md)**](docs/Architecture/COMPONENT_ARCHITECTURE.md) · [**Canvas Architecture (docs/Architecture/CANVAS_ARCHITECTURE.md)**](docs/Architecture/CANVAS_ARCHITECTURE.md) · [**Knowledge Graph Architecture (docs/Architecture/KNOWLEDGE_GRAPH_ARCHITECTURE.md)**](docs/Architecture/KNOWLEDGE_GRAPH_ARCHITECTURE.md)
+Architecture details: [**Component Architecture (docs/Architecture/COMPONENT_ARCHITECTURE.md)**](docs/Architecture/COMPONENT_ARCHITECTURE.md) · [**Canvas Architecture (docs/Architecture/CANVAS_ARCHITECTURE.md)**](docs/Architecture/CANVAS_ARCHITECTURE.md) · [**Knowledge Graph Architecture (docs/Architecture/KNOWLEDGE_GRAPH_ARCHITECTURE.md)**](docs/Architecture/KNOWLEDGE_GRAPH_ARCHITECTURE.md) · [**Scheduler Architecture (docs/Architecture/SCHEDULER_ARCHITECTURE.md)**](docs/Architecture/SCHEDULER_ARCHITECTURE.md)
 
 [⬆️ Back to Table of Contents](#table-of-contents)
 
@@ -3428,6 +3444,7 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **01-May-2026:** Task Scheduler — Autonomous agent scheduling via natural conversation. Create cron and interval tasks that run through the identical execution pipeline as interactive queries; manage them through an interactive split-panel canvas with per-task governance (overlap policy, token budget), session context pinning (fresh or current session), and multi-channel result delivery (email, webhook).
 *   **28-Apr-2026:** Independent Phase Parallelization — Independent plan phases and date-range tool calls now execute concurrently, reducing multi-phase query time from N × phase_latency to 1 × phase_latency.
 *   **27-Apr-2026:** Engine Modularization — PlanExecutor refactored into five engine classes (`IdeateEngine`, `FocusEngine`, `CoordinateEngine`, `OptimizeEngine`, `ConversationEngine`) via `EngineRegistry`; `executor.py` reduced from ~6,800 to ~3,160 lines.
 *   **16-Apr-2026:** Knowledge Graphs first-class citizens of Agent Packs — Agent Pack manifest v1.4 bundles the active Knowledge Graph per profile; import restores full graph data (entities, relationships, metadata) without displacing an existing active KG on the target profile.
