@@ -4,6 +4,9 @@
  * Admin Panel — "Components" tab → "Connectors" section
  * Governs platform-level capability connectors (browser, files, shell, web, google).
  * Strictly separate from user-configured data source servers (Configuration → MCP Servers).
+ *
+ * Layout: filter chips + compact card list (left) | governance detail panel (right)
+ * Browse Registry modal: source tabs with inline "+ Add Registry" form tab.
  */
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -31,23 +34,29 @@ function _pconnConfirm(message, onConfirm) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let _pconnRegistrySources = [];
-let _pconnInstalledServers = [];
-let _pconnActiveSource = 'builtin';
-let _pconnBrowseResults = [];
-let _pconnNextCursor = '';       // cursor for next page (official registry)
-let _pconnSearchTimeout = null;
+let _pconnRegistrySources   = [];
+let _pconnInstalledServers  = [];
+let _pconnActiveSource      = 'builtin';
+let _pconnBrowseResults     = [];
+let _pconnNextCursor        = '';
+let _pconnSearchTimeout     = null;
 let _pconnCredentialsServerId = null;
-let _pconnLoadingMore = false;
+let _pconnLoadingMore       = false;
+let _pconnCurrentSearch     = '';
+
+// Admin split-panel state
+let _paTypeFilter   = 'all';   // 'all' | 'platform' | 'user'
+let _paStatusFilter = 'all';   // 'all' | 'enabled' | 'disabled'
+let _paSelectedId   = null;    // selected connector id
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 const INSTALL_STATUS = {
-    not_installed: { label: 'Not installed', color: 'text-gray-400',  bg: 'bg-gray-400/10',  ring: 'ring-gray-400/20' },
+    not_installed: { label: 'Not installed', color: 'text-gray-400',   bg: 'bg-gray-400/10',   ring: 'ring-gray-400/20'   },
     installing:    { label: 'Installing…',   color: 'text-yellow-400', bg: 'bg-yellow-400/10', ring: 'ring-yellow-400/20' },
     installed:     { label: 'Installed',     color: 'text-emerald-400', bg: 'bg-emerald-400/10', ring: 'ring-emerald-400/20' },
-    unavailable:   { label: 'Unavailable',   color: 'text-red-400',   bg: 'bg-red-400/10',   ring: 'ring-red-400/20' },
-    error:         { label: 'Error',         color: 'text-red-400',   bg: 'bg-red-400/10',   ring: 'ring-red-400/20' },
+    unavailable:   { label: 'Unavailable',   color: 'text-red-400',    bg: 'bg-red-400/10',    ring: 'ring-red-400/20'   },
+    error:         { label: 'Error',         color: 'text-red-400',    bg: 'bg-red-400/10',    ring: 'ring-red-400/20'   },
 };
 
 function _statusBadge(status) {
@@ -55,7 +64,7 @@ function _statusBadge(status) {
     return `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1 ${cfg.bg} ${cfg.color} ${cfg.ring}">${cfg.label}</span>`;
 }
 
-// ── Load & render ─────────────────────────────────────────────────────────────
+// ── Load & render entry point ─────────────────────────────────────────────────
 
 async function loadPlatformConnectorAdminPanel() {
     const container = document.getElementById('platform-connector-admin-container');
@@ -70,6 +79,10 @@ async function loadPlatformConnectorAdminPanel() {
             </div>`;
     }
     await Promise.all([_loadRegistrySources(), _loadInstalledServers()]);
+    // Auto-select first installed connector
+    if (!_paSelectedId && _pconnInstalledServers.length > 0) {
+        _paSelectedId = _pconnInstalledServers[0].id;
+    }
     renderPlatformConnectorAdminPanel();
 }
 
@@ -87,123 +100,201 @@ async function _loadInstalledServers() {
     } catch (e) { console.error('Failed to load installed platform connectors', e); }
 }
 
+// ── Main render ───────────────────────────────────────────────────────────────
+
 function renderPlatformConnectorAdminPanel() {
     const container = document.getElementById('platform-connector-admin-container');
     if (!container) return;
 
+    const filtered = _paFilteredServers();
+
     container.innerHTML = `
-        <div class="space-y-3">
-            ${_renderInstalledSections()}
-            ${_renderCollapsibleSection({
-                id:        'pmcp-section-sources',
-                open:      false,
-                icon:      `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M10 3v18M14 3v18"/>
-                            </svg>`,
-                title:     'Registry Sources',
-                subtitle:  `${_pconnRegistrySources.length} source${_pconnRegistrySources.length !== 1 ? 's' : ''} configured`,
-                body:      _renderRegistrySourcesBody(),
-            })}
-        </div>
-        ${_renderMarketplaceModal()}
-        ${_renderAddSourceModal()}
-        ${_renderCredentialsModal()}
-    `;
-}
-
-function _renderInstalledSections() {
-    const platformServers = _pconnInstalledServers.filter(s => !s.requires_user_auth);
-    const userServers     = _pconnInstalledServers.filter(s =>  s.requires_user_auth);
-
-    const platformIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
-    </svg>`;
-    const userIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-    </svg>`;
-
-    const platformSection = _renderCollapsibleSection({
-        id:       'pmcp-section-platform',
-        open:     true,
-        icon:     platformIcon,
-        title:    'Platform Connectors',
-        subtitle: 'Authenticated by admin — shared credentials, available to all authorised users',
-        body:     platformServers.length === 0
-                      ? `<p class="text-sm text-gray-500 py-2">No platform connectors installed. Browse the registry to add one.</p>`
-                      : `<div class="space-y-3">${platformServers.map(_paRenderServerCard).join('')}</div>`,
-    });
-
-    const userSection = _renderCollapsibleSection({
-        id:       'pmcp-section-user',
-        open:     true,
-        icon:     userIcon,
-        title:    'User Connectors',
-        subtitle: 'Authenticated per user — each user connects their own account via OAuth',
-        body:     userServers.length === 0
-                      ? `<p class="text-sm text-gray-500 py-2">No user connectors installed. Browse the registry to add one.</p>`
-                      : `<div class="space-y-3">${userServers.map(_paRenderServerCard).join('')}</div>`,
-    });
-
-    return platformSection + userSection;
-}
-
-function _renderCollapsibleSection({ id, open, icon, title, subtitle, body }) {
-    return `
-        <div class="glass-panel rounded-xl overflow-hidden">
-            <details id="${id}" ${open ? 'open' : ''} class="group">
-                <summary class="flex items-center justify-between gap-4 px-5 py-4 cursor-pointer list-none select-none
-                                hover:bg-white/2 transition-colors">
-                    <div class="flex items-center gap-3 min-w-0">
-                        <div class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
-                             style="background:rgba(129,140,248,0.1)">
-                            ${icon}
-                        </div>
-                        <div class="min-w-0">
-                            <h3 class="text-sm font-semibold text-white">${title}</h3>
-                            <p class="text-xs text-gray-400 mt-0.5">${subtitle}</p>
-                        </div>
-                    </div>
-                    <svg xmlns="http://www.w3.org/2000/svg"
-                         class="h-4 w-4 text-gray-400 flex-shrink-0 transition-transform duration-200 group-open:rotate-180"
-                         fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                    </svg>
-                </summary>
-                <div class="border-t border-white/5 px-5 py-4">
-                    ${body}
-                </div>
-            </details>
-        </div>`;
-}
-
-// ── Empty state ───────────────────────────────────────────────────────────────
-
-function _renderEmptyState() {
-    return `
-        <div class="glass-panel rounded-xl p-10 flex flex-col items-center gap-4 text-center">
-            <div class="w-14 h-14 rounded-full bg-indigo-500/10 ring-1 ring-indigo-500/20 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-                </svg>
-            </div>
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-5">
             <div>
-                <p class="text-white font-semibold">No platform connectors installed</p>
-                <p class="text-sm text-gray-400 mt-1">Browse the registry to add capability connectors like web search, file access, or shell execution.</p>
+                <h3 class="text-sm font-semibold text-white">Platform Connectors</h3>
+                <p class="text-xs text-gray-400 mt-0.5">
+                    ${_pconnInstalledServers.length} installed · Manage governance, credentials, and access per connector
+                </p>
             </div>
             <button onclick="openPlatformConnectorMarketplace()"
-                    class="mt-1 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:bg-indigo-500/20"
+                    class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:bg-indigo-500/20"
                     style="background:rgba(129,140,248,0.12);border:1px solid rgba(129,140,248,0.3);color:#818cf8">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
                 </svg>
                 Browse Registry
             </button>
+        </div>
+
+        <!-- Filter chips -->
+        <div class="flex flex-wrap items-center gap-4 mb-4">
+            <div class="flex items-center gap-1">
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Type</span>
+                ${_paFilterChip('pa-type-filters', 'all',      'All',      _paTypeFilter,   'setPaTypeFilter')}
+                ${_paFilterChip('pa-type-filters', 'platform', 'Platform', _paTypeFilter,   'setPaTypeFilter')}
+                ${_paFilterChip('pa-type-filters', 'user',     'User',     _paTypeFilter,   'setPaTypeFilter')}
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mr-1">Status</span>
+                ${_paFilterChip('pa-status-filters', 'all',      'All',      _paStatusFilter, 'setPaStatusFilter')}
+                ${_paFilterChip('pa-status-filters', 'enabled',  'Enabled',  _paStatusFilter, 'setPaStatusFilter')}
+                ${_paFilterChip('pa-status-filters', 'disabled', 'Disabled', _paStatusFilter, 'setPaStatusFilter')}
+            </div>
+        </div>
+
+        ${_pconnInstalledServers.length === 0
+            ? _renderAdminEmptyState()
+            : `<div class="flex gap-4" style="min-height:420px">
+                   <!-- Left: card list -->
+                   <div id="pa-card-list" class="flex-shrink-0 space-y-1.5 overflow-y-auto" style="width:230px">
+                       ${filtered.length === 0
+                           ? `<p class="text-xs text-gray-500 py-3 px-1">No connectors match the current filter.</p>`
+                           : filtered.map(_renderAdminCardItem).join('')}
+                   </div>
+                   <!-- Right: detail panel -->
+                   <div id="pa-detail-panel" class="flex-1 min-w-0 overflow-y-auto">
+                       ${_renderAdminDetailPanel(filtered.find(s => s.id === _paSelectedId) || null)}
+                   </div>
+               </div>`
+        }
+
+        ${_renderMarketplaceModal()}
+        ${_renderCredentialsModal()}
+    `;
+
+    // Apply selection highlight on the rendered cards
+    if (_paSelectedId) _applyAdminCardSelection(_paSelectedId);
+}
+
+// ── Filter helpers ────────────────────────────────────────────────────────────
+
+function _paFilterChip(groupId, value, label, active, handler) {
+    const isActive = active === value;
+    return `<button onclick="${handler}('${value}')"
+                    class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-all"
+                    style="${isActive
+                        ? 'background:rgba(129,140,248,0.18);border:1px solid rgba(129,140,248,0.40);color:#818cf8'
+                        : 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#6b7280'}">
+                ${label}
+            </button>`;
+}
+
+function _paFilteredServers() {
+    return _pconnInstalledServers.filter(s => {
+        if (_paTypeFilter === 'platform' &&  s.requires_user_auth) return false;
+        if (_paTypeFilter === 'user'     && !s.requires_user_auth) return false;
+        if (_paStatusFilter === 'enabled'  && !s.enabled) return false;
+        if (_paStatusFilter === 'disabled' &&  s.enabled) return false;
+        return true;
+    });
+}
+
+function setPaTypeFilter(value) {
+    _paTypeFilter = value;
+    _rerenderAdminLists();
+}
+
+function setPaStatusFilter(value) {
+    _paStatusFilter = value;
+    _rerenderAdminLists();
+}
+
+function _rerenderAdminLists() {
+    // Re-render only filters + card list + detail panel (no full repaint)
+    const filtered = _paFilteredServers();
+    const cardList = document.getElementById('pa-card-list');
+    if (cardList) {
+        cardList.innerHTML = filtered.length === 0
+            ? `<p class="text-xs text-gray-500 py-3 px-1">No connectors match the current filter.</p>`
+            : filtered.map(_renderAdminCardItem).join('');
+        if (_paSelectedId) _applyAdminCardSelection(_paSelectedId);
+    }
+    // Re-render filter chips
+    const container = document.getElementById('platform-connector-admin-container');
+    if (container) {
+        container.querySelectorAll('.pa-filter-chip').forEach(btn => btn.remove());
+    }
+    // Simplest approach: just call renderPlatformConnectorAdminPanel for filter chip refresh
+    // but preserve modal open state — actually just re-render fully:
+    renderPlatformConnectorAdminPanel();
+}
+
+// ── Admin card list item ──────────────────────────────────────────────────────
+
+function _renderAdminCardItem(server) {
+    const isSelected = server.id === _paSelectedId;
+    const typeLabel  = server.requires_user_auth ? 'User' : 'Platform';
+    const typeColor  = server.requires_user_auth ? 'rgba(251,191,36,0.15)' : 'rgba(129,140,248,0.15)';
+    const typeText   = server.requires_user_auth ? '#fbbf24' : '#818cf8';
+
+    return `
+        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all admin-connector-card"
+             data-connector-id="${_paEsc(server.id)}"
+             onclick="selectAdminConnector('${_paEsc(server.id)}')"
+             style="${isSelected
+                ? 'background:rgba(129,140,248,0.12);outline:2px solid rgba(129,140,248,0.5);outline-offset:-2px'
+                : 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)'}">
+            <!-- Icon -->
+            <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center"
+                 style="background:rgba(129,140,248,0.1)">
+                ${_paServerIcon(server.id)}
+            </div>
+            <!-- Name + badges -->
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-semibold truncate" style="color:var(--text-primary)">${_paEsc(server.display_name || server.name)}</p>
+                <div class="flex items-center gap-1.5 mt-0.5">
+                    <span class="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style="background:${typeColor};color:${typeText}">${typeLabel}</span>
+                    <span class="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          style="background:${server.enabled ? '#34d399' : '#6b7280'}"></span>
+                    <span class="text-[10px]" style="color:${server.enabled ? '#34d399' : '#6b7280'}">${server.enabled ? 'Enabled' : 'Disabled'}</span>
+                </div>
+            </div>
         </div>`;
 }
 
-// ── Server card ───────────────────────────────────────────────────────────────
+function selectAdminConnector(serverId) {
+    _paSelectedId = serverId;
+    _applyAdminCardSelection(serverId);
+    const server = _pconnInstalledServers.find(s => s.id === serverId);
+    const detailPanel = document.getElementById('pa-detail-panel');
+    if (detailPanel && server) {
+        detailPanel.innerHTML = _renderAdminDetailPanel(server);
+    }
+}
 
-function _paRenderServerCard(server) {
+function _applyAdminCardSelection(serverId) {
+    document.querySelectorAll('.admin-connector-card').forEach(card => {
+        if (card.dataset.connectorId === serverId) {
+            card.style.background    = 'rgba(129,140,248,0.12)';
+            card.style.outline       = '2px solid rgba(129,140,248,0.5)';
+            card.style.outlineOffset = '-2px';
+            card.style.border        = 'none';
+        } else {
+            card.style.background    = 'rgba(255,255,255,0.03)';
+            card.style.outline       = '';
+            card.style.outlineOffset = '';
+            card.style.border        = '1px solid rgba(255,255,255,0.06)';
+        }
+    });
+}
+
+// ── Admin detail panel ────────────────────────────────────────────────────────
+
+function _renderAdminDetailPanel(server) {
+    if (!server) {
+        return `<div class="flex flex-col items-center justify-center h-full py-16 text-center">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+                         style="background:rgba(129,140,248,0.08)">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/>
+                        </svg>
+                    </div>
+                    <p class="text-sm text-gray-400">Select a connector to configure it</p>
+                </div>`;
+    }
+
     const enabled        = !!server.enabled;
     const autoOptIn      = !!server.auto_opt_in;
     const userCanOptOut  = !!server.user_can_opt_out;
@@ -213,25 +304,24 @@ function _paRenderServerCard(server) {
 
     return `
         <div class="glass-panel rounded-xl overflow-hidden">
-            <!-- Card header -->
+
+            <!-- Detail header -->
             <div class="p-5 flex items-start gap-4">
-                <!-- Connector icon -->
-                <div class="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center ring-1"
+                <div class="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center ring-1"
                      style="background:rgba(129,140,248,0.1);ring-color:rgba(129,140,248,0.2)">
                     ${_paServerIcon(server.id)}
                 </div>
-
-                <!-- Name + description -->
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-white font-semibold text-sm">${_paEsc(server.display_name || server.name)}</span>
-                        <span class="text-xs text-gray-500">v${server.version || '0.0.0'}</span>
+                        <span class="text-sm font-bold" style="color:var(--text-primary)">${_paEsc(server.display_name || server.name)}</span>
+                        <span class="text-xs text-gray-500">v${_paEsc(server.version || '0.0.0')}</span>
                         ${_statusBadge(server.install_status || 'installed')}
-                        ${server.requires_user_auth ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1 bg-yellow-400/10 text-yellow-400 ring-yellow-400/20">OAuth per user</span>' : ''}
+                        ${server.requires_user_auth
+                            ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1 bg-yellow-400/10 text-yellow-400 ring-yellow-400/20">OAuth per user</span>'
+                            : ''}
                     </div>
-                    <p class="text-xs text-gray-400 mt-1 line-clamp-2">${_paEsc(server.description || '')}</p>
+                    <p class="text-xs text-gray-400 mt-1">${_paEsc(server.description || '')}</p>
                 </div>
-
                 <!-- Master enable toggle -->
                 <div class="flex-shrink-0 flex items-center gap-2">
                     <span class="text-xs ${enabled ? 'text-emerald-400' : 'text-gray-500'}">${enabled ? 'Enabled' : 'Disabled'}</span>
@@ -247,20 +337,18 @@ function _paRenderServerCard(server) {
             <!-- Governance section -->
             <div class="border-t border-white/5 px-5 py-4 space-y-4">
 
-                <!-- Governance toggles -->
                 <div>
-                    <p class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Access Governance</p>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        ${_govToggle(server.id, 'auto_opt_in',              autoOptIn,      'Auto opt-in',      'Active on all profiles by default')}
-                        ${_govToggle(server.id, 'user_can_opt_out',         userCanOptOut,  'User can opt out',  'Users may disable per profile')}
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-3">Access Governance</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        ${_govToggle(server.id, 'auto_opt_in',              autoOptIn,       'Auto opt-in',        'Active on all profiles by default')}
+                        ${_govToggle(server.id, 'user_can_opt_out',         userCanOptOut,   'User can opt out',   'Users may disable per profile')}
                         ${_govToggle(server.id, 'user_can_configure_tools', userCanCfgTools, 'User selects tools', 'Users may pick individual tools')}
                     </div>
                 </div>
 
-                <!-- Permitted tools -->
                 <div>
-                    <p class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Permitted Tools
-                        <span class="normal-case font-normal text-gray-500 ml-1">(all enabled = no restriction)</span>
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Permitted Tools
+                        <span class="normal-case font-normal text-gray-600 ml-1">(all checked = no restriction)</span>
                     </p>
                     <div class="flex flex-wrap gap-2">
                         ${allTools.length === 0
@@ -273,7 +361,9 @@ function _paRenderServerCard(server) {
                                             <input type="checkbox" ${on ? 'checked' : ''} class="sr-only"
                                                    onchange="togglePlatformConnectorAvailableTool('${server.id}', '${t}', this.checked)">
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 ${on ? 'text-indigo-400' : 'text-gray-600'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                                                ${on ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>' : '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>'}
+                                                ${on
+                                                    ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>'
+                                                    : '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>'}
                                             </svg>
                                             ${_paEsc(t)}
                                         </label>`;
@@ -291,13 +381,13 @@ function _paRenderServerCard(server) {
             </div>
             `}
 
-            <!-- Credentials + delete actions — always visible -->
+            <!-- Footer actions -->
             <div class="border-t border-white/5 px-5 py-3 flex items-center justify-between">
                 <button onclick="openPlatformConnectorCredentials('${server.id}')"
                         class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-indigo-500/10"
                         style="border:1px solid rgba(129,140,248,0.25);color:#818cf8">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
                     </svg>
                     ${server.requires_user_auth ? 'OAuth Credentials' : 'Credentials &amp; env vars'}
                 </button>
@@ -305,9 +395,9 @@ function _paRenderServerCard(server) {
                         class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-red-500/10 text-red-400"
                         style="border:1px solid rgba(248,113,113,0.2)">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                     </svg>
-                    Remove connector
+                    Remove
                 </button>
             </div>
         </div>`;
@@ -315,11 +405,11 @@ function _paRenderServerCard(server) {
 
 function _govToggle(serverId, field, checked, label, description) {
     return `
-        <div class="p-3 rounded-lg bg-gray-700/30 border border-white/5">
+        <div class="p-2.5 rounded-lg" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06)">
             <div class="flex items-center justify-between gap-2">
                 <div class="flex-1 min-w-0">
                     <p class="text-xs font-medium text-white">${label}</p>
-                    <p class="text-[11px] text-gray-500 mt-0.5">${description}</p>
+                    <p class="text-[10px] text-gray-500 mt-0.5 leading-snug">${description}</p>
                 </div>
                 <label class="ind-toggle flex-shrink-0">
                     <input type="checkbox" ${checked ? 'checked' : ''}
@@ -330,44 +420,39 @@ function _govToggle(serverId, field, checked, label, description) {
         </div>`;
 }
 
-// ── Registry sources body (used inside collapsible section) ──────────────────
+// ── Empty states ──────────────────────────────────────────────────────────────
 
-function _renderRegistrySourcesBody() {
-    const rows = _pconnRegistrySources.map(source => `
-        <div class="flex items-center gap-3 px-4 py-3 rounded-lg"
-             style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06)">
-            <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                    <span class="text-sm text-white font-medium">${_paEsc(source.name)}</span>
-                    ${source.is_builtin ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/20">built-in</span>' : ''}
-                </div>
-                <p class="text-xs text-gray-500 mt-0.5 truncate font-mono">${_paEsc(source.url)}</p>
-            </div>
-            ${!source.is_builtin ? `
-                <button onclick="deleteRegistrySource('${source.id}')"
-                        class="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded transition-colors hover:bg-red-500/10 flex-shrink-0">
-                    Remove
-                </button>` : ''}
-        </div>`).join('');
-
+function _renderAdminEmptyState() {
     return `
-        <div class="space-y-2">
-            ${rows}
-            <button onclick="openAddRegistrySourceModal()"
-                    class="w-full py-2.5 text-xs rounded-lg border border-dashed transition-colors hover:bg-indigo-500/5"
-                    style="border-color:rgba(129,140,248,0.25);color:#818cf8">
-                + Add enterprise registry URL
+        <div class="glass-panel rounded-xl p-10 flex flex-col items-center gap-4 text-center">
+            <div class="w-14 h-14 rounded-full flex items-center justify-center"
+                 style="background:rgba(129,140,248,0.1);border:1px solid rgba(129,140,248,0.2)">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                </svg>
+            </div>
+            <div>
+                <p class="text-white font-semibold">No platform connectors installed</p>
+                <p class="text-sm text-gray-400 mt-1">Browse the registry to add capability connectors like web search, file access, or shell execution.</p>
+            </div>
+            <button onclick="openPlatformConnectorMarketplace()"
+                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:bg-indigo-500/20"
+                    style="background:rgba(129,140,248,0.12);border:1px solid rgba(129,140,248,0.3);color:#818cf8">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                </svg>
+                Browse Registry
             </button>
         </div>`;
 }
 
-// ── Marketplace modal ─────────────────────────────────────────────────────────
+// ── Browse Registry modal (with inline "+ Add Registry" tab) ──────────────────
 
 function _renderMarketplaceModal() {
     return `
         <div id="pmcp-marketplace-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
              style="background:rgba(0,0,0,0.7)" onclick="if(event.target===this)closePlatformConnectorMarketplace()">
-            <div class="w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col" style="background:var(--bg-secondary);max-height:82vh;border:1px solid var(--border-primary)">
+            <div class="w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col" style="background:var(--bg-secondary);max-height:84vh;border:1px solid var(--border-primary)">
 
                 <!-- Header -->
                 <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color:var(--border-primary)">
@@ -383,11 +468,11 @@ function _renderMarketplaceModal() {
                     </button>
                 </div>
 
-                <!-- Source tabs -->
-                <div class="flex gap-1 px-6 pt-4" id="pmcp-source-tabs"></div>
+                <!-- Source tabs row — rendered dynamically -->
+                <div class="flex items-center gap-1 px-6 pt-4 pb-0 flex-wrap" id="pmcp-source-tabs"></div>
 
-                <!-- Search -->
-                <div class="px-6 pt-3 pb-1">
+                <!-- Search bar (hidden when "+ Add Registry" tab is active) -->
+                <div id="pmcp-search-bar" class="px-6 pt-3 pb-1">
                     <div class="relative">
                         <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -399,7 +484,7 @@ function _renderMarketplaceModal() {
                     </div>
                 </div>
 
-                <!-- Results -->
+                <!-- Results area OR Add-Registry form (switched by tab) -->
                 <div class="flex-1 overflow-y-auto px-6 py-3 space-y-2" id="pmcp-browse-results">
                     <div class="text-center py-8 text-sm text-gray-400">Loading…</div>
                 </div>
@@ -407,50 +492,11 @@ function _renderMarketplaceModal() {
         </div>`;
 }
 
-// ── Add source modal ──────────────────────────────────────────────────────────
-
-function _renderAddSourceModal() {
-    return `
-        <div id="pmcp-add-source-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
-             style="background:rgba(0,0,0,0.7)" onclick="if(event.target===this)closeAddRegistrySourceModal()">
-            <div class="w-full max-w-md rounded-2xl shadow-2xl p-6" style="background:var(--bg-secondary);border:1px solid var(--border-primary)">
-                <h2 class="text-base font-bold text-white mb-1">Add Enterprise Registry</h2>
-                <p class="text-xs text-gray-400 mb-5">Point to a private connector registry that exposes the standard <code class="text-indigo-400">GET /v0.1/servers</code> endpoint.</p>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1.5">Registry name</label>
-                        <input id="pmcp-source-name" type="text" placeholder="My Company Registry"
-                               class="w-full px-3 py-2 rounded-lg text-sm"
-                               style="background:var(--bg-primary);border:1px solid var(--border-primary);color:var(--text-primary)"/>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-400 mb-1.5">URL</label>
-                        <input id="pmcp-source-url" type="text" placeholder="https://mcp.yourcompany.com"
-                               class="w-full px-3 py-2 rounded-lg text-sm"
-                               style="background:var(--bg-primary);border:1px solid var(--border-primary);color:var(--text-primary)"/>
-                    </div>
-                </div>
-                <div class="flex justify-end gap-2 mt-6">
-                    <button onclick="closeAddRegistrySourceModal()"
-                            class="px-4 py-2 text-sm rounded-lg text-gray-400 hover:text-white transition-colors">Cancel</button>
-                    <button onclick="submitAddRegistrySource()"
-                            class="px-4 py-2 text-sm font-medium rounded-lg transition-all hover:bg-indigo-500/20"
-                            style="background:rgba(129,140,248,0.12);border:1px solid rgba(129,140,248,0.3);color:#818cf8">
-                        Add Registry
-                    </button>
-                </div>
-            </div>
-        </div>`;
-}
-
-// ── Credentials modal ─────────────────────────────────────────────────────────
-
 function _renderCredentialsModal() {
     return `
         <div id="pmcp-credentials-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
              style="background:rgba(0,0,0,0.7)" onclick="if(event.target===this)closePlatformConnectorCredentials()">
             <div class="w-full max-w-lg rounded-2xl shadow-2xl" style="background:var(--bg-secondary);border:1px solid var(--border-primary)">
-                <!-- Header -->
                 <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color:var(--border-primary)">
                     <div>
                         <h2 class="text-base font-bold text-white" id="pmcp-cred-title">Connector Credentials</h2>
@@ -463,10 +509,7 @@ function _renderCredentialsModal() {
                         </svg>
                     </button>
                 </div>
-
-                <!-- Credential fields (injected dynamically) -->
                 <div id="pmcp-cred-fields" class="px-6 py-5 space-y-4"></div>
-
                 <div class="flex justify-end gap-2 px-6 py-4 border-t" style="border-color:var(--border-primary)">
                     <button onclick="closePlatformConnectorCredentials()"
                             class="px-4 py-2 text-sm rounded-lg text-gray-400 hover:text-white transition-colors">Cancel</button>
@@ -483,7 +526,9 @@ function _renderCredentialsModal() {
         </div>`;
 }
 
-// ── Marketplace browse results ────────────────────────────────────────────────
+// ── Marketplace open/close & tab rendering ────────────────────────────────────
+
+const ADD_REGISTRY_TAB_ID = '__add_registry__';
 
 function openPlatformConnectorMarketplace() {
     const modal = document.getElementById('pmcp-marketplace-modal');
@@ -501,24 +546,106 @@ function closePlatformConnectorMarketplace() {
 function _renderSourceTabs() {
     const container = document.getElementById('pmcp-source-tabs');
     if (!container) return;
-    container.innerHTML = _pconnRegistrySources.map(s => {
+
+    const tabs = _pconnRegistrySources.map(s => {
         const active = _pconnActiveSource === s.id;
-        return `<button onclick="selectPmcpSource('${s.id}')" id="pmcp-tab-${s.id}"
-                        class="px-3 py-1.5 text-xs rounded-lg mr-1 transition-all font-medium"
+        const removeBtn = !s.is_builtin
+            ? `<button onclick="event.stopPropagation();deleteRegistrySource('${s.id}')"
+                       class="ml-1 w-4 h-4 rounded-full flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                       title="Remove registry">
+                   <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                       <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                   </svg>
+               </button>`
+            : '';
+        return `<button onclick="selectPmcpSource('${s.id}')"
+                        class="inline-flex items-center px-3 py-1.5 text-xs rounded-lg mr-1 mb-1 transition-all font-medium"
                         style="${active
                             ? 'background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.35);color:#818cf8'
                             : 'background:transparent;border:1px solid var(--border-primary);color:var(--text-muted)'}">
                     ${_paEsc(s.name)}
+                    ${removeBtn}
                 </button>`;
-    }).join('');
+    });
+
+    // "+ Add Registry" tab
+    const addActive = _pconnActiveSource === ADD_REGISTRY_TAB_ID;
+    tabs.push(`<button onclick="selectPmcpSource('${ADD_REGISTRY_TAB_ID}')"
+                       class="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg mr-1 mb-1 transition-all font-medium"
+                       style="${addActive
+                           ? 'background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.35);color:#818cf8'
+                           : 'background:transparent;border:1px dashed rgba(129,140,248,0.3);color:#6b7280'}">
+                   <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                       <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                   </svg>
+                   Add Registry
+               </button>`);
+
+    container.innerHTML = tabs.join('');
 }
 
 function selectPmcpSource(sourceId) {
     _pconnActiveSource = sourceId;
     _renderSourceTabs();
-    const search = document.getElementById('pmcp-search-input');
-    _browseRegistry(sourceId, search ? search.value : '');
+    if (sourceId === ADD_REGISTRY_TAB_ID) {
+        _showAddRegistryForm();
+    } else {
+        const searchBar = document.getElementById('pmcp-search-bar');
+        if (searchBar) searchBar.classList.remove('hidden');
+        const search = document.getElementById('pmcp-search-input');
+        _browseRegistry(sourceId, search ? search.value : '');
+    }
 }
+
+function _showAddRegistryForm() {
+    const searchBar = document.getElementById('pmcp-search-bar');
+    if (searchBar) searchBar.classList.add('hidden');
+
+    const resultsEl = document.getElementById('pmcp-browse-results');
+    if (!resultsEl) return;
+
+    resultsEl.innerHTML = `
+        <div class="max-w-md mx-auto py-4">
+            <h3 class="text-sm font-semibold text-white mb-1">Add Enterprise Registry</h3>
+            <p class="text-xs text-gray-400 mb-5">
+                Point to a private connector registry that exposes the standard
+                <code class="text-indigo-400">GET /v0.1/servers</code> endpoint.
+            </p>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1.5">Registry name</label>
+                    <input id="pmcp-source-name" type="text" placeholder="My Company Registry"
+                           class="w-full px-3 py-2 rounded-lg text-sm"
+                           style="background:var(--bg-primary);border:1px solid var(--border-primary);color:var(--text-primary)"/>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1.5">URL</label>
+                    <input id="pmcp-source-url" type="text" placeholder="https://mcp.yourcompany.com"
+                           class="w-full px-3 py-2 rounded-lg text-sm"
+                           style="background:var(--bg-primary);border:1px solid var(--border-primary);color:var(--text-primary)"/>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button onclick="closePlatformConnectorMarketplace()"
+                        class="px-4 py-2 text-sm rounded-lg text-gray-400 hover:text-white transition-colors">Cancel</button>
+                <button onclick="submitAddRegistrySource()"
+                        class="px-4 py-2 text-sm font-medium rounded-lg transition-all hover:bg-indigo-500/20"
+                        style="background:rgba(129,140,248,0.12);border:1px solid rgba(129,140,248,0.3);color:#818cf8">
+                    Add Registry
+                </button>
+            </div>
+        </div>`;
+}
+
+// Legacy compat — redirect old modal calls to the Browse Registry modal
+function openAddRegistrySourceModal() {
+    openPlatformConnectorMarketplace();
+    // Small delay to let the modal render before switching to add tab
+    setTimeout(() => selectPmcpSource(ADD_REGISTRY_TAB_ID), 50);
+}
+function closeAddRegistrySourceModal() { closePlatformConnectorMarketplace(); }
+
+// ── Browse results ────────────────────────────────────────────────────────────
 
 function onPmcpSearchInput(value) {
     clearTimeout(_pconnSearchTimeout);
@@ -526,9 +653,9 @@ function onPmcpSearchInput(value) {
 }
 
 async function _browseRegistry(sourceId, search) {
+    if (sourceId === ADD_REGISTRY_TAB_ID) return;
     const resultsEl = document.getElementById('pmcp-browse-results');
     if (!resultsEl) return;
-    // Reset state for a fresh search
     _pconnBrowseResults = [];
     _pconnNextCursor = '';
     resultsEl.innerHTML = '<div class="text-center py-8 text-sm text-gray-400">Loading…</div>';
@@ -553,15 +680,13 @@ async function _loadMoreRegistry() {
         _pconnNextCursor = batch.nextCursor;
         const resultsEl = document.getElementById('pmcp-browse-results');
         if (resultsEl) _renderBrowseResults(resultsEl);
-    } catch (e) {
+    } catch (_) {
         const btn2 = document.getElementById('pmcp-load-more-btn');
         if (btn2) { btn2.disabled = false; btn2.textContent = 'Load more'; }
     } finally {
         _pconnLoadingMore = false;
     }
 }
-
-let _pconnCurrentSearch = '';
 
 async function _fetchRegistryPage(sourceId, search, cursor) {
     _pconnCurrentSearch = search;
@@ -570,14 +695,11 @@ async function _fetchRegistryPage(sourceId, search, cursor) {
     const r = await fetch(`/api/v1/connector-registry/servers?${params}`, { headers: _pconnHeaders(false) });
     if (!r.ok) throw new Error(await r.text());
     const data = await r.json();
-    // Extract next cursor from official registry metadata
     const nextCursor = (data.metadata && data.metadata.nextCursor) || '';
     const allNormalised = (data.servers || [])
         .filter(s => s != null)
         .map(_normaliseRegistryServer)
         .filter(s => s != null);
-    // Keep only latest versions when the official registry explicitly marks versions.
-    // Built-in servers have no _meta → _is_latest is undefined → never filtered out.
     const hasVersioning = allNormalised.some(s => s._is_latest === true);
     const servers = hasVersioning
         ? allNormalised.filter(s => s._is_latest !== false)
@@ -586,59 +708,41 @@ async function _fetchRegistryPage(sourceId, search, cursor) {
 }
 
 /**
- * Normalise a connector entry from any registry source to the shape _renderBrowseResults expects.
- *
- * Handles two formats:
+ * Normalise a connector entry from any registry source.
+ * Handles:
  *   1. Uderia built-in:  { id, display_name, name, version, tools, description, ... }
- *   2. Official Registry v0.1: { server: { name, title, description, version, ... }, _meta: {...} }
- *      — each array entry wraps the actual connector under a "server" key.
+ *   2. Official Registry v0.1: { server: {...}, _meta: {...} }
  */
 function _normaliseRegistryServer(raw) {
     if (!raw || typeof raw !== 'object') return null;
 
-    // Unwrap official Registry envelope: { server: {...}, _meta: {...} }
-    const s = (raw.server && typeof raw.server === 'object') ? raw.server : raw;
+    const s    = (raw.server && typeof raw.server === 'object') ? raw.server : raw;
     const meta = raw._meta || {};
 
-    // id: built-in uses s.id; official registry uses s.name (the slug, e.g. "ai.example/tool")
-    const id = s.id || s.name || `ext-${Math.random().toString(36).slice(2)}`;
-
-    // Display name: built-in uses display_name; official registry uses title
+    const id          = s.id || s.name || `ext-${Math.random().toString(36).slice(2)}`;
     const displayName = s.display_name || s.title || s.name || id;
+    const version     = s.version || (s.version_detail && s.version_detail.version) || '—';
+    const rawTools    = Array.isArray(s.tools) ? s.tools : [];
+    const tools       = rawTools.map(t => (typeof t === 'string' ? t : (t && t.name) || String(t)));
 
-    // Version: built-in uses version directly; version_detail.version is a legacy fallback
-    const version = s.version || (s.version_detail && s.version_detail.version) || '—';
-
-    // Tools: not present in the registry listing endpoint for external registries
-    const rawTools = Array.isArray(s.tools) ? s.tools : [];
-    const tools = rawTools.map(t => (typeof t === 'string' ? t : (t && t.name) || String(t)));
-
-    // Transport type badge — derived from packages/remotes in the registry response.
-    //   "Remote"  — has remotes[] (HTTP/SSE endpoint, no server-side install needed)
-    //   "npm"     — packages[0].registryType === 'npm'
-    //   "Python"  — packages[0].registryType === 'pypi'
-    //   "Docker"  — packages[0].registryType === 'oci' (or security_acknowledgment_required for built-in)
-    //   null      — built-in connectors (transport shown by other means)
     let transportTag = null;
     if (Array.isArray(s.remotes) && s.remotes.length) {
         transportTag = 'Remote';
     } else if (Array.isArray(s.packages) && s.packages.length) {
         const rt = (s.packages[0].registryType || '').toLowerCase();
-        if (rt === 'npm')         transportTag = 'npm';
-        else if (rt === 'pypi')   transportTag = 'Python';
-        else if (rt === 'oci')    transportTag = 'Docker';
-        else if (rt)              transportTag = rt;
+        if (rt === 'npm')       transportTag = 'npm';
+        else if (rt === 'pypi') transportTag = 'Python';
+        else if (rt === 'oci')  transportTag = 'Docker';
+        else if (rt)            transportTag = rt;
     } else if (s.security_acknowledgment_required) {
         transportTag = 'Docker';
     }
 
-    // Credentials required: true when any package declares required environment variables
     const requiresCredentials = Array.isArray(s.packages) &&
         s.packages.some(p => Array.isArray(p.environmentVariables) && p.environmentVariables.some(e => e.isRequired));
 
-    // Provenance: true for external registry entries (has _meta with active status)
     const officialMeta = Object.values(meta)[0] || {};
-    const isOfficial = !!(officialMeta.status === 'active');
+    const isOfficial   = !!(officialMeta.status === 'active');
 
     return {
         ...s,
@@ -650,13 +754,11 @@ function _normaliseRegistryServer(raw) {
         _transport_tag: transportTag,
         _requires_credentials: requiresCredentials,
         _is_official: isOfficial,
-        // undefined when no registry metadata (built-in) — only true/false for official registry entries
         _is_latest: Object.keys(meta).length ? !!(officialMeta.isLatest) : undefined,
     };
 }
 
 function _renderBrowseResults(container) {
-    // Filter out any remaining nulls after normalisation
     const servers = (_pconnBrowseResults || []).filter(s => s != null);
     if (!servers.length) {
         container.innerHTML = '<div class="text-center py-8 text-sm text-gray-400">No connectors found.</div>';
@@ -707,7 +809,6 @@ function _renderBrowseResults(container) {
             </div>`;
     }).join('');
 
-    // Load more button (shown only when next cursor available)
     const loadMoreHtml = _pconnNextCursor ? `
         <div class="pt-2 pb-1 text-center">
             <button id="pmcp-load-more-btn"
@@ -723,7 +824,7 @@ function _renderBrowseResults(container) {
     container.innerHTML = cardsHtml + loadMoreHtml;
 }
 
-// ── Connector icons ──────────────────────────────────────────────────────────────
+// ── Server icons ──────────────────────────────────────────────────────────────
 
 function _transportBadge(tag) {
     if (!tag) return '';
@@ -748,20 +849,20 @@ function _paServerIcon(serverId) {
     return icons[serverId] || `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/></svg>`;
 }
 
-// ── Credential schema per connector ──────────────────────────────────────────────
+// ── Credential schema ─────────────────────────────────────────────────────────
 
 const CREDENTIAL_SCHEMAS = {
     'uderia-web':    [
-        { key: 'BRAVE_API_KEY',   label: 'Brave Search API Key',  hint: 'From https://brave.com/search/api/', type: 'password' },
-        { key: 'SERPER_API_KEY',  label: 'Serper API Key (alt)',   hint: 'Alternative to Brave Search',        type: 'password' },
+        { key: 'BRAVE_API_KEY',  label: 'Brave Search API Key', hint: 'From https://brave.com/search/api/', type: 'password' },
+        { key: 'SERPER_API_KEY', label: 'Serper API Key (alt)', hint: 'Alternative to Brave Search',        type: 'password' },
     ],
     'uderia-google': [
         { key: 'GOOGLE_CLIENT_ID',     label: 'Google OAuth Client ID',     hint: 'From Google Cloud Console → Credentials', type: 'text'     },
         { key: 'GOOGLE_CLIENT_SECRET', label: 'Google OAuth Client Secret', hint: 'Keep this secret',                        type: 'password' },
     ],
     'uderia-shell':  [
-        { key: 'ALLOWED_COMMANDS', label: 'Allowed commands (CSV)',  hint: 'e.g. python,pip,ls,cat — leave empty to allow all', type: 'text' },
-        { key: 'DOCKER_IMAGE',     label: 'Docker image',            hint: 'Default: python:3.11-slim',                         type: 'text' },
+        { key: 'ALLOWED_COMMANDS', label: 'Allowed commands (CSV)', hint: 'e.g. python,pip,ls,cat — leave empty to allow all', type: 'text' },
+        { key: 'DOCKER_IMAGE',     label: 'Docker image',           hint: 'Default: python:3.11-slim',                         type: 'text' },
     ],
 };
 
@@ -784,7 +885,7 @@ const SETUP_GUIDES = {
 function openPlatformConnectorCredentials(serverId) {
     _pconnCredentialsServerId = serverId;
     const server = _pconnInstalledServers.find(s => s.id === serverId);
-    const name = server ? (server.display_name || server.name) : serverId;
+    const name   = server ? (server.display_name || server.name) : serverId;
     const schema = CREDENTIAL_SCHEMAS[serverId] || [
         { key: 'API_KEY', label: 'API Key', hint: 'Sensitive — stored encrypted', type: 'password' },
     ];
@@ -838,7 +939,6 @@ async function savePlatformConnectorCredentials() {
         if (el && el.value.trim()) { creds[f.key] = el.value.trim(); hasValue = true; }
     }
     if (!hasValue) { _pconnNotify('error', 'Enter at least one credential value'); return; }
-
     try {
         const r = await fetch(`/api/v1/platform-connectors/${_pconnCredentialsServerId}`, {
             method: 'PUT', headers: _pconnHeaders(),
@@ -865,6 +965,7 @@ async function installPlatformConnector(serverId) {
         if (!r.ok) throw new Error((await r.json()).error || 'Install failed');
         _pconnNotify('success', `${serverData.display_name || serverId} installed`);
         closePlatformConnectorMarketplace();
+        _paSelectedId = serverId;
         await loadPlatformConnectorAdminPanel();
     } catch (e) {
         _pconnNotify('error', `Install failed: ${e.message}`);
@@ -898,7 +999,7 @@ async function updatePlatformConnectorGovernance(serverId, field, value) {
 }
 
 async function togglePlatformConnectorAvailableTool(serverId, toolName, enabled) {
-    const server = _pconnInstalledServers.find(s => s.id === serverId);
+    const server   = _pconnInstalledServers.find(s => s.id === serverId);
     if (!server) return;
     const allTools = _getBuiltinToolsForServer(serverId);
     let current = Array.isArray(server.available_tools) ? [...server.available_tools] : [...allTools];
@@ -920,7 +1021,7 @@ async function togglePlatformConnectorAvailableTool(serverId, toolName, enabled)
 
 function _pconnConfirmRemove(serverId) {
     const server = _pconnInstalledServers.find(s => s.id === serverId);
-    const name = server ? (server.display_name || server.name) : serverId;
+    const name   = server ? (server.display_name || server.name) : serverId;
     _pconnConfirm(
         `Remove "${name}"? This will clear all profile assignments for this connector.`,
         () => deletePlatformConnector(serverId)
@@ -929,13 +1030,15 @@ function _pconnConfirmRemove(serverId) {
 
 async function deletePlatformConnector(serverId) {
     const server = _pconnInstalledServers.find(s => s.id === serverId);
-    const name = server ? (server.display_name || server.name) : serverId;
+    const name   = server ? (server.display_name || server.name) : serverId;
     try {
         const r = await fetch(`/api/v1/platform-connectors/${serverId}`, {
             method: 'DELETE', headers: _pconnHeaders(false),
         });
         if (!r.ok) throw new Error((await r.json()).error || 'Delete failed');
         _pconnNotify('success', `${name} removed`);
+        // Clear selection if removed connector was selected
+        if (_paSelectedId === serverId) _paSelectedId = null;
         await loadPlatformConnectorAdminPanel();
     } catch (e) {
         _pconnNotify('error', `Failed to remove connector: ${e.message}`);
@@ -943,16 +1046,6 @@ async function deletePlatformConnector(serverId) {
 }
 
 // ── Registry source management ────────────────────────────────────────────────
-
-function openAddRegistrySourceModal() {
-    const modal = document.getElementById('pmcp-add-source-modal');
-    if (modal) modal.classList.remove('hidden');
-}
-
-function closeAddRegistrySourceModal() {
-    const modal = document.getElementById('pmcp-add-source-modal');
-    if (modal) modal.classList.add('hidden');
-}
 
 async function submitAddRegistrySource() {
     const name = document.getElementById('pmcp-source-name')?.value.trim();
@@ -965,9 +1058,13 @@ async function submitAddRegistrySource() {
         });
         if (!r.ok) throw new Error((await r.json()).error || 'Failed');
         _pconnNotify('success', `Registry "${name}" added`);
-        closeAddRegistrySourceModal();
         await _loadRegistrySources();
-        renderPlatformConnectorAdminPanel();
+        // Switch back to the new registry tab
+        _pconnActiveSource = (_pconnRegistrySources.find(s => s.name === name) || {}).id || 'builtin';
+        _renderSourceTabs();
+        const searchBar = document.getElementById('pmcp-search-bar');
+        if (searchBar) searchBar.classList.remove('hidden');
+        _browseRegistry(_pconnActiveSource, '');
     } catch (e) {
         _pconnNotify('error', `Failed to add registry: ${e.message}`);
     }
@@ -983,7 +1080,10 @@ async function deleteRegistrySource(sourceId) {
             if (!r.ok) throw new Error((await r.json()).error || 'Delete failed');
             _pconnNotify('success', 'Registry removed');
             await _loadRegistrySources();
-            renderPlatformConnectorAdminPanel();
+            // Fall back to builtin tab if the active source was deleted
+            if (_pconnActiveSource === sourceId) _pconnActiveSource = 'builtin';
+            _renderSourceTabs();
+            _browseRegistry(_pconnActiveSource, '');
         } catch (e) {
             _pconnNotify('error', `Failed to remove registry: ${e.message}`);
         }
@@ -1021,7 +1121,7 @@ function _getBuiltinToolsForServer(serverId) {
 }
 
 function _paEsc(str) {
-    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ── Scheduler admin panel ─────────────────────────────────────────────────────
@@ -1048,13 +1148,10 @@ async function loadSchedulerAdminPanel() {
         apschedulerAvailable = false;
     }
 
-    // Global enable state (admin can disable via disabled_components)
     const isEnabled = status.globally_enabled !== false;
 
     container.innerHTML = `
         <div class="space-y-4">
-
-            <!-- Status overview card -->
             <div class="glass-panel rounded-xl p-5 flex items-center gap-5">
                 <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                      style="background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.25)">
@@ -1091,7 +1188,6 @@ async function loadSchedulerAdminPanel() {
                 </div>
             </div>
 
-            <!-- What this controls section -->
             <div class="glass-panel rounded-xl p-5 space-y-3">
                 <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Admin controls</p>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-gray-300">
@@ -1111,19 +1207,18 @@ async function loadSchedulerAdminPanel() {
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-purple-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                         </svg>
-                        <span>Task results can be delivered via <strong>email</strong> (SMTP) or <strong>webhook</strong> per task. Google Mail delivery requires Track C (Google connector).</span>
+                        <span>Task results can be delivered via <strong>email</strong> (SMTP) or <strong>webhook</strong> per task.</span>
                     </div>
                     <div class="flex items-start gap-2">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-purple-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                         </svg>
-                        <span>Supports <strong>cron expressions</strong> and <strong>interval scheduling</strong>. Overlap policy (skip/queue/allow) and per-task token budgets are user-configurable.</span>
+                        <span>Supports <strong>cron expressions</strong> and <strong>interval scheduling</strong>. Overlap policy and per-task token budgets are user-configurable.</span>
                     </div>
                 </div>
             </div>
 
             ${!apschedulerAvailable ? `
-            <!-- Install prompt -->
             <div class="glass-panel rounded-xl p-4 border border-amber-400/20 bg-amber-400/5">
                 <div class="flex items-start gap-3">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -1142,7 +1237,6 @@ async function loadSchedulerAdminPanel() {
 
 window._toggleSchedulerGlobal = async function(enabled) {
     try {
-        // Read current disabled_components list and add/remove 'scheduler'
         const r = await fetch('/api/v1/admin/component-settings', { headers: _pconnHeaders(false) });
         const d = r.ok ? await r.json() : {};
         let disabled = (d.settings && d.settings.disabled_components) || [];
@@ -1152,14 +1246,12 @@ window._toggleSchedulerGlobal = async function(enabled) {
             if (!disabled.includes('scheduler')) disabled.push('scheduler');
         }
         await fetch('/api/v1/admin/component-settings', {
-            method: 'POST',
-            headers: _pconnHeaders(),
-            body: JSON.stringify({ disabled_components: disabled })
+            method: 'POST', headers: _pconnHeaders(),
+            body: JSON.stringify({ disabled_components: disabled }),
         });
         _pconnNotify('success', `Task Scheduler ${enabled ? 'enabled' : 'disabled'} globally.`);
     } catch (e) {
         _pconnNotify('error', 'Failed to update scheduler setting.');
-        // Revert toggle
         const toggle = document.getElementById('scheduler-global-toggle');
         if (toggle) toggle.checked = !enabled;
     }
@@ -1188,3 +1280,6 @@ window.openAddRegistrySourceModal             = openAddRegistrySourceModal;
 window.closeAddRegistrySourceModal            = closeAddRegistrySourceModal;
 window.submitAddRegistrySource                = submitAddRegistrySource;
 window.deleteRegistrySource                   = deleteRegistrySource;
+window.selectAdminConnector                   = selectAdminConnector;
+window.setPaTypeFilter                        = setPaTypeFilter;
+window.setPaStatusFilter                      = setPaStatusFilter;
