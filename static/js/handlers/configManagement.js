@@ -358,6 +358,7 @@ export async function finalizeConfiguration(config, switchToConversationView = t
         await Promise.all([
             handleLoadResources('tools'),
             handleLoadResources('prompts'),
+            handleLoadResources('connectors'),
             handleLoadResources('resources')
         ]);
         console.log('[FinalizeConfig] Loaded resources via legacy path (no default profile or function unavailable)');

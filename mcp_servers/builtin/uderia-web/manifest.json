@@ -8,6 +8,31 @@
   "install_type": "builtin",
   "entry_point": "mcp_servers/builtin/uderia-web/server.py",
   "tools": ["web_search", "web_fetch", "web_extract"],
+  "tool_schemas": [
+    {
+      "name": "web_search",
+      "description": "Search the web using Brave or Serper and return a list of results with titles, URLs, and snippets.",
+      "arguments": [
+        {"name": "query", "type": "string", "description": "The search query to submit.", "required": true},
+        {"name": "num_results", "type": "integer", "description": "Number of results to return (default: configured MAX_RESULTS).", "required": false}
+      ]
+    },
+    {
+      "name": "web_fetch",
+      "description": "Fetch the raw HTML or text content of a URL.",
+      "arguments": [
+        {"name": "url", "type": "string", "description": "The URL to fetch.", "required": true},
+        {"name": "as_text", "type": "boolean", "description": "Return as plain text instead of raw HTML (default: true).", "required": false}
+      ]
+    },
+    {
+      "name": "web_extract",
+      "description": "Fetch a URL and extract the main body text, stripping navigation, ads, and boilerplate.",
+      "arguments": [
+        {"name": "url", "type": "string", "description": "The URL to extract content from.", "required": true}
+      ]
+    }
+  ],
   "credential_schema": {
     "BRAVE_API_KEY": {
       "label": "Brave Search API Key",

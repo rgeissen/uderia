@@ -8,7 +8,7 @@ A connector is a per-user OAuth integration. Each connector must expose:
     disconnect(user_uuid) -> None
     get_tokens(user_uuid) -> Optional[dict]          # async
     is_configured() -> bool
-    SERVER_ID: str                                    # platform_mcp_servers.id
+    SERVER_ID: str                                    # platform_connectors.id
 
 The registry is keyed by the platform name stored in messaging_identities.platform
 (e.g. "google").  Adding a new connector only requires:
@@ -34,7 +34,7 @@ def all_platforms() -> list[str]:
 
 
 def server_id_to_platform(server_id: str) -> Optional[str]:
-    """Return the platform name for a given platform_mcp_servers.id, or None."""
+    """Return the platform name for a given platform_connectors.id, or None."""
     for platform, mod in _REGISTRY.items():
         if getattr(mod, "SERVER_ID", None) == server_id:
             return platform

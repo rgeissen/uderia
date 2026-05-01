@@ -7136,10 +7136,32 @@ async def get_profile_resources(profile_id: str):
                         prompt_copy['disabled'] = prompt['name'] not in enabled_prompt_names
                     profile_prompts[category].append(prompt_copy)
 
+        # Strip Platform connector categories from tools — they are served as connectors
+        mcp_profile_tools = {k: v for k, v in profile_tools.items()
+                             if k != "Platform Tools" and not k.startswith("Platform: ")}
+
+        # Build per-connector groups for the Connectors panel
+        profile_connectors = {}
+        try:
+            from trusted_data_agent.core.platform_connector_registry import get_effective_tools as _get_pct
+            conn_tools = _get_pct(profile_id)
+            for ct in conn_tools:
+                cat = ct.get("_category", "Platform Tools")
+                label = cat[len("Platform: "):] if cat.startswith("Platform: ") else cat
+                profile_connectors.setdefault(label, []).append({
+                    "name": ct["name"],
+                    "description": ct.get("description", ""),
+                    "arguments": ct.get("arguments", []),
+                    "disabled": False,
+                })
+        except Exception:
+            pass
+
         return jsonify({
             "status": "success",
-            "tools": profile_tools,
+            "tools": mcp_profile_tools,
             "prompts": profile_prompts,
+            "connectors": profile_connectors,
             "profile_type": profile.get("profile_type", "tool_enabled"),
             "profile_name": profile.get("name"),
             "profile_tag": profile.get("tag")
@@ -7442,22 +7464,55 @@ async def get_profile_classification(profile_id: str):
     from trusted_data_agent.mcp_adapter.adapter import CLIENT_SIDE_TOOLS as _CST
     system_tool_names = [t['name'] for t in _CST]
 
+    # Collect Component Tools separately so the dialog can show them in their own section
+    # with a COMP_ display prefix (distinct from MCP tools and TDA_ system tools).
+    component_tool_entries = []
     try:
-        # get_tool_definitions({}) uses the backward-compat path: componentConfig absent →
-        # all components active. This covers all installed action components dynamically.
         from trusted_data_agent.components.manager import get_component_manager
         comp_manager = get_component_manager()
         component_tool_defs = comp_manager.get_tool_definitions({})
-        system_tool_names += [t['name'] for t in (component_tool_defs or [])]
+        if component_tool_defs:
+            system_tool_names += [t['name'] for t in component_tool_defs]
+            for _ct in component_tool_defs:
+                _tname = _ct['name']
+                # Display name uses COMP_ prefix (strip TDA_ if present, add COMP_)
+                _display = 'COMP_' + _tname[4:] if _tname.startswith('TDA_') else 'COMP_' + _tname
+                component_tool_entries.append({
+                    "name": _tname,
+                    "display_name": _display,
+                    "description": _ct.get("description", ""),
+                    "always_active": True,
+                })
     except Exception:
         pass  # Component manager unavailable — safe to skip
+
+    # Collect active Platform Connector Tools for this profile
+    platform_tool_entries = []
+    try:
+        from trusted_data_agent.core.platform_connector_registry import (
+            get_effective_tools as _get_pt_cl,
+            get_server as _get_pt_srv,
+        )
+        _pt_tools = _get_pt_cl(profile_id)
+        for _pt in _pt_tools:
+            platform_tool_entries.append({
+                "name": _pt["name"],
+                "description": _pt.get("description", ""),
+                "arguments": _pt.get("arguments", []),
+                "category": _pt.get("_category", "Platform Tools"),
+                "always_active": True,
+            })
+    except Exception:
+        pass
 
     return jsonify({
         "status": "success",
         "profile_id": profile_id,
         "classification_mode": classification_mode,
         "classification_results": classification_results,
-        "system_tools": system_tool_names
+        "system_tools": system_tool_names,
+        "component_tools": component_tool_entries,
+        "platform_tools": platform_tool_entries,
     }), 200
 
 
@@ -15595,26 +15650,26 @@ async def kg_assignments_activate(current_user):
 
 
 # =============================================================================
-# Platform MCP Server Registry
-# Admin-governed capability servers (browser, files, shell, web, google).
+# Platform Connector Registry
+# Admin-governed capability connectors (browser, files, shell, web, google, …).
 # Strictly separate from user-configured data source servers.
 # =============================================================================
 
-@rest_api_bp.route("/v1/mcp-registry/sources", methods=["GET"])
+@rest_api_bp.route("/v1/connector-registry/sources", methods=["GET"])
 @require_auth
-async def list_mcp_registry_sources(current_user):
-    """List all configured registry sources (Uderia built-in, official, enterprise private)."""
+async def list_connector_registry_sources(current_user):
+    """List all configured connector registry sources (Uderia built-in, official, enterprise private)."""
     try:
-        from trusted_data_agent.core.platform_mcp_registry import list_registry_sources
+        from trusted_data_agent.core.platform_connector_registry import list_registry_sources
         return jsonify({"sources": list_registry_sources()}), 200
     except Exception as e:
-        app_logger.error(f"Failed to list MCP registry sources: {e}", exc_info=True)
+        app_logger.error(f"Failed to list connector registry sources: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/mcp-registry/sources", methods=["POST"])
+@rest_api_bp.route("/v1/connector-registry/sources", methods=["POST"])
 @require_admin
-async def add_mcp_registry_source():
+async def add_connector_registry_source():
     """Add an enterprise private registry source. Admin only."""
     try:
         data = await request.get_json()
@@ -15622,50 +15677,50 @@ async def add_mcp_registry_source():
         url = (data or {}).get("url", "").strip()
         if not name or not url:
             return jsonify({"error": "name and url are required"}), 400
-        from trusted_data_agent.core.platform_mcp_registry import add_registry_source
+        from trusted_data_agent.core.platform_connector_registry import add_registry_source
         source = add_registry_source(name, url)
         return jsonify({"source": source}), 201
     except Exception as e:
-        app_logger.error(f"Failed to add MCP registry source: {e}", exc_info=True)
+        app_logger.error(f"Failed to add connector registry source: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/mcp-registry/sources/<source_id>", methods=["DELETE"])
+@rest_api_bp.route("/v1/connector-registry/sources/<source_id>", methods=["DELETE"])
 @require_admin
-async def delete_mcp_registry_source(source_id):
+async def delete_connector_registry_source(source_id):
     """Delete a non-builtin registry source. Admin only."""
     try:
-        from trusted_data_agent.core.platform_mcp_registry import delete_registry_source
+        from trusted_data_agent.core.platform_connector_registry import delete_registry_source
         ok = delete_registry_source(source_id)
         if not ok:
             return jsonify({"error": "Source not found or is a built-in source"}), 404
         return jsonify({"status": "deleted"}), 200
     except Exception as e:
-        app_logger.error(f"Failed to delete MCP registry source: {e}", exc_info=True)
+        app_logger.error(f"Failed to delete connector registry source: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/mcp-registry/servers", methods=["GET"])
+@rest_api_bp.route("/v1/connector-registry/servers", methods=["GET"])
 @require_auth
-async def browse_mcp_registry_servers(current_user):
-    """Browse servers from a registry source."""
+async def browse_connector_registry_servers(current_user):
+    """Browse connectors from a registry source."""
     try:
         source_id = request.args.get("source", "builtin")
         search = request.args.get("search", "")
         page = int(request.args.get("page", 1))
         cursor = request.args.get("cursor", "")
-        from trusted_data_agent.core.platform_mcp_registry import list_registry_servers
+        from trusted_data_agent.core.platform_connector_registry import list_registry_servers
         result = await list_registry_servers(source_id, search, page, cursor=cursor)
         return jsonify(result), 200
     except Exception as e:
-        app_logger.error(f"Failed to browse MCP registry: {e}", exc_info=True)
+        app_logger.error(f"Failed to browse connector registry: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/mcp-registry/servers/install", methods=["POST"])
+@rest_api_bp.route("/v1/connector-registry/servers/install", methods=["POST"])
 @require_admin
-async def install_mcp_registry_server():
-    """Register (install/connect) a server from a registry source. Admin only."""
+async def install_connector_from_registry():
+    """Register (install/connect) a connector from a registry source. Admin only."""
     try:
         data = await request.get_json() or {}
         source_id = data.get("source_id", "builtin")
@@ -15673,52 +15728,52 @@ async def install_mcp_registry_server():
         server_data = data.get("server_data", {})
         if not server_id:
             return jsonify({"error": "server_id is required"}), 400
-        from trusted_data_agent.core.platform_mcp_registry import install_server
+        from trusted_data_agent.core.platform_connector_registry import install_server
         server = install_server(source_id, server_id, server_data)
         return jsonify({"server": server}), 201
     except Exception as e:
-        app_logger.error(f"Failed to install MCP server: {e}", exc_info=True)
+        app_logger.error(f"Failed to install connector: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/platform-mcp-servers", methods=["GET"])
+@rest_api_bp.route("/v1/platform-connectors", methods=["GET"])
 @require_auth
-async def list_platform_mcp_servers(current_user):
-    """List all installed platform MCP servers with governance settings."""
+async def list_platform_connectors(current_user):
+    """List all installed platform connectors with governance settings."""
     try:
-        from trusted_data_agent.core.platform_mcp_registry import list_installed_servers
+        from trusted_data_agent.core.platform_connector_registry import list_installed_servers
         return jsonify({"servers": list_installed_servers()}), 200
     except Exception as e:
-        app_logger.error(f"Failed to list platform MCP servers: {e}", exc_info=True)
+        app_logger.error(f"Failed to list platform connectors: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/platform-mcp-servers/<server_id>", methods=["GET"])
+@rest_api_bp.route("/v1/platform-connectors/<server_id>", methods=["GET"])
 @require_auth
-async def get_platform_mcp_server(current_user, server_id):
-    """Get a single platform MCP server."""
+async def get_platform_connector(current_user, server_id):
+    """Get a single platform connector."""
     try:
-        from trusted_data_agent.core.platform_mcp_registry import get_server
+        from trusted_data_agent.core.platform_connector_registry import get_server
         server = get_server(server_id)
         if not server:
-            return jsonify({"error": "Server not found"}), 404
+            return jsonify({"error": "Connector not found"}), 404
         return jsonify({"server": server}), 200
     except Exception as e:
-        app_logger.error(f"Failed to get platform MCP server {server_id}: {e}", exc_info=True)
+        app_logger.error(f"Failed to get platform connector {server_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/platform-mcp-servers/<server_id>", methods=["PUT"])
+@rest_api_bp.route("/v1/platform-connectors/<server_id>", methods=["PUT"])
 @require_admin
-async def update_platform_mcp_server(server_id):
-    """Update governance settings for a platform MCP server. Admin only."""
+async def update_platform_connector(server_id):
+    """Update governance settings for a platform connector. Admin only."""
     try:
         data = await request.get_json() or {}
-        from trusted_data_agent.core.platform_mcp_registry import (
+        from trusted_data_agent.core.platform_connector_registry import (
             update_server_governance, update_server_credentials, get_server
         )
         if not get_server(server_id):
-            return jsonify({"error": "Server not found"}), 404
+            return jsonify({"error": "Connector not found"}), 404
 
         # Credentials are updated separately and never returned
         credentials = data.pop("credentials", None)
@@ -15728,74 +15783,74 @@ async def update_platform_mcp_server(server_id):
         server = update_server_governance(server_id, data)
         return jsonify({"server": server}), 200
     except Exception as e:
-        app_logger.error(f"Failed to update platform MCP server {server_id}: {e}", exc_info=True)
+        app_logger.error(f"Failed to update platform connector {server_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/platform-mcp-servers/<server_id>", methods=["DELETE"])
+@rest_api_bp.route("/v1/platform-connectors/<server_id>", methods=["DELETE"])
 @require_admin
-async def delete_platform_mcp_server(server_id):
-    """Remove a platform MCP server and all profile settings. Admin only."""
+async def delete_platform_connector(server_id):
+    """Remove a platform connector and all profile settings. Admin only."""
     try:
-        from trusted_data_agent.core.platform_mcp_registry import delete_server, get_server
+        from trusted_data_agent.core.platform_connector_registry import delete_server, get_server
         if not get_server(server_id):
-            return jsonify({"error": "Server not found"}), 404
+            return jsonify({"error": "Connector not found"}), 404
         delete_server(server_id)
         return jsonify({"status": "deleted"}), 200
     except Exception as e:
-        app_logger.error(f"Failed to delete platform MCP server {server_id}: {e}", exc_info=True)
+        app_logger.error(f"Failed to delete platform connector {server_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/platform-mcp-servers/<server_id>/tools", methods=["GET"])
+@rest_api_bp.route("/v1/platform-connectors/<server_id>/tools", methods=["GET"])
 @require_auth
-async def get_platform_mcp_server_tools(current_user, server_id):
-    """Get tool schemas for a platform MCP server (from manifest; live discovery coming later)."""
+async def get_platform_connector_tools(current_user, server_id):
+    """Get tool schemas for a platform connector (from manifest; live discovery coming later)."""
     try:
-        from trusted_data_agent.core.platform_mcp_registry import (
+        from trusted_data_agent.core.platform_connector_registry import (
             get_server, invalidate_tool_cache, _get_cached_tool_schemas
         )
         if not get_server(server_id):
-            return jsonify({"error": "Server not found"}), 404
+            return jsonify({"error": "Connector not found"}), 404
         if request.args.get("refresh") == "true":
             invalidate_tool_cache(server_id)
         tools = _get_cached_tool_schemas(server_id)
         return jsonify({"tools": tools, "server_id": server_id}), 200
     except Exception as e:
-        app_logger.error(f"Failed to get tools for platform MCP server {server_id}: {e}", exc_info=True)
+        app_logger.error(f"Failed to get tools for platform connector {server_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/profiles/<profile_id>/platform-mcp-settings", methods=["GET"])
+@rest_api_bp.route("/v1/profiles/<profile_id>/connector-settings", methods=["GET"])
 @require_auth
-async def get_profile_platform_mcp_settings(current_user, profile_id):
-    """Get the user's platform MCP server opt-in state for a profile."""
+async def get_profile_connector_settings(current_user, profile_id):
+    """Get the user's platform connector opt-in state for a profile."""
     try:
-        from trusted_data_agent.core.platform_mcp_registry import get_profile_server_settings
+        from trusted_data_agent.core.platform_connector_registry import get_profile_server_settings
         settings = get_profile_server_settings(profile_id)
         return jsonify({"settings": settings, "profile_id": profile_id}), 200
     except Exception as e:
-        app_logger.error(f"Failed to get profile platform MCP settings: {e}", exc_info=True)
+        app_logger.error(f"Failed to get profile connector settings: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
-@rest_api_bp.route("/v1/profiles/<profile_id>/platform-mcp-settings/<server_id>", methods=["PUT"])
+@rest_api_bp.route("/v1/profiles/<profile_id>/connector-settings/<server_id>", methods=["PUT"])
 @require_auth
-async def update_profile_platform_mcp_setting(current_user, profile_id, server_id):
-    """Update a profile's opt-in state and tool selection for a platform MCP server."""
+async def update_profile_connector_setting(current_user, profile_id, server_id):
+    """Update a profile's opt-in state and tool selection for a platform connector."""
     try:
         data = await request.get_json() or {}
         opted_in = data.get("opted_in")   # None | 1 | 0
         user_tools = data.get("user_tools")  # list of tool names | None
-        from trusted_data_agent.core.platform_mcp_registry import (
+        from trusted_data_agent.core.platform_connector_registry import (
             update_profile_server_setting, get_server
         )
         server = get_server(server_id)
         if not server:
-            return jsonify({"error": "Server not found"}), 404
+            return jsonify({"error": "Connector not found"}), 404
         # Enforce governance: if user cannot opt out, ignore opt-out requests
         if server.get("auto_opt_in") and not server.get("user_can_opt_out") and opted_in == 0:
-            return jsonify({"error": "This server cannot be disabled by users"}), 403
+            return jsonify({"error": "This connector cannot be disabled by users"}), 403
         # Enforce governance: if user cannot configure tools, ignore tool selection
         if not server.get("user_can_configure_tools"):
             user_tools = None

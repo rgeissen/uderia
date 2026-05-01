@@ -1,11 +1,23 @@
 """
-Platform MCP Server Registry
+Platform Connector Registry
 
-Manages admin-governed capability MCP servers (browser, files, shell, web, google).
+Manages admin-governed platform connectors (browser, files, shell, web, google, …).
 Strictly separate from user-configured data source servers (Configuration → MCP Servers).
 
-Governance chain: admin enables + sets policy → user assigns to profiles →
-                  profile selects tool subset → execution merges into tool context
+Governance chain:
+  admin enables + sets policy → user assigns to profiles →
+  profile selects tool subset → execution merges into tool context
+
+Connector types (connector_type field):
+  mcp_stdio   — MCP protocol via subprocess stdin/stdout  (default, all existing connectors)
+  mcp_http    — MCP protocol via HTTP/SSE transport endpoint
+  rest        — Direct REST API calls (no MCP protocol)
+  oauth_only  — Authentication only; no tool execution
+
+Adding a new connector type:
+  1. Add a CONNECTOR_TYPE_* constant below.
+  2. Implement a ConnectorInvocationStrategy subclass.
+  3. Register an instance in _INVOCATION_STRATEGIES.
 """
 
 import json
@@ -28,6 +40,104 @@ _MASTER_KEY = os.environ.get('TDA_ENCRYPTION_KEY', 'dev-master-key-change-in-pro
 
 
 # ---------------------------------------------------------------------------
+# Connector type constants
+# ---------------------------------------------------------------------------
+
+CONNECTOR_TYPE_MCP_STDIO  = "mcp_stdio"   # MCP protocol, subprocess stdin/stdout
+CONNECTOR_TYPE_MCP_HTTP   = "mcp_http"    # MCP protocol, HTTP/SSE transport
+CONNECTOR_TYPE_REST       = "rest"         # Direct REST API (no MCP)
+CONNECTOR_TYPE_OAUTH_ONLY = "oauth_only"  # Auth only, no tool execution
+
+
+# ---------------------------------------------------------------------------
+# Invocation strategy abstraction
+# ---------------------------------------------------------------------------
+
+class ConnectorInvocationStrategy:
+    """
+    Abstract strategy for platform connector tool invocation.
+
+    Each connector_type maps to exactly one strategy.  Adding a new connector
+    type (REST, WebSocket, gRPC …) requires only implementing this class and
+    registering an instance in _INVOCATION_STRATEGIES below — no other code
+    changes are needed.
+
+    The `env` dict has already been populated with admin credentials and,
+    when the connector requires per-user auth, the user's OAuth tokens.
+    """
+    async def invoke_tool(
+        self,
+        server: dict,
+        tool_name: str,
+        args: dict,
+        env: dict,
+    ) -> dict:
+        raise NotImplementedError
+
+
+class McpStdioStrategy(ConnectorInvocationStrategy):
+    """Invokes a tool by spawning the connector process over stdin/stdout (MCP wire protocol)."""
+
+    async def invoke_tool(self, server: dict, tool_name: str, args: dict, env: dict) -> dict:
+        import sys
+        repo_root = Path(__file__).resolve().parents[3]
+        server_id = server["id"]
+
+        install_spec = server.get("install_spec") or {}
+        if isinstance(install_spec, str):
+            try:
+                install_spec = json.loads(install_spec)
+            except Exception:
+                install_spec = {}
+
+        cmd_args = install_spec.get("args", [])
+        if not cmd_args:
+            builtin_dir = repo_root / "mcp_servers" / "builtin" / server_id
+            entry = builtin_dir / "server.py"
+            if not entry.exists():
+                return {"status": "error", "error": f"Server entry point not found for '{server_id}'."}
+            cmd_args = [str(entry)]
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, *cmd_args,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+        except Exception as exc:
+            logger.error(f"Failed to spawn connector '{server_id}': {exc}")
+            return {"status": "error", "error": f"Could not start '{server_id}': {exc}"}
+
+        try:
+            return await _call_via_mcp_stdio(proc, tool_name, args)
+        finally:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
+class McpHttpStrategy(ConnectorInvocationStrategy):
+    """Invokes a tool via an HTTP/SSE MCP transport endpoint (connector must be running)."""
+
+    async def invoke_tool(self, server: dict, tool_name: str, args: dict, env: dict) -> dict:
+        raise NotImplementedError(
+            "MCP HTTP transport is not yet implemented. "
+            "Use connector_type='mcp_stdio' for subprocess-based connectors."
+        )
+
+
+# Strategy registry — maps connector_type → strategy instance.
+# Extend here to add new connector types without touching any other code.
+_INVOCATION_STRATEGIES: dict[str, ConnectorInvocationStrategy] = {
+    CONNECTOR_TYPE_MCP_STDIO: McpStdioStrategy(),
+    CONNECTOR_TYPE_MCP_HTTP:  McpHttpStrategy(),
+}
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -38,11 +148,17 @@ def _get_conn() -> sqlite3.Connection:
 
 
 def _platform_fernet():
-    """Return a Fernet instance keyed to the platform (not per-user)."""
+    """
+    Return a Fernet instance keyed to the platform (not per-user).
+
+    IMPORTANT: The salt b'platform_mcp_registry' is intentionally frozen.
+    Changing it would render all existing encrypted admin credentials in the DB
+    unreadable.  The salt encodes where the key was created, not what it encrypts.
+    """
     from cryptography.fernet import Fernet
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-    salt = b'platform_mcp_registry'
+    salt = b'platform_mcp_registry'  # frozen — see docstring above
     kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000)
     key = kdf.derive(_MASTER_KEY.encode())
     return Fernet(base64.urlsafe_b64encode(key))
@@ -67,7 +183,7 @@ def list_registry_sources() -> list[dict]:
     """Return all configured registry sources."""
     with _get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, name, url, enabled, is_builtin FROM mcp_registry_sources ORDER BY is_builtin DESC, name"
+            "SELECT id, name, url, enabled, is_builtin FROM connector_registry_sources ORDER BY is_builtin DESC, name"
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -78,7 +194,7 @@ def add_registry_source(name: str, url: str) -> dict:
     source_id = f"registry-{uuid.uuid4().hex[:8]}"
     with _get_conn() as conn:
         conn.execute(
-            "INSERT INTO mcp_registry_sources (id, name, url, enabled, is_builtin) VALUES (?, ?, ?, 1, 0)",
+            "INSERT INTO connector_registry_sources (id, name, url, enabled, is_builtin) VALUES (?, ?, ?, 1, 0)",
             (source_id, name, url)
         )
         conn.commit()
@@ -88,10 +204,10 @@ def add_registry_source(name: str, url: str) -> dict:
 def delete_registry_source(source_id: str) -> bool:
     """Delete a non-builtin registry source."""
     with _get_conn() as conn:
-        row = conn.execute("SELECT is_builtin FROM mcp_registry_sources WHERE id = ?", (source_id,)).fetchone()
+        row = conn.execute("SELECT is_builtin FROM connector_registry_sources WHERE id = ?", (source_id,)).fetchone()
         if not row or row["is_builtin"]:
             return False
-        conn.execute("DELETE FROM mcp_registry_sources WHERE id = ?", (source_id,))
+        conn.execute("DELETE FROM connector_registry_sources WHERE id = ?", (source_id,))
         conn.commit()
     return True
 
@@ -102,15 +218,14 @@ def delete_registry_source(source_id: str) -> bool:
 
 async def list_registry_servers(source_id: str, search: str = "", page: int = 1, cursor: str = "") -> dict:
     """
-    Browse servers from a registry source.
-    Built-in source returns locally registered first-party servers.
+    Browse connectors from a registry source.
+    Built-in source returns locally registered first-party connectors.
     External sources proxy GET /v0.1/servers to the registry URL.
-    cursor is forwarded to external registries that use cursor-based pagination
-    (e.g. registry.modelcontextprotocol.io uses metadata.nextCursor).
+    cursor is forwarded to external registries that use cursor-based pagination.
     """
     with _get_conn() as conn:
         source = conn.execute(
-            "SELECT id, name, url, enabled FROM mcp_registry_sources WHERE id = ?", (source_id,)
+            "SELECT id, name, url, enabled FROM connector_registry_sources WHERE id = ?", (source_id,)
         ).fetchone()
 
     if not source:
@@ -123,7 +238,7 @@ async def list_registry_servers(source_id: str, search: str = "", page: int = 1,
 
 
 def _load_builtin_manifests() -> list[dict]:
-    """Load first-party server manifests from mcp_servers/builtin/*/manifest.json."""
+    """Load first-party connector manifests from mcp_servers/builtin/*/manifest.json."""
     repo_root = Path(__file__).resolve().parents[3]
     builtin_dir = repo_root / "mcp_servers" / "builtin"
     servers = []
@@ -133,7 +248,6 @@ def _load_builtin_manifests() -> list[dict]:
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:
                 manifest = json.load(f)
-            # Build an install_spec for local stdio execution
             entry_point = manifest.get("entry_point", "")
             server_entry = repo_root / entry_point if entry_point else None
             install_spec = {
@@ -148,6 +262,7 @@ def _load_builtin_manifests() -> list[dict]:
                 "display_name": manifest.get("display_name", manifest_path.parent.name),
                 "description": manifest.get("description", ""),
                 "version": manifest.get("version", "1.0.0"),
+                "connector_type": manifest.get("connector_type", CONNECTOR_TYPE_MCP_STDIO),
                 "install_spec": install_spec,
                 "tools": manifest.get("tools", []),
                 "requires_user_auth": manifest.get("requires_user_auth", False),
@@ -163,7 +278,7 @@ def _load_builtin_manifests() -> list[dict]:
 
 
 def _list_builtin_servers(search: str, page: int) -> dict:
-    """Return the list of Uderia first-party platform servers from disk manifests."""
+    """Return the list of Uderia first-party platform connectors from disk manifests."""
     builtin = _load_builtin_manifests()
 
     if search:
@@ -182,11 +297,8 @@ def _list_builtin_servers(search: str, page: int) -> dict:
 
 async def _proxy_registry_request(base_url: str, search: str, page: int, cursor: str = "") -> dict:
     """
-    Proxy GET /v0.1/servers to an external MCP registry.
-    Supports both page-based (built-in compatible) and cursor-based pagination
-    (official MCP Registry uses metadata.nextCursor).
-    The raw registry response is returned as-is so the frontend can read
-    metadata.nextCursor for progressive loading.
+    Proxy GET /v0.1/servers to an external connector registry.
+    Supports both page-based and cursor-based pagination.
     """
     try:
         import httpx
@@ -207,28 +319,28 @@ async def _proxy_registry_request(base_url: str, search: str, page: int, cursor:
 
 
 # ---------------------------------------------------------------------------
-# Server installation / connection
+# Connector installation / connection
 # ---------------------------------------------------------------------------
 
 def install_server(source_id: str, server_id: str, server_data: dict) -> dict:
     """
-    Register a server as installed/connected.
-    For package-based servers: records install intent (actual pip install is separate).
-    For remote servers: records connection details.
+    Register a connector as installed/connected.
+    For package-based connectors: records install intent (actual pip install is separate).
+    For remote connectors: records connection details.
     """
-    import uuid
     with _get_conn() as conn:
         existing = conn.execute(
-            "SELECT id FROM platform_mcp_servers WHERE id = ?", (server_id,)
+            "SELECT id FROM platform_connectors WHERE id = ?", (server_id,)
         ).fetchone()
 
+        connector_type = server_data.get("connector_type", CONNECTOR_TYPE_MCP_STDIO)
         now = _now()
         if existing:
             conn.execute(
-                """UPDATE platform_mcp_servers SET
+                """UPDATE platform_connectors SET
                     source_id=?, name=?, display_name=?, description=?, version=?,
                     registry_metadata=?, install_spec=?, install_status=?,
-                    requires_user_auth=?, updated_at=?
+                    connector_type=?, requires_user_auth=?, updated_at=?
                    WHERE id=?""",
                 (
                     source_id,
@@ -239,6 +351,7 @@ def install_server(source_id: str, server_id: str, server_data: dict) -> dict:
                     json.dumps(server_data.get("registry_metadata", {})),
                     json.dumps(server_data.get("install_spec", {})),
                     "installed",
+                    connector_type,
                     1 if server_data.get("requires_user_auth") else 0,
                     now,
                     server_id,
@@ -246,11 +359,11 @@ def install_server(source_id: str, server_id: str, server_data: dict) -> dict:
             )
         else:
             conn.execute(
-                """INSERT INTO platform_mcp_servers
+                """INSERT INTO platform_connectors
                    (id, source_id, name, display_name, description, version,
                     registry_metadata, install_spec, install_status,
-                    enabled, requires_user_auth, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'installed', 0, ?, ?, ?)""",
+                    connector_type, enabled, requires_user_auth, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'installed', ?, 0, ?, ?, ?)""",
                 (
                     server_id,
                     source_id,
@@ -260,6 +373,7 @@ def install_server(source_id: str, server_id: str, server_data: dict) -> dict:
                     server_data.get("version", "0.0.0"),
                     json.dumps(server_data.get("registry_metadata", {})),
                     json.dumps(server_data.get("install_spec", {})),
+                    connector_type,
                     1 if server_data.get("requires_user_auth") else 0,
                     now, now,
                 )
@@ -272,7 +386,7 @@ def install_server(source_id: str, server_id: str, server_data: dict) -> dict:
 def get_server(server_id: str) -> Optional[dict]:
     with _get_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM platform_mcp_servers WHERE id = ?", (server_id,)
+            "SELECT * FROM platform_connectors WHERE id = ?", (server_id,)
         ).fetchone()
     if not row:
         return None
@@ -280,16 +394,16 @@ def get_server(server_id: str) -> Optional[dict]:
 
 
 def list_installed_servers() -> list[dict]:
-    """Return all servers registered in platform_mcp_servers (installed or connected)."""
+    """Return all connectors registered in platform_connectors (installed or connected)."""
     with _get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM platform_mcp_servers ORDER BY name"
+            "SELECT * FROM platform_connectors ORDER BY name"
         ).fetchall()
     return [_row_to_server(r) for r in rows]
 
 
 def update_server_governance(server_id: str, updates: dict) -> Optional[dict]:
-    """Update admin governance settings for a platform server."""
+    """Update admin governance settings for a platform connector."""
     allowed = {
         "enabled", "available_tools", "auto_opt_in",
         "user_can_opt_out", "user_can_configure_tools", "config",
@@ -298,7 +412,6 @@ def update_server_governance(server_id: str, updates: dict) -> Optional[dict]:
     if not fields:
         return get_server(server_id)
 
-    # Serialize list fields
     if "available_tools" in fields and isinstance(fields["available_tools"], list):
         fields["available_tools"] = json.dumps(fields["available_tools"])
 
@@ -307,17 +420,17 @@ def update_server_governance(server_id: str, updates: dict) -> Optional[dict]:
     values = list(fields.values()) + [server_id]
 
     with _get_conn() as conn:
-        conn.execute(f"UPDATE platform_mcp_servers SET {set_clause} WHERE id = ?", values)
+        conn.execute(f"UPDATE platform_connectors SET {set_clause} WHERE id = ?", values)
         conn.commit()
     return get_server(server_id)
 
 
 def update_server_credentials(server_id: str, credentials: dict) -> bool:
-    """Encrypt and store sensitive credentials for a platform server."""
+    """Encrypt and store sensitive credentials for a platform connector."""
     encrypted = _encrypt(credentials)
     with _get_conn() as conn:
         conn.execute(
-            "UPDATE platform_mcp_servers SET credentials = ?, updated_at = ? WHERE id = ?",
+            "UPDATE platform_connectors SET credentials = ?, updated_at = ? WHERE id = ?",
             (encrypted, _now(), server_id)
         )
         conn.commit()
@@ -325,10 +438,10 @@ def update_server_credentials(server_id: str, credentials: dict) -> bool:
 
 
 def get_server_credentials(server_id: str) -> dict:
-    """Decrypt and return credentials for a platform server."""
+    """Decrypt and return credentials for a platform connector."""
     with _get_conn() as conn:
         row = conn.execute(
-            "SELECT credentials FROM platform_mcp_servers WHERE id = ?", (server_id,)
+            "SELECT credentials FROM platform_connectors WHERE id = ?", (server_id,)
         ).fetchone()
     if not row or not row["credentials"]:
         return {}
@@ -336,9 +449,9 @@ def get_server_credentials(server_id: str) -> dict:
 
 
 def delete_server(server_id: str) -> bool:
-    """Remove a platform server (cascades to profile settings via ON DELETE CASCADE)."""
+    """Remove a platform connector (cascades to profile settings via ON DELETE CASCADE)."""
     with _get_conn() as conn:
-        conn.execute("DELETE FROM platform_mcp_servers WHERE id = ?", (server_id,))
+        conn.execute("DELETE FROM platform_connectors WHERE id = ?", (server_id,))
         conn.commit()
     return True
 
@@ -349,7 +462,7 @@ def delete_server(server_id: str) -> bool:
 
 def get_effective_tool_names(profile_id: str) -> set[str]:
     """
-    Return the set of platform server tool names that are active for this profile,
+    Return the set of platform connector tool names active for this profile,
     after applying the full governance chain:
       admin enabled → auto_opt_in → user opt-in/out → available_tools → user_tools
     """
@@ -358,15 +471,15 @@ def get_effective_tool_names(profile_id: str) -> set[str]:
 
 def get_effective_tools(profile_id: str) -> list[dict]:
     """
-    Return structured tool definitions for all platform servers active on this profile.
-    Used by load_and_categorize_mcp_resources() to merge platform tools into APP_STATE.
+    Return structured tool definitions for all platform connectors active on this profile.
+    Used by load_and_categorize_mcp_resources() to merge connector tools into APP_STATE.
     """
     with _get_conn() as conn:
         servers = conn.execute(
-            "SELECT * FROM platform_mcp_servers WHERE enabled = 1"
+            "SELECT * FROM platform_connectors WHERE enabled = 1"
         ).fetchall()
         settings_rows = conn.execute(
-            "SELECT server_id, opted_in, user_tools FROM profile_platform_mcp_settings WHERE profile_id = ?",
+            "SELECT server_id, opted_in, user_tools FROM profile_connector_settings WHERE profile_id = ?",
             (profile_id,)
         ).fetchall()
 
@@ -379,38 +492,38 @@ def get_effective_tools(profile_id: str) -> list[dict]:
         pref = settings.get(sid, {})
         opted_in = pref.get("opted_in")  # None / 1 / 0
 
-        # Determine if this server is active for this profile
         if server["auto_opt_in"]:
             if server["user_can_opt_out"] and opted_in == 0:
-                continue  # user explicitly opted out
-            # else: active (auto opt-in, user hasn't opted out)
+                continue
         else:
             if opted_in != 1:
-                continue  # not auto opted-in, user hasn't explicitly opted in
+                continue
 
-        # Resolve permitted tool set
         admin_tools = server.get("available_tools")  # list or None
         user_tools_raw = pref.get("user_tools")
         user_tools = json.loads(user_tools_raw) if user_tools_raw else None
 
         if admin_tools is None:
-            permitted = None  # all tools
+            permitted = None
         else:
             permitted = set(admin_tools)
             if server["user_can_configure_tools"] and user_tools:
                 permitted = permitted & set(user_tools)
 
-        # Fetch live tool schemas from the running server
+        category = f"Platform: {_connector_namespace(sid).replace('_', ' ').title()}"
         server_tools = _get_cached_tool_schemas(sid)
         for tool in server_tools:
-            if permitted is None or tool["name"] in permitted:
-                active_tools.append(tool)
+            # tool["name"] is namespaced (e.g. google__read_emails); permitted stores
+            # original names (e.g. read_emails) — compare against stripped name.
+            original = _strip_namespace(tool["name"])
+            if permitted is None or original in permitted:
+                active_tools.append({**tool, "_category": category})
 
     return active_tools
 
 
 def has_effective_tools(profile_id: str) -> bool:
-    """Return True if this profile has at least one active platform server tool."""
+    """Return True if this profile has at least one active platform connector tool."""
     return bool(get_effective_tool_names(profile_id))
 
 
@@ -420,14 +533,14 @@ def has_effective_tools(profile_id: str) -> bool:
 
 def get_profile_server_settings(profile_id: str) -> list[dict]:
     """
-    Return all enabled platform servers with the user's current opt-in state for this profile.
+    Return all enabled platform connectors with the user's current opt-in state.
     """
     with _get_conn() as conn:
         servers = conn.execute(
-            "SELECT * FROM platform_mcp_servers WHERE enabled = 1 ORDER BY name"
+            "SELECT * FROM platform_connectors WHERE enabled = 1 ORDER BY name"
         ).fetchall()
         settings_rows = conn.execute(
-            "SELECT server_id, opted_in, user_tools FROM profile_platform_mcp_settings WHERE profile_id = ?",
+            "SELECT server_id, opted_in, user_tools FROM profile_connector_settings WHERE profile_id = ?",
             (profile_id,)
         ).fetchall()
 
@@ -439,7 +552,7 @@ def get_profile_server_settings(profile_id: str) -> list[dict]:
         pref = settings.get(sid, {})
         result.append({
             **server,
-            "server_id": sid,  # alias for JS consumers
+            "server_id": sid,
             "opted_in": pref.get("opted_in"),
             "user_tools": json.loads(pref["user_tools"]) if pref.get("user_tools") else None,
         })
@@ -447,12 +560,12 @@ def get_profile_server_settings(profile_id: str) -> list[dict]:
 
 
 def update_profile_server_setting(profile_id: str, server_id: str, opted_in: Optional[int], user_tools: Optional[list]) -> bool:
-    """Upsert a profile's opt-in state and tool selection for a platform server."""
+    """Upsert a profile's opt-in state and tool selection for a platform connector."""
     user_tools_json = json.dumps(user_tools) if user_tools is not None else None
     now = _now()
     with _get_conn() as conn:
         conn.execute(
-            """INSERT INTO profile_platform_mcp_settings (profile_id, server_id, opted_in, user_tools, updated_at)
+            """INSERT INTO profile_connector_settings (profile_id, server_id, opted_in, user_tools, updated_at)
                VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(profile_id, server_id) DO UPDATE SET
                    opted_in = excluded.opted_in,
@@ -465,17 +578,89 @@ def update_profile_server_setting(profile_id: str, server_id: str, opted_in: Opt
 
 
 # ---------------------------------------------------------------------------
+# Connector namespace helpers
+# ---------------------------------------------------------------------------
+
+def _connector_namespace(server_id: str) -> str:
+    """Return the short namespace prefix for a connector's tool names.
+
+    Strips the ``uderia-`` product prefix so tool names stay concise:
+      uderia-google  →  google   (google__read_emails)
+      uderia-files   →  files    (files__read_file)
+      uderia-web     →  web      (web__web_search)
+    Non-uderia IDs are used as-is with hyphens replaced by underscores.
+    """
+    ns = server_id
+    if ns.startswith("uderia-"):
+        ns = ns[len("uderia-"):]
+    return ns.replace("-", "_")
+
+
+def _namespace_tool(server_id: str, original_name: str) -> str:
+    """Return ``{namespace}__{original_name}`` for a connector tool."""
+    return f"{_connector_namespace(server_id)}__{original_name}"
+
+
+def _strip_namespace(namespaced_name: str) -> str:
+    """Return the original tool name without the connector namespace prefix."""
+    if "__" in namespaced_name:
+        return namespaced_name.split("__", 1)[1]
+    return namespaced_name
+
+
+# ---------------------------------------------------------------------------
 # Tool schema cache (avoids repeated subprocess calls per request)
 # ---------------------------------------------------------------------------
 
-_tool_schema_cache: dict = {}  # server_id → {tools: list, ts: float}
+_tool_schema_cache: dict = {}  # server_id → {tools: list[namespaced], ts: float}
 _TOOL_CACHE_TTL = 300  # 5 minutes
+
+_manifest_cache: dict = {}  # server_id → manifest dict (refreshed on process restart)
+
+
+def _get_builtin_manifest(server_id: str) -> dict:
+    """Return the on-disk manifest for a builtin connector (cached for process lifetime)."""
+    if server_id not in _manifest_cache:
+        manifest_path = Path(__file__).resolve().parents[3] / "mcp_servers" / "builtin" / server_id / "manifest.json"
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                _manifest_cache[server_id] = json.load(f)
+        except Exception:
+            _manifest_cache[server_id] = {}
+    return _manifest_cache[server_id]
+
+
+def _enrich_with_manifest(server: dict) -> dict:
+    """
+    Hoist manifest_tools and auth_schema into a server dict from the on-disk manifest.
+
+    manifest_tools  — full tool list from the manifest (before admin governance narrows it)
+    auth_schema     — drives the dynamic auth UI in the Platform Components panel;
+                      built from manifest.auth_schema or derived from legacy oauth_provider field
+    """
+    manifest = _get_builtin_manifest(server.get("id", ""))
+    if not manifest:
+        return server
+    server["manifest_tools"] = manifest.get("tools", [])
+    if "auth_schema" not in server or server.get("auth_schema") is None:
+        auth_schema = manifest.get("auth_schema")
+        if not auth_schema and manifest.get("requires_user_auth"):
+            provider = manifest.get("oauth_provider", "")
+            if provider:
+                auth_schema = {
+                    "type": "oauth2",
+                    "display_name": provider.title(),
+                    "description": f"Connect your {provider.title()} account to enable its tools.",
+                    "icon": provider,
+                }
+        server["auth_schema"] = auth_schema
+    return server
 
 
 def _get_cached_tool_schemas(server_id: str) -> list[dict]:
     """
-    Return cached tool schemas for a platform server, or fetch live if stale.
-    Falls back to the builtin manifest if the server process is not running.
+    Return cached tool schemas for a platform connector, or fetch live if stale.
+    Falls back to the builtin manifest if the connector process is not running.
     """
     import time
     cached = _tool_schema_cache.get(server_id)
@@ -488,15 +673,50 @@ def _get_cached_tool_schemas(server_id: str) -> list[dict]:
 
 
 def _fetch_tool_schemas_from_manifest(server_id: str) -> list[dict]:
+    """Return namespaced tool schemas from the builtin connector manifest.
+
+    Tool names are prefixed with ``{namespace}__`` (e.g. ``google__read_emails``)
+    so tools from different connectors cannot collide in the LLM planning context.
+    The namespace is the connector ID with ``uderia-`` stripped and hyphens replaced.
+
+    Uses the manifest's ``tool_schemas`` list (rich format with arguments) when
+    present, otherwise falls back to the plain ``tools`` name list.
     """
-    Return tool schemas from the builtin server manifest.
-    When a server is running, these will be superseded by live discovery.
-    """
+    manifest = _get_builtin_manifest(server_id)
+    if manifest:
+        if manifest.get("tool_schemas"):
+            return [
+                {
+                    "name": _namespace_tool(server_id, ts["name"]),
+                    "description": ts.get("description", f"{server_id} tool: {ts['name']}"),
+                    "arguments": ts.get("arguments", []),
+                    "disabled": False,
+                }
+                for ts in manifest["tool_schemas"]
+            ]
+        # Fallback: plain name list with minimal metadata
+        return [
+            {
+                "name": _namespace_tool(server_id, t),
+                "description": f"{_connector_namespace(server_id)} tool: {t}",
+                "arguments": [],
+                "disabled": False,
+            }
+            for t in manifest.get("tools", [])
+        ]
+    # Last resort: scan builtin list
     builtin_result = _list_builtin_servers("", 1)
     for s in builtin_result["servers"]:
         if s["id"] == server_id:
-            return [{"name": t, "description": f"{server_id} tool: {t}", "arguments": [], "disabled": False}
-                    for t in s.get("tools", [])]
+            return [
+                {
+                    "name": _namespace_tool(server_id, t),
+                    "description": f"{_connector_namespace(server_id)} tool: {t}",
+                    "arguments": [],
+                    "disabled": False,
+                }
+                for t in s.get("tools", [])
+            ]
     return []
 
 
@@ -517,6 +737,8 @@ def _row_to_server(row) -> dict:
             except (json.JSONDecodeError, TypeError):
                 pass
     d.pop("credentials", None)  # never leak encrypted credentials
+    # Hoist manifest_tools + auth_schema from the on-disk manifest for builtin connectors
+    _enrich_with_manifest(d)
     return d
 
 
@@ -526,51 +748,46 @@ def _now() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Platform tool invocation (per-call stdio subprocess)
+# Platform connector tool invocation
 # ---------------------------------------------------------------------------
 
 _INVOKE_TIMEOUT = 30  # seconds per tool call
 
 
-async def invoke_platform_tool(
+async def invoke_connector_tool(
     server_id: str,
     tool_name: str,
     args: dict,
     user_uuid: Optional[str] = None,
 ) -> dict:
     """
-    Invoke a tool on a builtin platform MCP server.
+    Invoke a tool on a platform connector.
 
-    Spawns the server process once per call (stateless, no persistent session),
-    sends initialize + tools/call over stdio, and returns the parsed result dict.
+    Dispatches to the appropriate ConnectorInvocationStrategy based on the
+    connector's connector_type field.  Currently supported:
+      - mcp_stdio  (default): spawns subprocess, sends MCP protocol over stdio
+      - mcp_http:             HTTP/SSE MCP transport (not yet implemented)
 
-    For servers with requires_user_auth (e.g. uderia-google), injects user OAuth
-    tokens from messaging_identities alongside the admin credentials.
+    For connectors with requires_user_auth (e.g. uderia-google), injects user
+    OAuth tokens from messaging_identities alongside admin credentials.
     """
-    import asyncio
-    import sys
-
     server = get_server(server_id)
     if not server:
-        return {"status": "error", "error": f"Platform server '{server_id}' not found."}
+        return {"status": "error", "error": f"Connector '{server_id}' not found."}
 
-    # Resolve the server entry point
-    repo_root = Path(__file__).resolve().parents[3]
-    install_spec = server.get("install_spec") or {}
-    if isinstance(install_spec, str):
-        try:
-            install_spec = json.loads(install_spec)
-        except Exception:
-            install_spec = {}
+    connector_type = server.get("connector_type") or CONNECTOR_TYPE_MCP_STDIO
+    strategy = _INVOCATION_STRATEGIES.get(connector_type)
+    if strategy is None:
+        return {
+            "status": "error",
+            "error": f"Unknown connector type '{connector_type}' for '{server_id}'. "
+                     f"Supported types: {list(_INVOCATION_STRATEGIES)}",
+        }
 
-    cmd_args = install_spec.get("args", [])
-    if not cmd_args:
-        # Fall back: derive from manifest entry_point
-        builtin_dir = repo_root / "mcp_servers" / "builtin" / server_id
-        entry = builtin_dir / "server.py"
-        if not entry.exists():
-            return {"status": "error", "error": f"Server entry point not found for '{server_id}'."}
-        cmd_args = [str(entry)]
+    # Strip connector namespace prefix before calling the MCP server process.
+    # The LLM plans with namespaced names (e.g. google__read_emails) but the
+    # MCP server only knows the original name (read_emails).
+    original_tool_name = _strip_namespace(tool_name)
 
     # Build environment: inherit current env + admin credentials + user tokens
     env = dict(os.environ)
@@ -578,85 +795,84 @@ async def invoke_platform_tool(
     for k, v in creds.items():
         if v:
             env[k] = str(v)
-
-    # Inject user OAuth tokens for servers that require per-user auth
     if server.get("requires_user_auth") and user_uuid:
         _inject_user_tokens(server_id, user_uuid, env)
 
-    # Spawn the MCP server process
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            sys.executable, *cmd_args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
-        )
-    except Exception as exc:
-        logger.error(f"Failed to spawn platform server '{server_id}': {exc}")
-        return {"status": "error", "error": f"Could not start '{server_id}': {exc}"}
-
     try:
         return await asyncio.wait_for(
-            _call_via_stdio(proc, tool_name, args),
+            strategy.invoke_tool(server, original_tool_name, args, env),
             timeout=_INVOKE_TIMEOUT,
         )
     except asyncio.TimeoutError:
-        proc.kill()
         return {"status": "error", "error": f"Tool '{tool_name}' timed out after {_INVOKE_TIMEOUT}s."}
     except Exception as exc:
-        logger.error(f"Platform tool '{tool_name}' invocation error: {exc}", exc_info=True)
+        logger.error(f"invoke_connector_tool({server_id!r}, {tool_name!r}) failed: {exc}", exc_info=True)
         return {"status": "error", "error": str(exc)}
-    finally:
-        try:
-            proc.kill()
-        except Exception:
-            pass
+
+
+def _inject_generic_tokens(server_id: str, platform: str, user_uuid: str, env: dict):
+    """
+    Generic token injection for connectors without a registered module.
+
+    For oauth2 connectors: injects {PLATFORM}_ACCESS_TOKEN / {PLATFORM}_REFRESH_TOKEN.
+    For api_key / token connectors: injects via auth_schema.env_key if specified,
+    otherwise falls back to {PLATFORM}_ACCESS_TOKEN.
+    """
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT access_token, refresh_token FROM messaging_identities "
+            "WHERE user_uuid = ? AND platform = ?",
+            (user_uuid, platform),
+        ).fetchone()
+    if not row:
+        return
+    f = _platform_fernet()
+    manifest = _get_builtin_manifest(server_id)
+    auth_schema = manifest.get("auth_schema", {}) or {}
+    auth_type = auth_schema.get("type", "oauth2")
+    env_key = auth_schema.get("env_key")
+
+    if auth_type in ("token", "api_key") and env_key:
+        if row["access_token"]:
+            env[env_key] = f.decrypt(row["access_token"].encode()).decode()
+    else:
+        prefix = platform.upper()
+        if row["access_token"]:
+            env[f"{prefix}_ACCESS_TOKEN"] = f.decrypt(row["access_token"].encode()).decode()
+        if row["refresh_token"]:
+            env[f"{prefix}_REFRESH_TOKEN"] = f.decrypt(row["refresh_token"].encode()).decode()
 
 
 def _inject_user_tokens(server_id: str, user_uuid: str, env: dict):
-    """Inject per-user OAuth tokens into the subprocess environment.
+    """
+    Inject per-user OAuth tokens into the subprocess environment.
 
-    Delegates to the connector module registered for this server_id, if any.
-    The connector module must expose an `inject_env_tokens(user_uuid, env)` function.
-    Falls back to a direct DB lookup for connectors that don't implement that function.
+    Delegates to the connector module registered for this server_id (via
+    connectors/registry.py).  The connector module must expose:
+      inject_env_tokens(user_uuid: str, env: dict) -> None
+
+    Falls back to a generic DB lookup that sets PLATFORM_ACCESS_TOKEN /
+    PLATFORM_REFRESH_TOKEN env vars for connectors that don't implement the
+    function yet.
     """
     try:
         from trusted_data_agent.connectors.registry import server_id_to_platform, get as get_connector
         platform = server_id_to_platform(server_id)
         if not platform:
-            return  # Not a user-auth connector
+            return
         mod = get_connector(platform)
         if mod is None:
             return
         if hasattr(mod, "inject_env_tokens"):
             mod.inject_env_tokens(user_uuid, env)
         else:
-            # Generic fallback: read encrypted tokens from messaging_identities and
-            # set PLATFORM_ACCESS_TOKEN / PLATFORM_REFRESH_TOKEN env vars.
-            with _get_conn() as conn:
-                row = conn.execute(
-                    "SELECT access_token, refresh_token FROM messaging_identities "
-                    "WHERE user_uuid = ? AND platform = ?",
-                    (user_uuid, platform),
-                ).fetchone()
-            if not row:
-                return
-            f = _platform_fernet()
-            prefix = platform.upper()
-            if row["access_token"]:
-                env[f"{prefix}_ACCESS_TOKEN"] = f.decrypt(row["access_token"].encode()).decode()
-            if row["refresh_token"]:
-                env[f"{prefix}_REFRESH_TOKEN"] = f.decrypt(row["refresh_token"].encode()).decode()
+            _inject_generic_tokens(server_id, platform, user_uuid, env)
     except Exception as exc:
-        logger.warning(f"Could not inject user tokens for server '{server_id}' / user {user_uuid}: {exc}")
+        logger.warning(f"Could not inject user tokens for connector '{server_id}' / user {user_uuid}: {exc}")
 
 
-async def _call_via_stdio(proc: asyncio.subprocess.Process, tool_name: str, args: dict) -> dict:
-    """
-    Run MCP initialize + tools/call over the process stdin/stdout and return parsed result.
-    """
-    import json
+async def _call_via_mcp_stdio(proc: asyncio.subprocess.Process, tool_name: str, args: dict) -> dict:
+    """Send MCP initialize + tools/call over the process stdin/stdout and return parsed result."""
 
     def _send(obj: dict) -> bytes:
         return (json.dumps(obj) + "\n").encode("utf-8")
@@ -672,13 +888,11 @@ async def _call_via_stdio(proc: asyncio.subprocess.Process, tool_name: str, args
     }}
     init_done = {"jsonrpc": "2.0", "method": "notifications/initialized"}
 
-    # Write all requests at once
     stdin_data = _send(init_req) + _send(init_done) + _send(call_req)
     proc.stdin.write(stdin_data)
     await proc.stdin.drain()
     proc.stdin.close()
 
-    # Read responses
     init_resp = None
     call_resp = None
     async for raw_line in proc.stdout:
@@ -694,22 +908,19 @@ async def _call_via_stdio(proc: asyncio.subprocess.Process, tool_name: str, args
             init_resp = msg
         elif rid == 2:
             call_resp = msg
-            break  # Got what we need
+            break
 
     if call_resp is None:
-        # Read stderr for diagnostics
         try:
             stderr_raw = await proc.stderr.read(2000)
             stderr_txt = stderr_raw.decode("utf-8", errors="replace").strip()
         except Exception:
             stderr_txt = ""
-        err_msg = stderr_txt or "No response from server."
-        return {"status": "error", "error": err_msg}
+        return {"status": "error", "error": stderr_txt or "No response from connector."}
 
     if "error" in call_resp:
         return {"status": "error", "error": call_resp["error"].get("message", str(call_resp["error"]))}
 
-    # Extract text content from MCP result
     result = call_resp.get("result", {})
     content_list = result.get("content", [])
     if content_list:
@@ -725,30 +936,23 @@ async def _call_via_stdio(proc: asyncio.subprocess.Process, tool_name: str, args
     return {"status": "success", "result": result}
 
 
-def get_server_for_tool(tool_name: str) -> Optional[str]:
+def get_connector_for_tool(tool_name: str) -> Optional[str]:
     """
-    Return the server_id that owns the given tool name across all enabled platform servers.
-    Used by invoke_mcp_tool to route platform tool calls.
-    """
-    builtin_result = _list_builtin_servers("", 1)
-    builtin_map = {s["id"]: s.get("tools", []) for s in builtin_result["servers"]}
+    Return the connector_id that owns the given (namespaced) tool name.
 
+    Tool names are namespaced (e.g. ``google__read_emails``) so the lookup is
+    an exact match against the cached schemas, which also use namespaced names.
+    Used by invoke_mcp_tool in adapter.py to route platform tool calls.
+    """
     with _get_conn() as conn:
-        servers = conn.execute(
-            "SELECT id FROM platform_mcp_servers WHERE enabled = 1"
+        connectors = conn.execute(
+            "SELECT id FROM platform_connectors WHERE enabled = 1"
         ).fetchall()
 
-    for row in servers:
-        sid = row["id"]
-        tools = builtin_map.get(sid, [])
-        if tool_name in tools:
-            return sid
-
-    # Also check against cached tool schemas
-    for sid in list(_tool_schema_cache.keys()):
-        cached = _tool_schema_cache[sid]
-        for t in cached.get("tools", []):
-            if (isinstance(t, dict) and t.get("name") == tool_name) or t == tool_name:
-                return sid
+    for row in connectors:
+        cid = row["id"]
+        schemas = _get_cached_tool_schemas(cid)
+        if any(t["name"] == tool_name for t in schemas):
+            return cid
 
     return None

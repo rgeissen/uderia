@@ -51,8 +51,6 @@ def _ensure_columns():
         logger.warning(f"Task Scheduler schema migration warning: {e}")
 
 
-_ensure_columns()
-
 # Tracks running task fires: {task_id: asyncio.Task}
 _running_tasks: dict[str, asyncio.Task] = {}
 
@@ -62,6 +60,9 @@ def _get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(str(_DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
+
+
+_ensure_columns()
 
 
 def _now() -> str:
@@ -663,7 +664,7 @@ async def _deliver_result(task: dict, result: str, session_id: str):
             if not tokens or not tokens.get("access_token"):
                 logger.warning(f"Task '{task_name}': google_mail — no Google account connected for user {user_uuid}.")
                 return
-            from trusted_data_agent.core.platform_mcp_registry import get_server_credentials
+            from trusted_data_agent.core.platform_connector_registry import get_server_credentials
             creds = get_server_credentials("uderia-google")
             to_addr = cfg.get("to_address") or tokens.get("email") or ""
             if not to_addr:

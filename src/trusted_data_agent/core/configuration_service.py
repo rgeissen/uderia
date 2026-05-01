@@ -642,7 +642,7 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
                 # Capabilities-only profile: no data source server but platform MCP tools may be active.
                 # Allow activation if at least one platform server tool is enabled for this profile.
                 try:
-                    from trusted_data_agent.core.platform_mcp_registry import has_effective_tools
+                    from trusted_data_agent.core.platform_connector_registry import has_effective_tools
                     if not has_effective_tools(profile_id):
                         return {
                             "status": "error",
@@ -804,6 +804,38 @@ async def switch_profile_context(profile_id: str, user_uuid: str, validate_llm: 
             APP_STATE["disabled_prompts"] = config_manager.get_profile_disabled_prompts(profile_id, user_uuid)
 
             app_logger.debug(f"Loaded profile {profile_id}: {len(APP_STATE['disabled_tools'])} disabled tools, {len(APP_STATE['disabled_prompts'])} disabled prompts")
+
+            # Merge platform connector tools (Google, browser, files, etc.) into structured_tools
+            # so they appear in the LLM's tool list. Must run here (before _regenerate_contexts)
+            # so the regenerated tools_context string includes them.
+            try:
+                from trusted_data_agent.core.platform_connector_registry import (
+                    get_effective_tools as _get_pt,
+                )
+                import types as _types
+                _pt = _get_pt(profile_id)
+                if _pt:
+                    # Remove any stale platform categories before inserting fresh ones
+                    for _k in [k for k in APP_STATE.get('structured_tools', {}) if k == "Platform Tools" or k.startswith("Platform: ")]:
+                        APP_STATE['structured_tools'].pop(_k, None)
+                    APP_STATE.setdefault('mcp_tools', {})
+                    for _tool in _pt:
+                        _cat = _tool.get("_category", "Platform Tools")
+                        APP_STATE.setdefault('structured_tools', {}).setdefault(_cat, []).append(_tool)
+                        APP_STATE['mcp_tools'][_tool['name']] = _types.SimpleNamespace(
+                            name=_tool['name'],
+                            description=_tool.get('description', ''),
+                            args={a['name']: a for a in _tool.get('arguments', [])}
+                        )
+                    app_logger.info(
+                        f"Merged {len(_pt)} platform connector tools for profile {profile_id}: "
+                        f"{[t['name'] for t in _pt]}"
+                    )
+                else:
+                    for _k in [k for k in APP_STATE.get('structured_tools', {}) if k == "Platform Tools" or k.startswith("Platform: ")]:
+                        APP_STATE['structured_tools'].pop(_k, None)
+            except Exception as _pe:
+                app_logger.warning(f"Could not merge platform connector tools: {_pe}")
 
             # Regenerate contexts with new classification
             _regenerate_contexts()
@@ -1144,6 +1176,43 @@ async def setup_and_categorize_services(config_data: dict) -> dict:
                     await mcp_adapter.load_and_categorize_mcp_resources(APP_STATE, user_uuid, profile_id)
                 else:
                     app_logger.info("Using cached classification results, skipping LLM classification")
+
+                # Always merge platform connector tools after classification (cached or fresh).
+                # Platform tools are dynamic (opt-in/out changes don't invalidate the MCP cache)
+                # so they must be refreshed unconditionally on every profile activation.
+                if profile_id:
+                    try:
+                        from trusted_data_agent.core.platform_connector_registry import (
+                            get_effective_tools as _get_pt,
+                        )
+                        import types as _types
+                        _pt = _get_pt(profile_id)
+                        if _pt:
+                            # Remove any stale platform categories before inserting fresh ones
+                            for _k in [k for k in APP_STATE.get('structured_tools', {}) if k == "Platform Tools" or k.startswith("Platform: ")]:
+                                APP_STATE['structured_tools'].pop(_k, None)
+                            APP_STATE.setdefault('mcp_tools', {})
+                            for _tool in _pt:
+                                _cat = _tool.get("_category", "Platform Tools")
+                                APP_STATE.setdefault('structured_tools', {}).setdefault(_cat, []).append(_tool)
+                                APP_STATE['mcp_tools'][_tool['name']] = _types.SimpleNamespace(
+                                    name=_tool['name'],
+                                    description=_tool.get('description', ''),
+                                    args={a['name']: a for a in _tool.get('arguments', [])}
+                                )
+                            app_logger.info(
+                                f"Merged {len(_pt)} platform connector tools for profile {profile_id}: "
+                                f"{[t['name'] for t in _pt]}"
+                            )
+                        else:
+                            for _k in [k for k in APP_STATE.get('structured_tools', {}) if k == "Platform Tools" or k.startswith("Platform: ")]:
+                                APP_STATE['structured_tools'].pop(_k, None)
+                        # Regenerate tools_context string so the LLM sees the updated tool list.
+                        # _regenerate_contexts() ran inside load_profile_classification_into_state()
+                        # before this merge, so tools_context was stale. Must re-run it here.
+                        _regenerate_contexts()
+                    except Exception as _pe:
+                        app_logger.warning(f"Could not merge platform connector tools: {_pe}")
 
                 APP_CONFIG.MCP_SERVER_CONNECTED = True
 

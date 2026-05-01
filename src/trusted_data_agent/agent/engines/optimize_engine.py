@@ -414,6 +414,45 @@ class OptimizeEngine(ExecutionEngine):
                             executor.original_server_id = current_server_id_by_user.get(executor.user_uuid)
                             current_server_id_by_user[executor.user_uuid] = override_mcp_server_id
 
+                            # Inject Platform Connector tools into the override context so they survive the
+                            # rebuild_tools_and_prompts_context() call below and appear in tools_context.
+                            # Without this, the override strips Platform Tools because filtered_structured_tools
+                            # and filtered_tools_dict only contain MCP server tools.
+                            try:
+                                from trusted_data_agent.core.platform_connector_registry import (
+                                    get_effective_tools as _get_platform_tools_ov,
+                                )
+                                import types as _types_ov
+                                _pt_ov = _get_platform_tools_ov(executor.profile_override_id)
+                                if _pt_ov:
+                                    # Group by per-connector category (e.g. "Platform: Google")
+                                    for _t in _pt_ov:
+                                        _pcat_ov = _t.get("_category", "Platform Tools")
+                                        filtered_structured_tools.setdefault(_pcat_ov, []).append({
+                                            "name": _t["name"],
+                                            "description": _t.get("description", ""),
+                                            "arguments": _t.get("arguments", []),
+                                            "disabled": False,
+                                        })
+                                    for _t_ov in _pt_ov:
+                                        filtered_tools_dict[_t_ov["name"]] = _types_ov.SimpleNamespace(
+                                            name=_t_ov["name"],
+                                            description=_t_ov.get("description", ""),
+                                            args={
+                                                _a["name"]: _a
+                                                for _a in _t_ov.get("arguments", [])
+                                            },
+                                        )
+                                    app_logger.info(
+                                        f"Injected {len(_pt_ov)} platform connector tools into profile override "
+                                        f"context for {executor.profile_override_id}: "
+                                        f"{[_t['name'] for _t in _pt_ov]}"
+                                    )
+                            except Exception as _pte:
+                                app_logger.warning(
+                                    f"Could not inject platform connector tools into override context: {_pte}"
+                                )
+
                             APP_STATE['mcp_client'] = temp_mcp_client
                             APP_STATE['mcp_tools'] = filtered_tools_dict
                             APP_STATE['mcp_prompts'] = filtered_prompts_dict
@@ -432,7 +471,47 @@ class OptimizeEngine(ExecutionEngine):
                             app_logger.warning(f"❌ MCP server {override_mcp_server_id} not found in config!")
                             app_logger.warning(f"   Profile override will continue with LLM only (no tools)")
                     elif not override_mcp_server_id:
-                        app_logger.info(f"ℹ️  Profile has no MCP server configured - LLM only mode")
+                        app_logger.info(f"ℹ️  Profile has no MCP server configured - capabilities-only mode")
+                        # For capabilities-only profiles (no MCP server), inject Platform Tools
+                        # directly so the planner can see and use them.
+                        try:
+                            from trusted_data_agent.core.platform_connector_registry import (
+                                get_effective_tools as _get_pt_co,
+                            )
+                            import types as _types_co
+                            _pt_co = _get_pt_co(executor.profile_override_id)
+                            if _pt_co:
+                                _st_co = dict(APP_STATE.get('structured_tools', {}))
+                                _mt_co = dict(APP_STATE.get('mcp_tools', {}))
+                                # Remove stale platform categories before inserting fresh ones
+                                for _k in [k for k in _st_co if k == "Platform Tools" or k.startswith("Platform: ")]:
+                                    _st_co.pop(_k, None)
+                                # Group by per-connector category (e.g. "Platform: Files")
+                                for _t in _pt_co:
+                                    _pcat_co = _t.get("_category", "Platform Tools")
+                                    _st_co.setdefault(_pcat_co, []).append({
+                                        "name": _t["name"], "description": _t.get("description", ""),
+                                        "arguments": _t.get("arguments", []), "disabled": False,
+                                    })
+                                for _t_co in _pt_co:
+                                    _mt_co[_t_co["name"]] = _types_co.SimpleNamespace(
+                                        name=_t_co["name"],
+                                        description=_t_co.get("description", ""),
+                                        args={_a["name"]: _a for _a in _t_co.get("arguments", [])},
+                                    )
+                                APP_STATE['structured_tools'] = _st_co
+                                APP_STATE['mcp_tools'] = _mt_co
+                                _tc, _pc = rebuild_tools_and_prompts_context()
+                                APP_STATE['tools_context'] = _tc
+                                APP_STATE['prompts_context'] = _pc
+                                app_logger.info(
+                                    f"Injected {len(_pt_co)} platform connector tools for "
+                                    f"capabilities-only override {executor.profile_override_id}"
+                                )
+                        except Exception as _pte_co:
+                            app_logger.warning(
+                                f"Could not inject platform tools for capabilities-only override: {_pte_co}"
+                            )
 
             except Exception as e:
                 app_logger.error(f"Failed to apply profile override: {e}", exc_info=True)

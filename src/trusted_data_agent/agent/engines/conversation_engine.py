@@ -127,6 +127,20 @@ class ConversationEngine(ExecutionEngine):
                 all_tools.extend(component_tools)
                 app_logger.info(f"Added {len(component_tools)} component tool(s): {', '.join(t.name for t in component_tools)}")
 
+            # Merge platform connector tools (Google, browser, files, etc.) — admin-governed
+            try:
+                connector_lc_tools = await _load_connector_tools_for_langchain(
+                    executor.active_profile_id, executor.user_uuid
+                )
+                if connector_lc_tools:
+                    all_tools.extend(connector_lc_tools)
+                    app_logger.info(
+                        f"Added {len(connector_lc_tools)} platform connector tool(s): "
+                        f"{', '.join(t.name for t in connector_lc_tools)}"
+                    )
+            except Exception as _ce:
+                app_logger.warning(f"Could not load platform connector tools: {_ce}")
+
             # Budget-aware history window from context window module (set in execute())
             cw_history_window = getattr(executor, '_cw_history_window', 10)
 
@@ -760,3 +774,86 @@ class ConversationEngine(ExecutionEngine):
                 "skills_applied": executor.skill_result.to_applied_list() if executor.skill_result and executor.skill_result.has_content else []
             }
             await session_manager.update_last_turn_data(executor.user_uuid, executor.session_id, turn_summary)
+
+
+# ---------------------------------------------------------------------------
+# Platform connector tools — LangChain wrapper
+# ---------------------------------------------------------------------------
+
+async def _load_connector_tools_for_langchain(profile_id: str, user_uuid: str) -> list:
+    """
+    Return LangChain StructuredTool objects for all active platform connector
+    tools on this profile.  Calls invoke_connector_tool() for actual execution
+    so the connector strategy layer handles transport + user token injection.
+    """
+    try:
+        from langchain_core.tools import StructuredTool
+        from pydantic import BaseModel, Field, create_model
+        from trusted_data_agent.core.platform_connector_registry import (
+            get_effective_tools, list_installed_servers, invoke_connector_tool
+        )
+    except ImportError as e:
+        app_logger.debug(f"Platform connector LangChain tools unavailable: {e}")
+        return []
+
+    tool_schemas = get_effective_tools(profile_id)
+    if not tool_schemas:
+        return []
+
+    # Build tool_name → server_id lookup from installed servers.
+    # manifest_tools holds original names (e.g. read_emails); get_effective_tools()
+    # returns namespaced names (e.g. google__read_emails).  Map both forms so the
+    # lookup succeeds regardless of which form tool_name uses.
+    from trusted_data_agent.core.platform_connector_registry import _namespace_tool
+    tool_to_server: dict[str, str] = {}
+    for server in list_installed_servers():
+        if not server.get("enabled"):
+            continue
+        sid = server["id"]
+        for t in (server.get("manifest_tools") or []):
+            tool_to_server[t] = sid
+            tool_to_server[_namespace_tool(sid, t)] = sid
+
+    lc_tools = []
+    for schema in tool_schemas:
+        tool_name = schema["name"]
+        server_id = tool_to_server.get(tool_name)
+        if not server_id:
+            continue
+
+        # Build Pydantic model from argument schema
+        field_defs: dict = {}
+        for arg in schema.get("arguments", []):
+            py_type = {"integer": int, "number": float, "boolean": bool}.get(
+                arg.get("type", "string"), str
+            )
+            is_required = arg.get("required", False)
+            field_defs[arg["name"]] = (
+                py_type if is_required else (py_type | None),
+                Field(default=... if is_required else None, description=arg.get("description", "")),
+            )
+        args_schema = create_model(f"{tool_name}_schema", **field_defs) if field_defs else None
+
+        # Closure captures server_id, tool_name, user_uuid
+        async def _invoke(
+            _sid=server_id, _tname=tool_name, _uuid=user_uuid, **kwargs
+        ) -> str:
+            import json as _json
+            kwargs = {k: v for k, v in kwargs.items() if v is not None}
+            try:
+                result = await invoke_connector_tool(_sid, _tname, kwargs, user_uuid=_uuid)
+                return _json.dumps(result) if not isinstance(result, str) else result
+            except Exception as exc:
+                return _json.dumps({"error": str(exc)})
+
+        lc_kwargs = dict(
+            coroutine=_invoke,
+            name=tool_name,
+            description=schema.get("description", tool_name),
+        )
+        if args_schema:
+            lc_kwargs["args_schema"] = args_schema
+
+        lc_tools.append(StructuredTool.from_function(**lc_kwargs))
+
+    return lc_tools

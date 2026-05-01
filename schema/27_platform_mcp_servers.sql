@@ -1,10 +1,10 @@
--- Platform MCP Server Registry
+-- Platform Connector Registry
 -- Separates admin-governed capability servers (browser, files, shell, web, google)
 -- from user-configured data source servers (Configuration → MCP Servers).
 -- These two namespaces are strictly separate and never share a UI surface.
 
 -- Registry sources: Uderia built-in, official MCP Registry, enterprise private
-CREATE TABLE IF NOT EXISTS mcp_registry_sources (
+CREATE TABLE IF NOT EXISTS connector_registry_sources (
     id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
     url        TEXT NOT NULL,        -- registry API base URL (GET /v0.1/servers)
@@ -13,10 +13,10 @@ CREATE TABLE IF NOT EXISTS mcp_registry_sources (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
--- Platform MCP servers installed or connected by admin + governance settings
-CREATE TABLE IF NOT EXISTS platform_mcp_servers (
+-- Platform connectors installed or connected by admin + governance settings
+CREATE TABLE IF NOT EXISTS platform_connectors (
     id                       TEXT PRIMARY KEY,
-    source_id                TEXT NOT NULL REFERENCES mcp_registry_sources(id),
+    source_id                TEXT NOT NULL REFERENCES connector_registry_sources(id),
     name                     TEXT NOT NULL,
     display_name             TEXT,
     description              TEXT,
@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS platform_mcp_servers (
     registry_metadata        TEXT,              -- full JSON from registry API
     install_spec             TEXT,              -- JSON: transport, command, args, env
     install_status           TEXT DEFAULT 'not_installed',  -- not_installed | installing | installed | unavailable | error
+    connector_type           TEXT NOT NULL DEFAULT 'mcp_stdio',  -- mcp_stdio | mcp_http | rest | oauth_only
     enabled                  INTEGER DEFAULT 0, -- admin master switch
     config                   TEXT,              -- JSON: non-sensitive config values
     credentials              TEXT,              -- Fernet-encrypted JSON, sensitive values
@@ -37,9 +38,9 @@ CREATE TABLE IF NOT EXISTS platform_mcp_servers (
 );
 
 -- Per-profile user preferences, within admin-permitted bounds
-CREATE TABLE IF NOT EXISTS profile_platform_mcp_settings (
+CREATE TABLE IF NOT EXISTS profile_connector_settings (
     profile_id  TEXT NOT NULL,
-    server_id   TEXT NOT NULL REFERENCES platform_mcp_servers(id) ON DELETE CASCADE,
+    server_id   TEXT NOT NULL REFERENCES platform_connectors(id) ON DELETE CASCADE,
     opted_in    INTEGER,   -- NULL = follow auto_opt_in; 1 = explicit opt-in; 0 = explicit opt-out
     user_tools  TEXT,      -- JSON array of tool names; NULL = use all available_tools
     updated_at  TEXT DEFAULT (datetime('now')),
@@ -47,5 +48,5 @@ CREATE TABLE IF NOT EXISTS profile_platform_mcp_settings (
 );
 
 -- Seed: built-in registry source (always present, cannot be deleted)
-INSERT OR IGNORE INTO mcp_registry_sources (id, name, url, enabled, is_builtin)
+INSERT OR IGNORE INTO connector_registry_sources (id, name, url, enabled, is_builtin)
 VALUES ('builtin', 'Uderia Built-in', 'builtin://', 1, 1);

@@ -109,13 +109,28 @@ async def connector_callback(platform: str):
 @connector_bp.route("/api/v1/connectors/<platform>/status", methods=["GET"])
 @require_auth
 async def connector_status(user, platform: str):
-    """Return connection status for the current user."""
-    mod = _get_connector(platform)
-    if mod is None:
-        return jsonify({"error": f"Unknown connector platform: {platform}"}), 404
+    """Return connection status for the current user.
 
-    status = mod.get_connection_status(user.id)
-    return jsonify(status)
+    Falls back to a generic DB lookup for connectors without a registered module
+    (e.g. api_key / token auth types where no OAuth flow is needed).
+    """
+    mod = _get_connector(platform)
+    if mod is not None:
+        status = mod.get_connection_status(user.id)
+        return jsonify(status)
+
+    # Generic fallback: check messaging_identities for any stored token
+    from trusted_data_agent.core.platform_connector_registry import _get_conn
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT access_token FROM messaging_identities WHERE user_uuid = ? AND platform = ?",
+            (user.id, platform)
+        ).fetchone()
+    return jsonify({
+        "configured": True,   # user provides their own token — no admin credentials needed
+        "connected": bool(row and row["access_token"]),
+        "platform": platform,
+    })
 
 
 # ── Disconnect ────────────────────────────────────────────────────────────────
@@ -130,6 +145,57 @@ async def connector_disconnect(user, platform: str):
 
     await mod.disconnect(user.id)
     return jsonify({"disconnected": True})
+
+
+# ── Token / API-key auth (non-OAuth connectors) ───────────────────────────────
+
+@connector_bp.route("/api/v1/connectors/<platform>/token", methods=["POST"])
+@require_auth
+async def connector_save_token(user, platform: str):
+    """Save a user-provided API key or access token for a non-OAuth connector.
+
+    Encrypted with the platform Fernet key and stored in messaging_identities.
+    The connector process reads it via _inject_generic_tokens at invocation time.
+    """
+    data = await request.json
+    token_value = ((data or {}).get("token") or "").strip()
+    if not token_value:
+        return jsonify({"error": "token is required"}), 400
+
+    from trusted_data_agent.core.platform_connector_registry import _platform_fernet, _get_conn
+    from datetime import datetime, timezone
+    f = _platform_fernet()
+    encrypted = f.encrypt(token_value.encode()).decode()
+    now = datetime.now(timezone.utc).isoformat()
+
+    with _get_conn() as conn:
+        conn.execute(
+            """INSERT INTO messaging_identities
+               (user_uuid, platform, platform_user_id, access_token, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(user_uuid, platform) DO UPDATE SET
+                   access_token = excluded.access_token,
+                   platform_user_id = excluded.platform_user_id,
+                   updated_at = excluded.updated_at""",
+            (user.id, platform, f"token-{platform}", encrypted, now, now)
+        )
+        conn.commit()
+
+    return jsonify({"saved": True})
+
+
+@connector_bp.route("/api/v1/connectors/<platform>/token", methods=["DELETE"])
+@require_auth
+async def connector_delete_token(user, platform: str):
+    """Remove a saved API key or access token for a non-OAuth connector."""
+    from trusted_data_agent.core.platform_connector_registry import _get_conn
+    with _get_conn() as conn:
+        conn.execute(
+            "DELETE FROM messaging_identities WHERE user_uuid = ? AND platform = ?",
+            (user.id, platform)
+        )
+        conn.commit()
+    return jsonify({"deleted": True})
 
 
 # ── HTML result page ──────────────────────────────────────────────────────────

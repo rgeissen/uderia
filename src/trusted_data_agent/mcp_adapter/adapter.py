@@ -912,14 +912,15 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
     # for capabilities-only profiles). They bypass the profile.tools[] filter — see config_manager.py.
     if profile_id:
         try:
-            from trusted_data_agent.core.platform_mcp_registry import get_effective_tools as _get_platform_tools
+            from trusted_data_agent.core.platform_connector_registry import get_effective_tools as _get_platform_tools
             platform_tools = _get_platform_tools(profile_id)
             if platform_tools:
-                platform_category = "Platform Tools"
-                if platform_category not in STATE['structured_tools']:
-                    STATE['structured_tools'][platform_category] = []
+                # Remove stale platform categories before re-inserting
+                for _pk in [k for k in STATE.get('structured_tools', {}) if k == "Platform Tools" or k.startswith("Platform: ")]:
+                    STATE['structured_tools'].pop(_pk, None)
                 for pt in platform_tools:
-                    STATE['structured_tools'][platform_category].append(pt)
+                    _pcat = pt.get("_category", "Platform Tools")
+                    STATE['structured_tools'].setdefault(_pcat, []).append(pt)
                     # Also register in mcp_tools so tool execution can find it
                     STATE['mcp_tools'][pt['name']] = SimpleTool(
                         name=pt['name'],
@@ -1944,17 +1945,17 @@ async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, ses
     # --- MODIFICATION END ---
 
 
-    # --- Route platform MCP server tools (browser, files, shell, web, google, etc.) ---
-    # These bypass the primary MCP server session and go directly to the platform server subprocess.
+    # --- Route platform connector tools (browser, files, shell, web, google, etc.) ---
+    # These bypass the primary MCP server session and go directly to the platform connector.
     try:
-        from trusted_data_agent.core.platform_mcp_registry import (
-            get_server_for_tool as _get_server_for_tool,
-            invoke_platform_tool as _invoke_platform_tool,
+        from trusted_data_agent.core.platform_connector_registry import (
+            get_connector_for_tool as _get_connector_for_tool,
+            invoke_connector_tool as _invoke_connector_tool,
         )
-        platform_server_id = _get_server_for_tool(tool_name)
+        platform_server_id = _get_connector_for_tool(tool_name)
         if platform_server_id:
-            app_logger.info(f"[Platform MCP] Routing '{tool_name}' → '{platform_server_id}'")
-            result = await _invoke_platform_tool(platform_server_id, tool_name, aligned_args, user_uuid=user_uuid)
+            app_logger.info(f"[Platform Connector] Routing '{tool_name}' → '{platform_server_id}'")
+            result = await _invoke_connector_tool(platform_server_id, tool_name, aligned_args, user_uuid=user_uuid)
             return result, 0, 0
     except Exception as _pe:
         app_logger.warning(f"Platform tool routing failed for '{tool_name}': {_pe}")

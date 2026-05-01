@@ -16,7 +16,7 @@ export const state = {
     currentSessionProfileId: null, // profile_id of the currently loaded session (for profile-modified reactivity)
     currentTaskId: null, // Add this line
     currentTurnNumber: null, // Turn number for current execution (from execution_start event)
-    resourceData: { tools: {}, prompts: {}, resources: {}, charts: {}, knowledgeGraphs: null },
+    resourceData: { tools: {}, prompts: {}, connectors: {}, resources: {}, charts: {}, knowledgeGraphs: null },
     currentlySelectedResource: null,
     activeGenieProfile: null, // Store Genie profile info when @GENIE override is active
     activeRagProfile: null, // Store RAG-focused profile info when active

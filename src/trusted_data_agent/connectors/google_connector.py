@@ -47,7 +47,7 @@ _STATE_TTL = 600  # 10 minutes
 # ── DB / encryption helpers ───────────────────────────────────────────────────
 
 def _get_conn() -> sqlite3.Connection:
-    from trusted_data_agent.core.platform_mcp_registry import _DB_PATH
+    from trusted_data_agent.core.platform_connector_registry import _DB_PATH
     conn = sqlite3.connect(str(_DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
@@ -58,12 +58,12 @@ def _now() -> str:
 
 
 def _encrypt(plaintext: str) -> str:
-    from trusted_data_agent.core.platform_mcp_registry import _platform_fernet
+    from trusted_data_agent.core.platform_connector_registry import _platform_fernet
     return _platform_fernet().encrypt(plaintext.encode()).decode()
 
 
 def _decrypt(token: str) -> str:
-    from trusted_data_agent.core.platform_mcp_registry import _platform_fernet
+    from trusted_data_agent.core.platform_connector_registry import _platform_fernet
     return _platform_fernet().decrypt(token.encode()).decode()
 
 
@@ -71,14 +71,14 @@ def _decrypt(token: str) -> str:
 
 def get_google_client_credentials() -> Tuple[Optional[str], Optional[str]]:
     """Return (client_id, client_secret) from admin-configured server credentials."""
-    from trusted_data_agent.core.platform_mcp_registry import get_server_credentials
+    from trusted_data_agent.core.platform_connector_registry import get_server_credentials
     creds = get_server_credentials(SERVER_ID)
     return creds.get("GOOGLE_CLIENT_ID"), creds.get("GOOGLE_CLIENT_SECRET")
 
 
 def get_scopes() -> str:
     """Return OAuth scopes from admin server config or use default."""
-    from trusted_data_agent.core.platform_mcp_registry import get_server
+    from trusted_data_agent.core.platform_connector_registry import get_server
     server = get_server(SERVER_ID)
     if server:
         cfg = server.get("config") or {}
@@ -367,7 +367,7 @@ async def disconnect(user_uuid: str):
 def inject_env_tokens(user_uuid: str, env: dict):
     """
     Inject decrypted Google tokens into a subprocess env dict.
-    Called by platform_mcp_registry._inject_user_tokens() before spawning the server process.
+    Called by platform_connector_registry._inject_user_tokens() before spawning the server process.
     """
     try:
         with _get_conn() as conn:

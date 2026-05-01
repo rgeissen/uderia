@@ -8,6 +8,43 @@
   "install_type": "builtin",
   "entry_point": "mcp_servers/builtin/uderia-files/server.py",
   "tools": ["read_file", "write_file", "list_dir", "search_files"],
+  "tool_schemas": [
+    {
+      "name": "read_file",
+      "description": "Read the text content of a file from the allowed filesystem path.",
+      "arguments": [
+        {"name": "path", "type": "string", "description": "Absolute path to the file to read.", "required": true},
+        {"name": "encoding", "type": "string", "description": "File encoding (default: utf-8).", "required": false}
+      ]
+    },
+    {
+      "name": "write_file",
+      "description": "Write text content to a file in the allowed filesystem path. Creates parent directories if needed.",
+      "arguments": [
+        {"name": "path", "type": "string", "description": "Absolute path to write to.", "required": true},
+        {"name": "content", "type": "string", "description": "Text content to write.", "required": true},
+        {"name": "encoding", "type": "string", "description": "File encoding (default: utf-8).", "required": false}
+      ]
+    },
+    {
+      "name": "list_dir",
+      "description": "List the contents of a directory, returning names, types, and sizes.",
+      "arguments": [
+        {"name": "path", "type": "string", "description": "Absolute path to the directory.", "required": true},
+        {"name": "show_hidden", "type": "boolean", "description": "Include hidden files and directories (default: false).", "required": false}
+      ]
+    },
+    {
+      "name": "search_files",
+      "description": "Search for files matching a glob pattern under a directory.",
+      "arguments": [
+        {"name": "directory", "type": "string", "description": "Root directory to search from.", "required": true},
+        {"name": "pattern", "type": "string", "description": "Glob or filename pattern to match (e.g. *.csv).", "required": true},
+        {"name": "recursive", "type": "boolean", "description": "Search subdirectories recursively (default: true).", "required": false},
+        {"name": "max_results", "type": "integer", "description": "Maximum results to return (default: 50).", "required": false}
+      ]
+    }
+  ],
   "credential_schema": {},
   "config_schema": {
     "ALLOWED_PATHS": {

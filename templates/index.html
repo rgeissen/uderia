@@ -876,6 +876,7 @@
                             <nav id="resource-tabs" class="flex justify-center items-center gap-x-4 p-3 border-b border-white/10">
                                 <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white active" data-type="tools">Tools</button>
                                 <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="prompts">Prompts</button>
+                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="connectors" style="display:none;">Connectors</button>
                                 <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="resources">Resources</button>
                                 <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="knowledge-graphs">Knowledge Graphs</button>
                                 <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="skills">Skills</button>
@@ -890,6 +891,10 @@
                                 <div id="prompts-panel" class="resource-panel flex-col h-full" style="display: none;">
                                     <nav id="prompts-categories" class="flex justify-center items-center gap-x-2 p-3 border-b border-white/10"></nav>
                                     <div id="prompts-panels-container" class="flex-1 min-h-0 overflow-y-auto p-2"></div>
+                                </div>
+                                <div id="connectors-panel" class="resource-panel flex-col h-full" style="display: none;">
+                                    <nav id="connectors-categories" class="flex justify-center items-center gap-x-2 p-3 border-b border-white/10"></nav>
+                                    <div id="connectors-panels-container" class="flex-1 min-h-0 overflow-y-auto p-2"></div>
                                 </div>
                                 <div id="resources-panel" class="resource-panel flex-col h-full" style="display: none;">
                                     <nav id="resources-categories" class="flex justify-center items-center gap-x-2 p-3 border-b border-white/10"></nav>
@@ -2366,10 +2371,10 @@
                                 Reload
                             </button>
                         </div>
-                        <!-- MCP Servers tab actions -->
-                        <div id="platform-mcp-servers-actions" class="items-center gap-3 hidden">
-                            <button id="refresh-platform-mcp-btn" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5"
-                                    onclick="if(window.loadPlatformMcpPanel) window.loadPlatformMcpPanel()">
+                        <!-- Connectors tab actions -->
+                        <div id="platform-connector-actions" class="items-center gap-3 hidden">
+                            <button id="refresh-platform-connector-btn" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5"
+                                    onclick="if(window.loadPlatformConnectorPanel) window.loadPlatformConnectorPanel()">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                 </svg>
@@ -2439,10 +2444,36 @@
                         </div>
                     </div>
 
-                    <!-- MCP Servers Content -->
+                    <!-- Connectors Content -->
                     <div id="platform-content-mcp-servers" class="platform-component-content hidden">
-                        <div id="platform-mcp-container">
-                            <!-- Loaded by platformMcpHandler.js on tab activation -->
+                        <!-- Filter Pills — mirrors UI Components filter bar -->
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-400 uppercase tracking-wide">Type:</span>
+                                <div class="flex gap-1.5" id="pmcp-type-filters">
+                                    <button class="filter-pill filter-pill--active" data-filter="all"
+                                            onclick="window._pmcpSetTypeFilter('all', this)">All</button>
+                                    <button class="filter-pill" data-filter="platform"
+                                            onclick="window._pmcpSetTypeFilter('platform', this)">Platform</button>
+                                    <button class="filter-pill" data-filter="user"
+                                            onclick="window._pmcpSetTypeFilter('user', this)">User</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-400 uppercase tracking-wide">Status:</span>
+                                <div class="flex gap-1.5" id="pmcp-status-filters">
+                                    <button class="filter-pill filter-pill--active" data-filter="all"
+                                            onclick="window._pmcpSetStatusFilter('all', this)">All</button>
+                                    <button class="filter-pill" data-filter="active"
+                                            onclick="window._pmcpSetStatusFilter('active', this)">Active</button>
+                                    <button class="filter-pill" data-filter="inactive"
+                                            onclick="window._pmcpSetStatusFilter('inactive', this)">Inactive</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="platform-connector-container">
+                            <!-- Loaded by platformConnectorHandler.js on tab activation -->
                         </div>
                     </div>
 
@@ -4209,7 +4240,7 @@
                                 Optimizer
                             </div>
                         </button>
-                        <button class="admin-tab ind-tab ind-tab--underline" data-tab="platform-mcp-tab">
+                        <button class="admin-tab ind-tab ind-tab--underline" data-tab="platform-connector-tab">
                             <div class="flex items-center gap-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -6941,8 +6972,8 @@
                             </div>
                         </div>
 
-                        <!-- Platform MCP Servers Tab -->
-                        <div id="platform-mcp-tab" class="admin-tab-content hidden">
+                        <!-- Platform Connectors Tab -->
+                        <div id="platform-connector-tab" class="admin-tab-content hidden">
                             <div class="flex gap-6">
                                 <!-- Vertical Tab Bar -->
                                 <div class="w-48 flex-shrink-0">
@@ -6980,7 +7011,7 @@
                                                 <p class="text-sm text-gray-400 mt-1">Install and govern platform-level capability servers. Separate from user data source servers.</p>
                                             </div>
                                             <div class="flex items-center gap-2">
-                                                <button onclick="openPlatformMcpMarketplace()"
+                                                <button onclick="openPlatformConnectorMarketplace()"
                                                         class="card-btn card-btn--sm flex items-center gap-1.5"
                                                         style="background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.3);color:#818cf8">
                                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -6988,7 +7019,7 @@
                                                     </svg>
                                                     Browse Registry
                                                 </button>
-                                                <button onclick="if(window.loadPlatformMcpAdminPanel) window.loadPlatformMcpAdminPanel()"
+                                                <button onclick="if(window.loadPlatformConnectorAdminPanel) window.loadPlatformConnectorAdminPanel()"
                                                         class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5">
                                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -6998,9 +7029,9 @@
                                             </div>
                                         </div>
 
-                                        <!-- Dynamic content injected by platformMcpAdminHandler.js -->
-                                        <div id="platform-mcp-admin-container">
-                                            <div class="text-center text-gray-400 py-8">Loading platform MCP servers…</div>
+                                        <!-- Dynamic content injected by platformConnectorAdminHandler.js -->
+                                        <div id="platform-connector-admin-container">
+                                            <div class="text-center text-gray-400 py-8">Loading platform connectors…</div>
                                         </div>
                                     </div>
 
@@ -8722,9 +8753,9 @@
     <script src="{{ url_for('static', filename='js/handlers/vectorStoreHandler.js') }}"></script>
     <script src="{{ url_for('static', filename='js/oauth.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/userProfileHandler.js') }}"></script>
-    <!-- Platform MCP Server Handlers -->
-    <script defer src="{{ url_for('static', filename='js/handlers/platformMcpAdminHandler.js') }}"></script>
-    <script defer src="{{ url_for('static', filename='js/handlers/platformMcpHandler.js') }}"></script>
+    <!-- Platform Connector Handlers -->
+    <script defer src="{{ url_for('static', filename='js/handlers/platformConnectorAdminHandler.js') }}?v=2.1"></script>
+    <script defer src="{{ url_for('static', filename='js/handlers/platformConnectorHandler.js') }}?v=2.0"></script>
     <!-- Task Scheduler Handler -->
     <script defer src="{{ url_for('static', filename='js/handlers/schedulerHandler.js') }}"></script>
     <!-- RAG Case Modal -->
@@ -8796,7 +8827,7 @@
                             </svg>
                             <span class="text-sm font-medium">Resources</span>
                         </button>
-                        <button type="button" class="profile-nav-item ind-tab ind-tab--sidebar" data-profile-section="platform-mcp" id="profile-nav-platform-mcp">
+                        <button type="button" class="profile-nav-item ind-tab ind-tab--sidebar" data-profile-section="platform-connector" id="profile-nav-platform-connector">
                             <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
                             </svg>
@@ -9822,9 +9853,9 @@
                     </div><!-- End profile-section-resources -->
 
                     <!-- ============================================================ -->
-                    <!-- SECTION: PLATFORM MCP SERVERS -->
+                    <!-- SECTION: PLATFORM CONNECTORS -->
                     <!-- ============================================================ -->
-                    <div id="profile-section-platform-mcp" class="profile-modal-section space-y-4 hidden">
+                    <div id="profile-section-platform-connector" class="profile-modal-section space-y-4 hidden">
                         <div class="border-b border-gray-700/60 pb-2 mb-2">
                             <h2 class="text-base font-bold text-white flex items-center gap-2">
                                 <svg class="h-5 w-5" fill="none" stroke="#818cf8" viewBox="0 0 24 24">
@@ -9834,11 +9865,11 @@
                             </h2>
                             <p class="text-xs text-gray-500 mt-1">Fine-tune which platform tools are active for this profile. Enable/disable connectors in Platform Components → Connectors.</p>
                         </div>
-                        <!-- Populated by platformMcpHandler.js → loadProfilePlatformMcpSection() -->
-                        <div id="profile-platform-mcp-content">
-                            <div class="text-center text-gray-500 text-sm py-6">Loading platform MCP configuration…</div>
+                        <!-- Populated by platformConnectorHandler.js → loadProfileConnectorSection() -->
+                        <div id="profile-connector-content">
+                            <div class="text-center text-gray-500 text-sm py-6">Loading connector configuration…</div>
                         </div>
-                    </div><!-- End profile-section-platform-mcp -->
+                    </div><!-- End profile-section-platform-connector -->
 
                 </div><!-- End right panel -->
             </div><!-- End two-column body -->

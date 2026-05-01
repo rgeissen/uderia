@@ -529,7 +529,7 @@ async function initializeRAGAutoCompletion() {
             // Refresh #skill autocomplete for the new profile's enabled skills
             loadActivatedSkills();
 
-            let tools, prompts;
+            let tools, prompts, connectors = {};
 
             if (profileId) {
                 // Fetch profile-specific resources
@@ -560,6 +560,7 @@ async function initializeRAGAutoCompletion() {
                 });
                 tools = data.tools || {};
                 prompts = data.prompts || {};
+                connectors = data.connectors || {};
 
                 // Handle Genie profiles: show coordinator info in resource panel
                 if (data.profile_type === 'genie') {
@@ -612,13 +613,15 @@ async function initializeRAGAutoCompletion() {
                 updateKeyObservationsButtonVisibility();
             } else {
                 // Restore default resources
-                const [toolsResponse, promptsResponse] = await Promise.all([
+                const [toolsResponse, promptsResponse, connectorsResponse] = await Promise.all([
                     fetch('/tools', { headers: { 'Authorization': `Bearer ${authToken}` } }),
-                    fetch('/prompts', { headers: { 'Authorization': `Bearer ${authToken}` } })
+                    fetch('/prompts', { headers: { 'Authorization': `Bearer ${authToken}` } }),
+                    fetch('/connectors', { headers: { 'Authorization': `Bearer ${authToken}` } })
                 ]);
 
                 const toolsData = toolsResponse.ok ? await toolsResponse.json() : {};
                 const promptsData = promptsResponse.ok ? await promptsResponse.json() : {};
+                connectors = connectorsResponse.ok ? await connectorsResponse.json() : {};
 
                 // Check if response includes profile metadata (for rag_focused/genie/llm_only profiles)
                 // The backend returns { tools: {}, profile_type: '...', ... } for special profiles
@@ -666,11 +669,13 @@ async function initializeRAGAutoCompletion() {
             // Update the resource panel with new data
             state.resourceData.tools = tools;
             state.resourceData.prompts = prompts;
+            state.resourceData.connectors = connectors;
 
             // Trigger re-render of resource panels (using existing state data, not fetching)
             if (window.capabilitiesModule) {
                 window.capabilitiesModule.renderResourcePanel('tools');
                 window.capabilitiesModule.renderResourcePanel('prompts');
+                window.capabilitiesModule.renderResourcePanel('connectors');
             }
 
             // Hide Resources tab - profile resources endpoint doesn't serve MCP resources,

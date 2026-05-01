@@ -6176,8 +6176,8 @@ function performViewSwitch(viewId) {
         // If the MCP Servers sub-tab is active, also load it
         const activePlatformTab = document.querySelector('.platform-component-tab.active');
         if (activePlatformTab && activePlatformTab.dataset.tab === 'mcp-servers') {
-            if (typeof window.loadPlatformMcpPanel === 'function') {
-                window.loadPlatformMcpPanel();
+            if (typeof window.loadPlatformConnectorPanel === 'function') {
+                window.loadPlatformConnectorPanel();
             }
         }
     }
@@ -8219,20 +8219,20 @@ window.switchPlatformComponentsTab = function switchPlatformComponentsTab(tabNam
 
     // Show/hide header action areas
     const uiActions = document.getElementById('platform-ui-components-actions');
-    const mcpActions = document.getElementById('platform-mcp-servers-actions');
+    const connectorActions = document.getElementById('platform-connector-actions');
     if (uiActions) uiActions.classList.toggle('hidden', tabName === 'mcp-servers');
-    if (mcpActions) {
-        mcpActions.classList.toggle('hidden', tabName !== 'mcp-servers');
+    if (connectorActions) {
+        connectorActions.classList.toggle('hidden', tabName !== 'mcp-servers');
         // flex is needed when not hidden
         if (tabName === 'mcp-servers') {
-            mcpActions.classList.add('flex');
+            connectorActions.classList.add('flex');
         } else {
-            mcpActions.classList.remove('flex');
+            connectorActions.classList.remove('flex');
         }
     }
 
-    // Lazy-load MCP panel on first activation
-    if (tabName === 'mcp-servers' && typeof window.loadPlatformMcpPanel === 'function') {
-        window.loadPlatformMcpPanel();
+    // Lazy-load connectors panel on first activation
+    if (tabName === 'mcp-servers' && typeof window.loadPlatformConnectorPanel === 'function') {
+        window.loadPlatformConnectorPanel();
     }
 };

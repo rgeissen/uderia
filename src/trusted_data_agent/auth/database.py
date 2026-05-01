@@ -1625,7 +1625,7 @@ def _create_canvas_connector_tables():
 
 def _create_platform_mcp_tables():
     """
-    Create platform MCP server registry tables.
+    Create platform connector registry tables.
     These tables govern admin-installed capability servers (browser, files, shell, web, google)
     and are strictly separate from user-configured data source servers.
     Safe to call multiple times (CREATE TABLE IF NOT EXISTS).
@@ -1640,58 +1640,15 @@ def _create_platform_mcp_tables():
         schema_path = Path(__file__).resolve().parents[3] / "schema" / "27_platform_mcp_servers.sql"
         if schema_path.exists():
             with open(schema_path, 'r') as f:
-                sql = f.read()
-            cursor.executescript(sql)
-            logger.debug("Applied schema: 27_platform_mcp_servers.sql")
+                cursor.executescript(f.read())
         else:
-            cursor.executescript("""
-                CREATE TABLE IF NOT EXISTS mcp_registry_sources (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    url TEXT NOT NULL,
-                    enabled INTEGER DEFAULT 1,
-                    is_builtin INTEGER DEFAULT 0,
-                    created_at TEXT DEFAULT (datetime('now'))
-                );
-                CREATE TABLE IF NOT EXISTS platform_mcp_servers (
-                    id TEXT PRIMARY KEY,
-                    source_id TEXT NOT NULL REFERENCES mcp_registry_sources(id),
-                    name TEXT NOT NULL,
-                    display_name TEXT,
-                    description TEXT,
-                    version TEXT NOT NULL DEFAULT '0.0.0',
-                    registry_metadata TEXT,
-                    install_spec TEXT,
-                    install_status TEXT DEFAULT 'not_installed',
-                    enabled INTEGER DEFAULT 0,
-                    config TEXT,
-                    credentials TEXT,
-                    available_tools TEXT,
-                    auto_opt_in INTEGER DEFAULT 0,
-                    user_can_opt_out INTEGER DEFAULT 1,
-                    user_can_configure_tools INTEGER DEFAULT 0,
-                    requires_user_auth INTEGER DEFAULT 0,
-                    created_at TEXT DEFAULT (datetime('now')),
-                    updated_at TEXT DEFAULT (datetime('now'))
-                );
-                CREATE TABLE IF NOT EXISTS profile_platform_mcp_settings (
-                    profile_id TEXT NOT NULL,
-                    server_id TEXT NOT NULL REFERENCES platform_mcp_servers(id) ON DELETE CASCADE,
-                    opted_in INTEGER,
-                    user_tools TEXT,
-                    updated_at TEXT DEFAULT (datetime('now')),
-                    PRIMARY KEY (profile_id, server_id)
-                );
-                INSERT OR IGNORE INTO mcp_registry_sources (id, name, url, enabled, is_builtin)
-                VALUES ('builtin', 'Uderia Built-in', 'builtin://', 1, 1);
-            """)
-            logger.info("Created platform_mcp_servers tables (inline fallback)")
+            logger.warning("Schema file 27_platform_mcp_servers.sql not found — skipping")
 
         conn.commit()
         conn.close()
 
     except Exception as e:
-        logger.error(f"Error creating platform_mcp_servers tables: {e}", exc_info=True)
+        logger.error(f"Error creating platform connector tables: {e}", exc_info=True)
 
 
 def _create_scheduled_tasks_tables():

@@ -8,6 +8,51 @@
   "install_type": "builtin",
   "entry_point": "mcp_servers/builtin/uderia-browser/server.py",
   "tools": ["navigate", "click", "fill_form", "screenshot", "scrape", "extract_data"],
+  "tool_schemas": [
+    {
+      "name": "navigate",
+      "description": "Navigate the headless browser to a URL and return the page title and status.",
+      "arguments": [
+        {"name": "url", "type": "string", "description": "The URL to navigate to.", "required": true}
+      ]
+    },
+    {
+      "name": "click",
+      "description": "Click an element on the current page identified by a CSS selector.",
+      "arguments": [
+        {"name": "selector", "type": "string", "description": "CSS selector of the element to click.", "required": true}
+      ]
+    },
+    {
+      "name": "fill_form",
+      "description": "Fill a form field on the current page with a value.",
+      "arguments": [
+        {"name": "selector", "type": "string", "description": "CSS selector of the input field.", "required": true},
+        {"name": "value", "type": "string", "description": "Value to type into the field.", "required": true}
+      ]
+    },
+    {
+      "name": "screenshot",
+      "description": "Take a screenshot of the current browser page and return it as a base64-encoded PNG.",
+      "arguments": [
+        {"name": "full_page", "type": "boolean", "description": "Capture the full scrollable page instead of just the viewport (default: false).", "required": false}
+      ]
+    },
+    {
+      "name": "scrape",
+      "description": "Navigate to a URL and return the full page text content.",
+      "arguments": [
+        {"name": "url", "type": "string", "description": "The URL to navigate to and scrape.", "required": true}
+      ]
+    },
+    {
+      "name": "extract_data",
+      "description": "Extract text content from elements matching a CSS selector on the current page.",
+      "arguments": [
+        {"name": "selector", "type": "string", "description": "CSS selector to extract content from.", "required": true}
+      ]
+    }
+  ],
   "credential_schema": {},
   "config_schema": {
     "ALLOWED_DOMAINS": {

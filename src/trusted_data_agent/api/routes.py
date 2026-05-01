@@ -800,8 +800,43 @@ async def get_tools():
                     "slave_profiles": slave_profiles
                 })
 
-    # Return structured tools (disabled flags already set by _regenerate_contexts)
-    return jsonify(APP_STATE.get("structured_tools", {}))
+    # Return structured MCP tools only — Platform connector categories are served by GET /connectors
+    all_tools = APP_STATE.get("structured_tools", {})
+    mcp_tools = {k: v for k, v in all_tools.items()
+                 if k != "Platform Tools" and not k.startswith("Platform: ")}
+    return jsonify(mcp_tools)
+
+@api_bp.route("/connectors")
+async def get_connectors():
+    """Returns active Platform Connector tools for the current profile, grouped by connector name."""
+    from trusted_data_agent.core.platform_connector_registry import get_effective_tools
+
+    profile_id = APP_STATE.get("active_profile_id")
+    if not profile_id:
+        return jsonify({})
+
+    try:
+        tools = get_effective_tools(profile_id)
+    except Exception:
+        return jsonify({})
+
+    if not tools:
+        return jsonify({})
+
+    # Group by connector name (strip "Platform: " prefix from _category for a clean label)
+    grouped = {}
+    for tool in tools:
+        cat = tool.get("_category", "Platform Tools")
+        label = cat[len("Platform: "):] if cat.startswith("Platform: ") else cat
+        grouped.setdefault(label, []).append({
+            "name": tool["name"],
+            "description": tool.get("description", ""),
+            "arguments": tool.get("arguments", []),
+            "disabled": False,
+        })
+
+    return jsonify(grouped)
+
 
 @api_bp.route("/prompts")
 async def get_prompts():
@@ -1973,7 +2008,12 @@ async def new_session():
             app_logger.info(f"Using overridden profile for session primer: {override_profile.get('name')} (id: {profile_override_id})")
 
         if primer_profile:
-            session_primer = primer_profile.get('session_primer')
+            _sp = primer_profile.get('session_primer')
+            # Respect the enabled flag — a dict with enabled:False is falsy for our purposes
+            if isinstance(_sp, dict):
+                session_primer = _sp if _sp.get('enabled', False) else None
+            elif _sp:
+                session_primer = _sp  # legacy string form — always active
             if session_primer:
                 app_logger.info(f"Session {session_id} has session primer configured from profile '{primer_profile.get('name')}', will execute on frontend init")
 

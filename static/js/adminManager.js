@@ -476,9 +476,9 @@ const AdminManager = {
                     this.loadSystemPromptForTier(tier);
                 }
             });
-        } else if (tabName === 'platform-mcp-tab') {
-            if (typeof window.loadPlatformMcpAdminPanel === 'function') {
-                window.loadPlatformMcpAdminPanel();
+        } else if (tabName === 'platform-connector-tab') {
+            if (typeof window.loadPlatformConnectorAdminPanel === 'function') {
+                window.loadPlatformConnectorAdminPanel();
             }
         }
     },

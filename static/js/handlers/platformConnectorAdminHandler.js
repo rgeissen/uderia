@@ -1,14 +1,14 @@
 /**
- * platformMcpAdminHandler.js
+ * platformConnectorAdminHandler.js
  *
- * Admin Panel — "Components" tab → "MCP Servers" section
- * Governs platform-level capability MCP servers (browser, files, shell, web, google).
+ * Admin Panel — "Components" tab → "Connectors" section
+ * Governs platform-level capability connectors (browser, files, shell, web, google).
  * Strictly separate from user-configured data source servers (Configuration → MCP Servers).
  */
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function _pmcpHeaders(json = true) {
+function _pconnHeaders(json = true) {
     const h = {};
     if (json) h['Content-Type'] = 'application/json';
     const token = localStorage.getItem('tda_auth_token');
@@ -16,12 +16,12 @@ function _pmcpHeaders(json = true) {
     return h;
 }
 
-function _pmcpNotify(type, msg) {
+function _pconnNotify(type, msg) {
     if (window.showNotification) window.showNotification(type, msg);
-    else console.log(`[PlatformMCP] ${type}: ${msg}`);
+    else console.log(`[PlatformConnector] ${type}: ${msg}`);
 }
 
-function _pmcpConfirm(message, onConfirm) {
+function _pconnConfirm(message, onConfirm) {
     if (window.showConfirmation) {
         window.showConfirmation(message, onConfirm);
     } else {
@@ -31,14 +31,14 @@ function _pmcpConfirm(message, onConfirm) {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let _pmcpRegistrySources = [];
-let _pmcpInstalledServers = [];
-let _pmcpActiveSource = 'builtin';
-let _pmcpBrowseResults = [];
-let _pmcpNextCursor = '';       // cursor for next page (official registry)
-let _pmcpSearchTimeout = null;
-let _pmcpCredentialsServerId = null;
-let _pmcpLoadingMore = false;
+let _pconnRegistrySources = [];
+let _pconnInstalledServers = [];
+let _pconnActiveSource = 'builtin';
+let _pconnBrowseResults = [];
+let _pconnNextCursor = '';       // cursor for next page (official registry)
+let _pconnSearchTimeout = null;
+let _pconnCredentialsServerId = null;
+let _pconnLoadingMore = false;
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
@@ -57,8 +57,8 @@ function _statusBadge(status) {
 
 // ── Load & render ─────────────────────────────────────────────────────────────
 
-async function loadPlatformMcpAdminPanel() {
-    const container = document.getElementById('platform-mcp-admin-container');
+async function loadPlatformConnectorAdminPanel() {
+    const container = document.getElementById('platform-connector-admin-container');
     if (container) {
         container.innerHTML = `
             <div class="flex items-center gap-3 py-6 text-gray-400">
@@ -66,29 +66,29 @@ async function loadPlatformMcpAdminPanel() {
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
-                <span class="text-sm">Loading platform MCP servers…</span>
+                <span class="text-sm">Loading platform connectors…</span>
             </div>`;
     }
     await Promise.all([_loadRegistrySources(), _loadInstalledServers()]);
-    renderPlatformMcpAdminPanel();
+    renderPlatformConnectorAdminPanel();
 }
 
 async function _loadRegistrySources() {
     try {
-        const r = await fetch('/api/v1/mcp-registry/sources', { headers: _pmcpHeaders(false) });
-        if (r.ok) _pmcpRegistrySources = (await r.json()).sources || [];
-    } catch (e) { console.error('Failed to load MCP registry sources', e); }
+        const r = await fetch('/api/v1/connector-registry/sources', { headers: _pconnHeaders(false) });
+        if (r.ok) _pconnRegistrySources = (await r.json()).sources || [];
+    } catch (e) { console.error('Failed to load connector registry sources', e); }
 }
 
 async function _loadInstalledServers() {
     try {
-        const r = await fetch('/api/v1/platform-mcp-servers', { headers: _pmcpHeaders(false) });
-        if (r.ok) _pmcpInstalledServers = (await r.json()).servers || [];
-    } catch (e) { console.error('Failed to load installed platform MCP servers', e); }
+        const r = await fetch('/api/v1/platform-connectors', { headers: _pconnHeaders(false) });
+        if (r.ok) _pconnInstalledServers = (await r.json()).servers || [];
+    } catch (e) { console.error('Failed to load installed platform connectors', e); }
 }
 
-function renderPlatformMcpAdminPanel() {
-    const container = document.getElementById('platform-mcp-admin-container');
+function renderPlatformConnectorAdminPanel() {
+    const container = document.getElementById('platform-connector-admin-container');
     if (!container) return;
 
     container.innerHTML = `
@@ -101,7 +101,7 @@ function renderPlatformMcpAdminPanel() {
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M10 3v18M14 3v18"/>
                             </svg>`,
                 title:     'Registry Sources',
-                subtitle:  `${_pmcpRegistrySources.length} source${_pmcpRegistrySources.length !== 1 ? 's' : ''} configured`,
+                subtitle:  `${_pconnRegistrySources.length} source${_pconnRegistrySources.length !== 1 ? 's' : ''} configured`,
                 body:      _renderRegistrySourcesBody(),
             })}
         </div>
@@ -112,8 +112,8 @@ function renderPlatformMcpAdminPanel() {
 }
 
 function _renderInstalledSections() {
-    const platformServers = _pmcpInstalledServers.filter(s => !s.requires_user_auth);
-    const userServers     = _pmcpInstalledServers.filter(s =>  s.requires_user_auth);
+    const platformServers = _pconnInstalledServers.filter(s => !s.requires_user_auth);
+    const userServers     = _pconnInstalledServers.filter(s =>  s.requires_user_auth);
 
     const platformIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
@@ -130,7 +130,7 @@ function _renderInstalledSections() {
         subtitle: 'Authenticated by admin — shared credentials, available to all authorised users',
         body:     platformServers.length === 0
                       ? `<p class="text-sm text-gray-500 py-2">No platform connectors installed. Browse the registry to add one.</p>`
-                      : `<div class="space-y-3">${platformServers.map(_renderServerCard).join('')}</div>`,
+                      : `<div class="space-y-3">${platformServers.map(_paRenderServerCard).join('')}</div>`,
     });
 
     const userSection = _renderCollapsibleSection({
@@ -141,7 +141,7 @@ function _renderInstalledSections() {
         subtitle: 'Authenticated per user — each user connects their own account via OAuth',
         body:     userServers.length === 0
                       ? `<p class="text-sm text-gray-500 py-2">No user connectors installed. Browse the registry to add one.</p>`
-                      : `<div class="space-y-3">${userServers.map(_renderServerCard).join('')}</div>`,
+                      : `<div class="space-y-3">${userServers.map(_paRenderServerCard).join('')}</div>`,
     });
 
     return platformSection + userSection;
@@ -187,10 +187,10 @@ function _renderEmptyState() {
                 </svg>
             </div>
             <div>
-                <p class="text-white font-semibold">No platform servers installed</p>
-                <p class="text-sm text-gray-400 mt-1">Browse the registry to add capability servers like web search, file access, or shell execution.</p>
+                <p class="text-white font-semibold">No platform connectors installed</p>
+                <p class="text-sm text-gray-400 mt-1">Browse the registry to add capability connectors like web search, file access, or shell execution.</p>
             </div>
-            <button onclick="openPlatformMcpMarketplace()"
+            <button onclick="openPlatformConnectorMarketplace()"
                     class="mt-1 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:bg-indigo-500/20"
                     style="background:rgba(129,140,248,0.12);border:1px solid rgba(129,140,248,0.3);color:#818cf8">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -203,7 +203,7 @@ function _renderEmptyState() {
 
 // ── Server card ───────────────────────────────────────────────────────────────
 
-function _renderServerCard(server) {
+function _paRenderServerCard(server) {
     const enabled        = !!server.enabled;
     const autoOptIn      = !!server.auto_opt_in;
     const userCanOptOut  = !!server.user_can_opt_out;
@@ -215,21 +215,21 @@ function _renderServerCard(server) {
         <div class="glass-panel rounded-xl overflow-hidden">
             <!-- Card header -->
             <div class="p-5 flex items-start gap-4">
-                <!-- Server icon -->
+                <!-- Connector icon -->
                 <div class="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center ring-1"
                      style="background:rgba(129,140,248,0.1);ring-color:rgba(129,140,248,0.2)">
-                    ${_serverIcon(server.id)}
+                    ${_paServerIcon(server.id)}
                 </div>
 
                 <!-- Name + description -->
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-white font-semibold text-sm">${_esc(server.display_name || server.name)}</span>
+                        <span class="text-white font-semibold text-sm">${_paEsc(server.display_name || server.name)}</span>
                         <span class="text-xs text-gray-500">v${server.version || '0.0.0'}</span>
                         ${_statusBadge(server.install_status || 'installed')}
                         ${server.requires_user_auth ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ring-1 bg-yellow-400/10 text-yellow-400 ring-yellow-400/20">OAuth per user</span>' : ''}
                     </div>
-                    <p class="text-xs text-gray-400 mt-1 line-clamp-2">${_esc(server.description || '')}</p>
+                    <p class="text-xs text-gray-400 mt-1 line-clamp-2">${_paEsc(server.description || '')}</p>
                 </div>
 
                 <!-- Master enable toggle -->
@@ -237,7 +237,7 @@ function _renderServerCard(server) {
                     <span class="text-xs ${enabled ? 'text-emerald-400' : 'text-gray-500'}">${enabled ? 'Enabled' : 'Disabled'}</span>
                     <label class="ind-toggle ind-toggle--primary">
                         <input type="checkbox" ${enabled ? 'checked' : ''}
-                               onchange="togglePlatformMcpServer('${server.id}', this.checked)">
+                               onchange="togglePlatformConnector('${server.id}', this.checked)">
                         <span class="ind-track"></span>
                     </label>
                 </div>
@@ -245,7 +245,7 @@ function _renderServerCard(server) {
 
             ${enabled ? `
             <!-- Governance section -->
-            <div class="border-t border-white/5 px-5 py-4 space-y-5">
+            <div class="border-t border-white/5 px-5 py-4 space-y-4">
 
                 <!-- Governance toggles -->
                 <div>
@@ -271,43 +271,45 @@ function _renderServerCard(server) {
                                                 ${on ? 'bg-indigo-500/10 text-indigo-300 ring-indigo-500/30' : 'bg-gray-700/60 text-gray-500 ring-white/5'}"
                                                title="${on ? 'Click to restrict' : 'Click to allow'}">
                                             <input type="checkbox" ${on ? 'checked' : ''} class="sr-only"
-                                                   onchange="togglePlatformMcpAvailableTool('${server.id}', '${t}', this.checked)">
+                                                   onchange="togglePlatformConnectorAvailableTool('${server.id}', '${t}', this.checked)">
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 ${on ? 'text-indigo-400' : 'text-gray-600'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                                                 ${on ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>' : '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>'}
                                             </svg>
-                                            ${_esc(t)}
+                                            ${_paEsc(t)}
                                         </label>`;
                               }).join('')
                         }
                     </div>
                 </div>
-
-                <!-- Credentials + delete actions -->
-                <div class="flex items-center justify-between pt-1">
-                    <button onclick="openPlatformMcpCredentials('${server.id}')"
-                            class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-indigo-500/10"
-                            style="border:1px solid rgba(129,140,248,0.25);color:#818cf8">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                        </svg>
-                        Credentials &amp; env vars
-                    </button>
-                    <button onclick="_pmcpConfirmRemove('${server.id}')"
-                            class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-red-500/10 text-red-400"
-                            style="border:1px solid rgba(248,113,113,0.2)">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        Remove server
-                    </button>
-                </div>
             </div>
             ` : `
             <!-- Disabled hint -->
             <div class="border-t border-white/5 px-5 py-3">
-                <p class="text-xs text-gray-500">Enable this server to configure governance settings and make it available to users.</p>
+                <p class="text-xs text-gray-500">${server.requires_user_auth
+                    ? 'Set OAuth credentials below, then enable this connector to make it available to users.'
+                    : 'Enable this connector to configure governance settings and make it available to users.'}</p>
             </div>
             `}
+
+            <!-- Credentials + delete actions — always visible -->
+            <div class="border-t border-white/5 px-5 py-3 flex items-center justify-between">
+                <button onclick="openPlatformConnectorCredentials('${server.id}')"
+                        class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-indigo-500/10"
+                        style="border:1px solid rgba(129,140,248,0.25);color:#818cf8">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                    ${server.requires_user_auth ? 'OAuth Credentials' : 'Credentials &amp; env vars'}
+                </button>
+                <button onclick="_pconnConfirmRemove('${server.id}')"
+                        class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-red-500/10 text-red-400"
+                        style="border:1px solid rgba(248,113,113,0.2)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Remove connector
+                </button>
+            </div>
         </div>`;
 }
 
@@ -321,7 +323,7 @@ function _govToggle(serverId, field, checked, label, description) {
                 </div>
                 <label class="ind-toggle flex-shrink-0">
                     <input type="checkbox" ${checked ? 'checked' : ''}
-                           onchange="updatePlatformMcpGovernance('${serverId}', '${field}', this.checked ? 1 : 0)">
+                           onchange="updatePlatformConnectorGovernance('${serverId}', '${field}', this.checked ? 1 : 0)">
                     <span class="ind-track"></span>
                 </label>
             </div>
@@ -331,15 +333,15 @@ function _govToggle(serverId, field, checked, label, description) {
 // ── Registry sources body (used inside collapsible section) ──────────────────
 
 function _renderRegistrySourcesBody() {
-    const rows = _pmcpRegistrySources.map(source => `
+    const rows = _pconnRegistrySources.map(source => `
         <div class="flex items-center gap-3 px-4 py-3 rounded-lg"
              style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06)">
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
-                    <span class="text-sm text-white font-medium">${_esc(source.name)}</span>
+                    <span class="text-sm text-white font-medium">${_paEsc(source.name)}</span>
                     ${source.is_builtin ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/20">built-in</span>' : ''}
                 </div>
-                <p class="text-xs text-gray-500 mt-0.5 truncate font-mono">${_esc(source.url)}</p>
+                <p class="text-xs text-gray-500 mt-0.5 truncate font-mono">${_paEsc(source.url)}</p>
             </div>
             ${!source.is_builtin ? `
                 <button onclick="deleteRegistrySource('${source.id}')"
@@ -364,16 +366,16 @@ function _renderRegistrySourcesBody() {
 function _renderMarketplaceModal() {
     return `
         <div id="pmcp-marketplace-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
-             style="background:rgba(0,0,0,0.7)" onclick="if(event.target===this)closePlatformMcpMarketplace()">
+             style="background:rgba(0,0,0,0.7)" onclick="if(event.target===this)closePlatformConnectorMarketplace()">
             <div class="w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col" style="background:var(--bg-secondary);max-height:82vh;border:1px solid var(--border-primary)">
 
                 <!-- Header -->
                 <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color:var(--border-primary)">
                     <div>
-                        <h2 class="text-base font-bold text-white">MCP Server Registry</h2>
-                        <p class="text-xs text-gray-400 mt-0.5">Browse and install platform capability servers</p>
+                        <h2 class="text-base font-bold text-white">Connector Registry</h2>
+                        <p class="text-xs text-gray-400 mt-0.5">Browse and install platform capability connectors</p>
                     </div>
-                    <button onclick="closePlatformMcpMarketplace()"
+                    <button onclick="closePlatformConnectorMarketplace()"
                             class="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -390,7 +392,7 @@ function _renderMarketplaceModal() {
                         <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                         </svg>
-                        <input id="pmcp-search-input" type="text" placeholder="Search servers…"
+                        <input id="pmcp-search-input" type="text" placeholder="Search connectors…"
                                class="w-full pl-9 pr-4 py-2 rounded-lg text-sm"
                                style="background:var(--bg-primary);border:1px solid var(--border-primary);color:var(--text-primary)"
                                oninput="onPmcpSearchInput(this.value)"/>
@@ -413,7 +415,7 @@ function _renderAddSourceModal() {
              style="background:rgba(0,0,0,0.7)" onclick="if(event.target===this)closeAddRegistrySourceModal()">
             <div class="w-full max-w-md rounded-2xl shadow-2xl p-6" style="background:var(--bg-secondary);border:1px solid var(--border-primary)">
                 <h2 class="text-base font-bold text-white mb-1">Add Enterprise Registry</h2>
-                <p class="text-xs text-gray-400 mb-5">Point to a private MCP registry that exposes the standard <code class="text-indigo-400">GET /v0.1/servers</code> endpoint.</p>
+                <p class="text-xs text-gray-400 mb-5">Point to a private connector registry that exposes the standard <code class="text-indigo-400">GET /v0.1/servers</code> endpoint.</p>
                 <div class="space-y-4">
                     <div>
                         <label class="block text-xs font-medium text-gray-400 mb-1.5">Registry name</label>
@@ -446,15 +448,15 @@ function _renderAddSourceModal() {
 function _renderCredentialsModal() {
     return `
         <div id="pmcp-credentials-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4"
-             style="background:rgba(0,0,0,0.7)" onclick="if(event.target===this)closePlatformMcpCredentials()">
+             style="background:rgba(0,0,0,0.7)" onclick="if(event.target===this)closePlatformConnectorCredentials()">
             <div class="w-full max-w-lg rounded-2xl shadow-2xl" style="background:var(--bg-secondary);border:1px solid var(--border-primary)">
                 <!-- Header -->
                 <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color:var(--border-primary)">
                     <div>
-                        <h2 class="text-base font-bold text-white" id="pmcp-cred-title">Server Credentials</h2>
+                        <h2 class="text-base font-bold text-white" id="pmcp-cred-title">Connector Credentials</h2>
                         <p class="text-xs text-gray-400 mt-0.5">Stored encrypted. Never returned to the browser after saving.</p>
                     </div>
-                    <button onclick="closePlatformMcpCredentials()"
+                    <button onclick="closePlatformConnectorCredentials()"
                             class="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -466,9 +468,9 @@ function _renderCredentialsModal() {
                 <div id="pmcp-cred-fields" class="px-6 py-5 space-y-4"></div>
 
                 <div class="flex justify-end gap-2 px-6 py-4 border-t" style="border-color:var(--border-primary)">
-                    <button onclick="closePlatformMcpCredentials()"
+                    <button onclick="closePlatformConnectorCredentials()"
                             class="px-4 py-2 text-sm rounded-lg text-gray-400 hover:text-white transition-colors">Cancel</button>
-                    <button onclick="savePlatformMcpCredentials()"
+                    <button onclick="savePlatformConnectorCredentials()"
                             class="px-4 py-2 text-sm font-medium rounded-lg transition-all hover:bg-indigo-500/20 flex items-center gap-2"
                             style="background:rgba(129,140,248,0.12);border:1px solid rgba(129,140,248,0.3);color:#818cf8">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -483,15 +485,15 @@ function _renderCredentialsModal() {
 
 // ── Marketplace browse results ────────────────────────────────────────────────
 
-function openPlatformMcpMarketplace() {
+function openPlatformConnectorMarketplace() {
     const modal = document.getElementById('pmcp-marketplace-modal');
     if (!modal) return;
     modal.classList.remove('hidden');
     _renderSourceTabs();
-    _browseRegistry(_pmcpActiveSource, '');
+    _browseRegistry(_pconnActiveSource, '');
 }
 
-function closePlatformMcpMarketplace() {
+function closePlatformConnectorMarketplace() {
     const modal = document.getElementById('pmcp-marketplace-modal');
     if (modal) modal.classList.add('hidden');
 }
@@ -499,73 +501,73 @@ function closePlatformMcpMarketplace() {
 function _renderSourceTabs() {
     const container = document.getElementById('pmcp-source-tabs');
     if (!container) return;
-    container.innerHTML = _pmcpRegistrySources.map(s => {
-        const active = _pmcpActiveSource === s.id;
+    container.innerHTML = _pconnRegistrySources.map(s => {
+        const active = _pconnActiveSource === s.id;
         return `<button onclick="selectPmcpSource('${s.id}')" id="pmcp-tab-${s.id}"
                         class="px-3 py-1.5 text-xs rounded-lg mr-1 transition-all font-medium"
                         style="${active
                             ? 'background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.35);color:#818cf8'
                             : 'background:transparent;border:1px solid var(--border-primary);color:var(--text-muted)'}">
-                    ${_esc(s.name)}
+                    ${_paEsc(s.name)}
                 </button>`;
     }).join('');
 }
 
 function selectPmcpSource(sourceId) {
-    _pmcpActiveSource = sourceId;
+    _pconnActiveSource = sourceId;
     _renderSourceTabs();
     const search = document.getElementById('pmcp-search-input');
     _browseRegistry(sourceId, search ? search.value : '');
 }
 
 function onPmcpSearchInput(value) {
-    clearTimeout(_pmcpSearchTimeout);
-    _pmcpSearchTimeout = setTimeout(() => _browseRegistry(_pmcpActiveSource, value), 350);
+    clearTimeout(_pconnSearchTimeout);
+    _pconnSearchTimeout = setTimeout(() => _browseRegistry(_pconnActiveSource, value), 350);
 }
 
 async function _browseRegistry(sourceId, search) {
     const resultsEl = document.getElementById('pmcp-browse-results');
     if (!resultsEl) return;
     // Reset state for a fresh search
-    _pmcpBrowseResults = [];
-    _pmcpNextCursor = '';
+    _pconnBrowseResults = [];
+    _pconnNextCursor = '';
     resultsEl.innerHTML = '<div class="text-center py-8 text-sm text-gray-400">Loading…</div>';
     try {
         const batch = await _fetchRegistryPage(sourceId, search, '');
-        _pmcpBrowseResults = batch.servers;
-        _pmcpNextCursor = batch.nextCursor;
+        _pconnBrowseResults = batch.servers;
+        _pconnNextCursor = batch.nextCursor;
         _renderBrowseResults(resultsEl);
     } catch (e) {
-        resultsEl.innerHTML = `<div class="text-center py-6 text-sm text-red-400">Failed to load: ${_esc(e.message)}</div>`;
+        resultsEl.innerHTML = `<div class="text-center py-6 text-sm text-red-400">Failed to load: ${_paEsc(e.message)}</div>`;
     }
 }
 
 async function _loadMoreRegistry() {
-    if (_pmcpLoadingMore || !_pmcpNextCursor) return;
-    _pmcpLoadingMore = true;
+    if (_pconnLoadingMore || !_pconnNextCursor) return;
+    _pconnLoadingMore = true;
     const btn = document.getElementById('pmcp-load-more-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
     try {
-        const batch = await _fetchRegistryPage(_pmcpActiveSource, _pmcpCurrentSearch || '', _pmcpNextCursor);
-        _pmcpBrowseResults = [..._pmcpBrowseResults, ...batch.servers];
-        _pmcpNextCursor = batch.nextCursor;
+        const batch = await _fetchRegistryPage(_pconnActiveSource, _pconnCurrentSearch || '', _pconnNextCursor);
+        _pconnBrowseResults = [..._pconnBrowseResults, ...batch.servers];
+        _pconnNextCursor = batch.nextCursor;
         const resultsEl = document.getElementById('pmcp-browse-results');
         if (resultsEl) _renderBrowseResults(resultsEl);
     } catch (e) {
         const btn2 = document.getElementById('pmcp-load-more-btn');
         if (btn2) { btn2.disabled = false; btn2.textContent = 'Load more'; }
     } finally {
-        _pmcpLoadingMore = false;
+        _pconnLoadingMore = false;
     }
 }
 
-let _pmcpCurrentSearch = '';
+let _pconnCurrentSearch = '';
 
 async function _fetchRegistryPage(sourceId, search, cursor) {
-    _pmcpCurrentSearch = search;
+    _pconnCurrentSearch = search;
     const params = new URLSearchParams({ source: sourceId, search, page: 1 });
     if (cursor) params.set('cursor', cursor);
-    const r = await fetch(`/api/v1/mcp-registry/servers?${params}`, { headers: _pmcpHeaders(false) });
+    const r = await fetch(`/api/v1/connector-registry/servers?${params}`, { headers: _pconnHeaders(false) });
     if (!r.ok) throw new Error(await r.text());
     const data = await r.json();
     // Extract next cursor from official registry metadata
@@ -574,8 +576,9 @@ async function _fetchRegistryPage(sourceId, search, cursor) {
         .filter(s => s != null)
         .map(_normaliseRegistryServer)
         .filter(s => s != null);
-    // Keep only latest versions when the registry includes multiple versions per server
-    const hasVersioning = allNormalised.some(s => s._is_latest === true || s._is_latest === false);
+    // Keep only latest versions when the official registry explicitly marks versions.
+    // Built-in servers have no _meta → _is_latest is undefined → never filtered out.
+    const hasVersioning = allNormalised.some(s => s._is_latest === true);
     const servers = hasVersioning
         ? allNormalised.filter(s => s._is_latest !== false)
         : allNormalised;
@@ -583,17 +586,17 @@ async function _fetchRegistryPage(sourceId, search, cursor) {
 }
 
 /**
- * Normalise a server entry from any registry source to the shape _renderBrowseResults expects.
+ * Normalise a connector entry from any registry source to the shape _renderBrowseResults expects.
  *
  * Handles two formats:
  *   1. Uderia built-in:  { id, display_name, name, version, tools, description, ... }
- *   2. Official MCP Registry v0.1: { server: { name, title, description, version, ... }, _meta: {...} }
- *      — each array entry wraps the actual server under a "server" key.
+ *   2. Official Registry v0.1: { server: { name, title, description, version, ... }, _meta: {...} }
+ *      — each array entry wraps the actual connector under a "server" key.
  */
 function _normaliseRegistryServer(raw) {
     if (!raw || typeof raw !== 'object') return null;
 
-    // Unwrap official MCP Registry envelope: { server: {...}, _meta: {...} }
+    // Unwrap official Registry envelope: { server: {...}, _meta: {...} }
     const s = (raw.server && typeof raw.server === 'object') ? raw.server : raw;
     const meta = raw._meta || {};
 
@@ -610,7 +613,30 @@ function _normaliseRegistryServer(raw) {
     const rawTools = Array.isArray(s.tools) ? s.tools : [];
     const tools = rawTools.map(t => (typeof t === 'string' ? t : (t && t.name) || String(t)));
 
-    // Provenance badge (is_official from _meta)
+    // Transport type badge — derived from packages/remotes in the registry response.
+    //   "Remote"  — has remotes[] (HTTP/SSE endpoint, no server-side install needed)
+    //   "npm"     — packages[0].registryType === 'npm'
+    //   "Python"  — packages[0].registryType === 'pypi'
+    //   "Docker"  — packages[0].registryType === 'oci' (or security_acknowledgment_required for built-in)
+    //   null      — built-in connectors (transport shown by other means)
+    let transportTag = null;
+    if (Array.isArray(s.remotes) && s.remotes.length) {
+        transportTag = 'Remote';
+    } else if (Array.isArray(s.packages) && s.packages.length) {
+        const rt = (s.packages[0].registryType || '').toLowerCase();
+        if (rt === 'npm')         transportTag = 'npm';
+        else if (rt === 'pypi')   transportTag = 'Python';
+        else if (rt === 'oci')    transportTag = 'Docker';
+        else if (rt)              transportTag = rt;
+    } else if (s.security_acknowledgment_required) {
+        transportTag = 'Docker';
+    }
+
+    // Credentials required: true when any package declares required environment variables
+    const requiresCredentials = Array.isArray(s.packages) &&
+        s.packages.some(p => Array.isArray(p.environmentVariables) && p.environmentVariables.some(e => e.isRequired));
+
+    // Provenance: true for external registry entries (has _meta with active status)
     const officialMeta = Object.values(meta)[0] || {};
     const isOfficial = !!(officialMeta.status === 'active');
 
@@ -621,19 +647,22 @@ function _normaliseRegistryServer(raw) {
         version,
         tools,
         description: s.description || '',
+        _transport_tag: transportTag,
+        _requires_credentials: requiresCredentials,
         _is_official: isOfficial,
-        _is_latest: !!(officialMeta.isLatest),
+        // undefined when no registry metadata (built-in) — only true/false for official registry entries
+        _is_latest: Object.keys(meta).length ? !!(officialMeta.isLatest) : undefined,
     };
 }
 
 function _renderBrowseResults(container) {
     // Filter out any remaining nulls after normalisation
-    const servers = (_pmcpBrowseResults || []).filter(s => s != null);
+    const servers = (_pconnBrowseResults || []).filter(s => s != null);
     if (!servers.length) {
-        container.innerHTML = '<div class="text-center py-8 text-sm text-gray-400">No servers found.</div>';
+        container.innerHTML = '<div class="text-center py-8 text-sm text-gray-400">No connectors found.</div>';
         return;
     }
-    const installedIds = new Set((_pmcpInstalledServers || []).filter(s => s).map(s => s.id));
+    const installedIds = new Set((_pconnInstalledServers || []).filter(s => s).map(s => s.id));
     const cardsHtml = servers.map(s => {
         const isInstalled = installedIds.has(s.id);
         const tools = (s.tools || []).slice(0, 5);
@@ -643,22 +672,22 @@ function _renderBrowseResults(container) {
                  style="background:var(--bg-primary);border:1px solid var(--border-primary)">
                 <div class="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center ring-1 ring-indigo-500/20"
                      style="background:rgba(129,140,248,0.1)">
-                    ${_serverIcon(s.id)}
+                    ${_paServerIcon(s.id)}
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-sm font-semibold text-white">${_esc(s.display_name)}</span>
-                        ${s.version && s.version !== '—' ? `<span class="text-[11px] text-gray-500">v${_esc(s.version)}</span>` : ''}
-                        ${s._is_official ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-500/25">official</span>' : ''}
+                        <span class="text-sm font-semibold text-white">${_paEsc(s.display_name)}</span>
+                        ${s.version && s.version !== '—' ? `<span class="text-[11px] text-gray-500">v${_paEsc(s.version)}</span>` : ''}
+                        ${_transportBadge(s._transport_tag)}
+                        ${s._requires_credentials ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/10 text-amber-400 ring-1 ring-amber-400/20">API key</span>' : ''}
+                        ${s.requires_user_auth ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-400/10 text-yellow-400 ring-1 ring-yellow-400/20">OAuth</span>' : ''}
                         ${s._is_latest === false ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-500/15 text-gray-400 ring-1 ring-gray-500/20">older</span>' : ''}
-                        ${s.security_acknowledgment_required ? '<span class="text-[11px] px-1.5 py-0.5 rounded-full bg-red-400/10 text-red-400 ring-1 ring-red-400/20">Docker</span>' : ''}
-                        ${s.requires_user_auth ? '<span class="text-[11px] px-1.5 py-0.5 rounded-full bg-yellow-400/10 text-yellow-400 ring-1 ring-yellow-400/20">OAuth</span>' : ''}
                     </div>
-                    ${s.id !== s.display_name ? `<p class="text-[10px] text-gray-600 font-mono mt-0.5 truncate">${_esc(s.id)}</p>` : ''}
-                    <p class="text-xs text-gray-400 mt-0.5 line-clamp-2">${_esc(s.description || '')}</p>
+                    ${s.id !== s.display_name ? `<p class="text-[10px] text-gray-600 font-mono mt-0.5 truncate">${_paEsc(s.id)}</p>` : ''}
+                    <p class="text-xs text-gray-400 mt-0.5 line-clamp-2">${_paEsc(s.description || '')}</p>
                     ${tools.length ? `
                         <div class="flex flex-wrap gap-1 mt-2">
-                            ${tools.map(t => `<span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/8 text-indigo-400 ring-1 ring-indigo-500/20">${_esc(String(t))}</span>`).join('')}
+                            ${tools.map(t => `<span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/8 text-indigo-400 ring-1 ring-indigo-500/20">${_paEsc(String(t))}</span>`).join('')}
                             ${extra > 0 ? `<span class="text-[10px] text-gray-500">+${extra} more</span>` : ''}
                         </div>` : ''}
                 </div>
@@ -668,7 +697,7 @@ function _renderBrowseResults(container) {
                                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                Installed
                            </span>`
-                        : `<button onclick="installPlatformMcpServer('${_esc(s.id)}')"
+                        : `<button onclick="installPlatformConnector('${_paEsc(s.id)}')"
                                    class="text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:bg-indigo-500/20"
                                    style="background:rgba(129,140,248,0.12);border:1px solid rgba(129,140,248,0.3);color:#818cf8">
                                Install
@@ -679,7 +708,7 @@ function _renderBrowseResults(container) {
     }).join('');
 
     // Load more button (shown only when next cursor available)
-    const loadMoreHtml = _pmcpNextCursor ? `
+    const loadMoreHtml = _pconnNextCursor ? `
         <div class="pt-2 pb-1 text-center">
             <button id="pmcp-load-more-btn"
                     onclick="window._loadMoreRegistry()"
@@ -687,16 +716,28 @@ function _renderBrowseResults(container) {
                     style="background:rgba(129,140,248,0.1);border:1px solid rgba(129,140,248,0.25);color:#818cf8">
                 Load more
             </button>
-            <p class="text-[10px] text-gray-600 mt-1">${servers.length} servers loaded</p>
+            <p class="text-[10px] text-gray-600 mt-1">${servers.length} connectors loaded</p>
         </div>` : `
-        <p class="text-center text-[10px] text-gray-600 py-2">${servers.length} server${servers.length !== 1 ? 's' : ''} total</p>`;
+        <p class="text-center text-[10px] text-gray-600 py-2">${servers.length} connector${servers.length !== 1 ? 's' : ''} total</p>`;
 
     container.innerHTML = cardsHtml + loadMoreHtml;
 }
 
-// ── Server icons ──────────────────────────────────────────────────────────────
+// ── Connector icons ──────────────────────────────────────────────────────────────
 
-function _serverIcon(serverId) {
+function _transportBadge(tag) {
+    if (!tag) return '';
+    const styles = {
+        'Remote': 'bg-emerald-400/10 text-emerald-400 ring-emerald-400/25',
+        'npm':    'bg-red-400/10 text-red-300 ring-red-400/20',
+        'Python': 'bg-blue-400/10 text-blue-300 ring-blue-400/20',
+        'Docker': 'bg-cyan-400/10 text-cyan-300 ring-cyan-400/20',
+    };
+    const cls = styles[tag] || 'bg-gray-400/10 text-gray-400 ring-gray-400/20';
+    return `<span class="text-[10px] px-1.5 py-0.5 rounded-full ring-1 ${cls}">${_paEsc(tag)}</span>`;
+}
+
+function _paServerIcon(serverId) {
     const icons = {
         'uderia-web':     `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>`,
         'uderia-files':   `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>`,
@@ -707,7 +748,7 @@ function _serverIcon(serverId) {
     return icons[serverId] || `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/></svg>`;
 }
 
-// ── Credential schema per server ──────────────────────────────────────────────
+// ── Credential schema per connector ──────────────────────────────────────────────
 
 const CREDENTIAL_SCHEMAS = {
     'uderia-web':    [
@@ -724,9 +765,25 @@ const CREDENTIAL_SCHEMAS = {
     ],
 };
 
-function openPlatformMcpCredentials(serverId) {
-    _pmcpCredentialsServerId = serverId;
-    const server = _pmcpInstalledServers.find(s => s.id === serverId);
+const SETUP_GUIDES = {
+    'uderia-google': {
+        title: 'Google Cloud Console setup',
+        steps: () => {
+            const callbackUri = `${window.location.origin}/api/v1/connectors/google/callback`;
+            return [
+                'Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener" style="color:#818cf8;text-decoration:underline">console.cloud.google.com</a> and create a project',
+                'Enable the <strong>Gmail API</strong> and <strong>Google Calendar API</strong> (APIs &amp; Services → Library)',
+                'Create OAuth 2.0 credentials (APIs &amp; Services → Credentials → Create → OAuth client ID → Web application)',
+                `Add <code style="font-size:10px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px">${callbackUri}</code> as an Authorised redirect URI`,
+                'Copy the Client ID and Client Secret below',
+            ];
+        },
+    },
+};
+
+function openPlatformConnectorCredentials(serverId) {
+    _pconnCredentialsServerId = serverId;
+    const server = _pconnInstalledServers.find(s => s.id === serverId);
     const name = server ? (server.display_name || server.name) : serverId;
     const schema = CREDENTIAL_SCHEMAS[serverId] || [
         { key: 'API_KEY', label: 'API Key', hint: 'Sensitive — stored encrypted', type: 'password' },
@@ -736,97 +793,112 @@ function openPlatformMcpCredentials(serverId) {
     if (!modal) return;
 
     document.getElementById('pmcp-cred-title').textContent = `${name} — Credentials`;
-    document.getElementById('pmcp-cred-fields').innerHTML = schema.map(f => `
+
+    const guide = SETUP_GUIDES[serverId];
+    const guideHtml = guide ? `
+        <div class="rounded-xl p-4 mb-1" style="background:rgba(129,140,248,0.06);border:1px solid rgba(129,140,248,0.15)">
+            <p class="text-xs font-semibold mb-2" style="color:#a5b4fc">${_paEsc(guide.title)}</p>
+            <ol class="space-y-1.5 list-none pl-0">
+                ${guide.steps().map((step, i) => `
+                    <li class="flex items-start gap-2 text-xs" style="color:var(--text-muted)">
+                        <span class="flex-shrink-0 w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center mt-0.5"
+                              style="background:rgba(129,140,248,0.2);color:#818cf8">${i + 1}</span>
+                        <span>${step}</span>
+                    </li>`).join('')}
+            </ol>
+        </div>` : '';
+
+    document.getElementById('pmcp-cred-fields').innerHTML = guideHtml + schema.map(f => `
         <div>
-            <label class="block text-xs font-medium text-gray-300 mb-1.5">${_esc(f.label)}</label>
+            <label class="block text-xs font-medium text-gray-300 mb-1.5">${_paEsc(f.label)}</label>
             <input type="${f.type || 'text'}" id="pmcp-cred-${f.key}"
-                   placeholder="${f.type === 'password' ? '••••••••' : _esc(f.hint || '')}"
+                   placeholder="${f.type === 'password' ? '••••••••' : _paEsc(f.hint || '')}"
                    class="w-full px-3 py-2 rounded-lg text-sm"
                    style="background:var(--bg-primary);border:1px solid var(--border-primary);color:var(--text-primary)"/>
-            ${f.hint && f.type !== 'password' ? `<p class="text-[11px] text-gray-500 mt-1">${_esc(f.hint)}</p>` : ''}
+            ${f.hint ? `<p class="text-[11px] text-gray-500 mt-1">${_paEsc(f.hint)}</p>` : ''}
         </div>
     `).join('');
 
     modal.classList.remove('hidden');
 }
 
-function closePlatformMcpCredentials() {
+function closePlatformConnectorCredentials() {
     const modal = document.getElementById('pmcp-credentials-modal');
     if (modal) modal.classList.add('hidden');
-    _pmcpCredentialsServerId = null;
+    _pconnCredentialsServerId = null;
 }
 
-async function savePlatformMcpCredentials() {
-    if (!_pmcpCredentialsServerId) return;
-    const schema = CREDENTIAL_SCHEMAS[_pmcpCredentialsServerId] || [{ key: 'API_KEY' }];
+async function savePlatformConnectorCredentials() {
+    if (!_pconnCredentialsServerId) return;
+    const schema = CREDENTIAL_SCHEMAS[_pconnCredentialsServerId] || [{ key: 'API_KEY' }];
     const creds = {};
     let hasValue = false;
     for (const f of schema) {
         const el = document.getElementById(`pmcp-cred-${f.key}`);
         if (el && el.value.trim()) { creds[f.key] = el.value.trim(); hasValue = true; }
     }
-    if (!hasValue) { _pmcpNotify('error', 'Enter at least one credential value'); return; }
+    if (!hasValue) { _pconnNotify('error', 'Enter at least one credential value'); return; }
 
     try {
-        const r = await fetch(`/api/v1/platform-mcp-servers/${_pmcpCredentialsServerId}`, {
-            method: 'PUT', headers: _pmcpHeaders(),
+        const r = await fetch(`/api/v1/platform-connectors/${_pconnCredentialsServerId}`, {
+            method: 'PUT', headers: _pconnHeaders(),
             body: JSON.stringify({ credentials: creds }),
         });
         if (!r.ok) throw new Error((await r.json()).error || 'Save failed');
-        _pmcpNotify('success', 'Credentials saved (encrypted)');
-        closePlatformMcpCredentials();
+        _pconnNotify('success', 'Credentials saved (encrypted)');
+        closePlatformConnectorCredentials();
     } catch (e) {
-        _pmcpNotify('error', `Failed to save credentials: ${e.message}`);
+        _pconnNotify('error', `Failed to save credentials: ${e.message}`);
     }
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
-async function installPlatformMcpServer(serverId) {
-    const serverData = _pmcpBrowseResults.find(s => s.id === serverId);
+async function installPlatformConnector(serverId) {
+    const serverData = _pconnBrowseResults.find(s => s.id === serverId);
     if (!serverData) return;
     try {
-        const r = await fetch('/api/v1/mcp-registry/servers/install', {
-            method: 'POST', headers: _pmcpHeaders(),
-            body: JSON.stringify({ source_id: _pmcpActiveSource, server_id: serverId, server_data: serverData }),
+        const r = await fetch('/api/v1/connector-registry/servers/install', {
+            method: 'POST', headers: _pconnHeaders(),
+            body: JSON.stringify({ source_id: _pconnActiveSource, server_id: serverId, server_data: serverData }),
         });
         if (!r.ok) throw new Error((await r.json()).error || 'Install failed');
-        _pmcpNotify('success', `${serverData.display_name || serverId} installed`);
-        closePlatformMcpMarketplace();
-        await loadPlatformMcpAdminPanel();
+        _pconnNotify('success', `${serverData.display_name || serverId} installed`);
+        closePlatformConnectorMarketplace();
+        await loadPlatformConnectorAdminPanel();
     } catch (e) {
-        _pmcpNotify('error', `Install failed: ${e.message}`);
+        _pconnNotify('error', `Install failed: ${e.message}`);
     }
 }
 
-async function togglePlatformMcpServer(serverId, enabled) {
+async function togglePlatformConnector(serverId, enabled) {
     try {
-        const r = await fetch(`/api/v1/platform-mcp-servers/${serverId}`, {
-            method: 'PUT', headers: _pmcpHeaders(),
+        const r = await fetch(`/api/v1/platform-connectors/${serverId}`, {
+            method: 'PUT', headers: _pconnHeaders(),
             body: JSON.stringify({ enabled: enabled ? 1 : 0 }),
         });
         if (!r.ok) throw new Error((await r.json()).error || 'Update failed');
         await _loadInstalledServers();
-        renderPlatformMcpAdminPanel();
+        renderPlatformConnectorAdminPanel();
     } catch (e) {
-        _pmcpNotify('error', `Failed to update server: ${e.message}`);
+        _pconnNotify('error', `Failed to update connector: ${e.message}`);
     }
 }
 
-async function updatePlatformMcpGovernance(serverId, field, value) {
+async function updatePlatformConnectorGovernance(serverId, field, value) {
     try {
-        const r = await fetch(`/api/v1/platform-mcp-servers/${serverId}`, {
-            method: 'PUT', headers: _pmcpHeaders(),
+        const r = await fetch(`/api/v1/platform-connectors/${serverId}`, {
+            method: 'PUT', headers: _pconnHeaders(),
             body: JSON.stringify({ [field]: value }),
         });
         if (!r.ok) throw new Error((await r.json()).error || 'Update failed');
     } catch (e) {
-        _pmcpNotify('error', `Failed to update governance: ${e.message}`);
+        _pconnNotify('error', `Failed to update governance: ${e.message}`);
     }
 }
 
-async function togglePlatformMcpAvailableTool(serverId, toolName, enabled) {
-    const server = _pmcpInstalledServers.find(s => s.id === serverId);
+async function togglePlatformConnectorAvailableTool(serverId, toolName, enabled) {
+    const server = _pconnInstalledServers.find(s => s.id === serverId);
     if (!server) return;
     const allTools = _getBuiltinToolsForServer(serverId);
     let current = Array.isArray(server.available_tools) ? [...server.available_tools] : [...allTools];
@@ -834,39 +906,39 @@ async function togglePlatformMcpAvailableTool(serverId, toolName, enabled) {
     else { current = current.filter(t => t !== toolName); }
     const updatedTools = current.length === allTools.length ? null : current;
     try {
-        const r = await fetch(`/api/v1/platform-mcp-servers/${serverId}`, {
-            method: 'PUT', headers: _pmcpHeaders(),
+        const r = await fetch(`/api/v1/platform-connectors/${serverId}`, {
+            method: 'PUT', headers: _pconnHeaders(),
             body: JSON.stringify({ available_tools: updatedTools }),
         });
         if (!r.ok) throw new Error((await r.json()).error || 'Update failed');
-        const idx = _pmcpInstalledServers.findIndex(s => s.id === serverId);
-        if (idx >= 0) _pmcpInstalledServers[idx].available_tools = updatedTools;
+        const idx = _pconnInstalledServers.findIndex(s => s.id === serverId);
+        if (idx >= 0) _pconnInstalledServers[idx].available_tools = updatedTools;
     } catch (e) {
-        _pmcpNotify('error', `Failed to update tools: ${e.message}`);
+        _pconnNotify('error', `Failed to update tools: ${e.message}`);
     }
 }
 
-function _pmcpConfirmRemove(serverId) {
-    const server = _pmcpInstalledServers.find(s => s.id === serverId);
+function _pconnConfirmRemove(serverId) {
+    const server = _pconnInstalledServers.find(s => s.id === serverId);
     const name = server ? (server.display_name || server.name) : serverId;
-    _pmcpConfirm(
-        `Remove "${name}"? This will clear all profile assignments for this server.`,
-        () => deletePlatformMcpServer(serverId)
+    _pconnConfirm(
+        `Remove "${name}"? This will clear all profile assignments for this connector.`,
+        () => deletePlatformConnector(serverId)
     );
 }
 
-async function deletePlatformMcpServer(serverId) {
-    const server = _pmcpInstalledServers.find(s => s.id === serverId);
+async function deletePlatformConnector(serverId) {
+    const server = _pconnInstalledServers.find(s => s.id === serverId);
     const name = server ? (server.display_name || server.name) : serverId;
     try {
-        const r = await fetch(`/api/v1/platform-mcp-servers/${serverId}`, {
-            method: 'DELETE', headers: _pmcpHeaders(false),
+        const r = await fetch(`/api/v1/platform-connectors/${serverId}`, {
+            method: 'DELETE', headers: _pconnHeaders(false),
         });
         if (!r.ok) throw new Error((await r.json()).error || 'Delete failed');
-        _pmcpNotify('success', `${name} removed`);
-        await loadPlatformMcpAdminPanel();
+        _pconnNotify('success', `${name} removed`);
+        await loadPlatformConnectorAdminPanel();
     } catch (e) {
-        _pmcpNotify('error', `Failed to remove server: ${e.message}`);
+        _pconnNotify('error', `Failed to remove connector: ${e.message}`);
     }
 }
 
@@ -885,35 +957,35 @@ function closeAddRegistrySourceModal() {
 async function submitAddRegistrySource() {
     const name = document.getElementById('pmcp-source-name')?.value.trim();
     const url  = document.getElementById('pmcp-source-url')?.value.trim();
-    if (!name || !url) { _pmcpNotify('error', 'Name and URL are required'); return; }
+    if (!name || !url) { _pconnNotify('error', 'Name and URL are required'); return; }
     try {
-        const r = await fetch('/api/v1/mcp-registry/sources', {
-            method: 'POST', headers: _pmcpHeaders(),
+        const r = await fetch('/api/v1/connector-registry/sources', {
+            method: 'POST', headers: _pconnHeaders(),
             body: JSON.stringify({ name, url }),
         });
         if (!r.ok) throw new Error((await r.json()).error || 'Failed');
-        _pmcpNotify('success', `Registry "${name}" added`);
+        _pconnNotify('success', `Registry "${name}" added`);
         closeAddRegistrySourceModal();
         await _loadRegistrySources();
-        renderPlatformMcpAdminPanel();
+        renderPlatformConnectorAdminPanel();
     } catch (e) {
-        _pmcpNotify('error', `Failed to add registry: ${e.message}`);
+        _pconnNotify('error', `Failed to add registry: ${e.message}`);
     }
 }
 
 async function deleteRegistrySource(sourceId) {
-    const source = _pmcpRegistrySources.find(s => s.id === sourceId);
-    _pmcpConfirm(`Remove registry "${source?.name || sourceId}"?`, async () => {
+    const source = _pconnRegistrySources.find(s => s.id === sourceId);
+    _pconnConfirm(`Remove registry "${source?.name || sourceId}"?`, async () => {
         try {
-            const r = await fetch(`/api/v1/mcp-registry/sources/${sourceId}`, {
-                method: 'DELETE', headers: _pmcpHeaders(false),
+            const r = await fetch(`/api/v1/connector-registry/sources/${sourceId}`, {
+                method: 'DELETE', headers: _pconnHeaders(false),
             });
             if (!r.ok) throw new Error((await r.json()).error || 'Delete failed');
-            _pmcpNotify('success', 'Registry removed');
+            _pconnNotify('success', 'Registry removed');
             await _loadRegistrySources();
-            renderPlatformMcpAdminPanel();
+            renderPlatformConnectorAdminPanel();
         } catch (e) {
-            _pmcpNotify('error', `Failed to remove registry: ${e.message}`);
+            _pconnNotify('error', `Failed to remove registry: ${e.message}`);
         }
     });
 }
@@ -927,8 +999,8 @@ function switchPlatformComponentsAdminTab(tabName) {
     document.querySelectorAll('.platform-comp-panel').forEach(panel => {
         panel.classList.toggle('hidden', panel.id !== `platform-comp-panel-${tabName}`);
     });
-    if (tabName === 'mcp-servers' && typeof loadPlatformMcpAdminPanel === 'function') {
-        loadPlatformMcpAdminPanel();
+    if ((tabName === 'mcp-servers' || tabName === 'connectors') && typeof loadPlatformConnectorAdminPanel === 'function') {
+        loadPlatformConnectorAdminPanel();
     }
     if (tabName === 'task-scheduler') {
         loadSchedulerAdminPanel();
@@ -948,7 +1020,7 @@ function _getBuiltinToolsForServer(serverId) {
     return MAP[serverId] || [];
 }
 
-function _esc(str) {
+function _paEsc(str) {
     return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
@@ -969,7 +1041,7 @@ async function loadSchedulerAdminPanel() {
     let status = { running: false, globally_enabled: true, job_count: 0 };
     let apschedulerAvailable = true;
     try {
-        const r = await fetch('/api/v1/scheduler/status', { headers: _pmcpHeaders(false) });
+        const r = await fetch('/api/v1/scheduler/status', { headers: _pconnHeaders(false) });
         if (r.ok) status = await r.json();
         else apschedulerAvailable = false;
     } catch (e) {
@@ -1071,7 +1143,7 @@ async function loadSchedulerAdminPanel() {
 window._toggleSchedulerGlobal = async function(enabled) {
     try {
         // Read current disabled_components list and add/remove 'scheduler'
-        const r = await fetch('/api/v1/admin/component-settings', { headers: _pmcpHeaders(false) });
+        const r = await fetch('/api/v1/admin/component-settings', { headers: _pconnHeaders(false) });
         const d = r.ok ? await r.json() : {};
         let disabled = (d.settings && d.settings.disabled_components) || [];
         if (enabled) {
@@ -1081,12 +1153,12 @@ window._toggleSchedulerGlobal = async function(enabled) {
         }
         await fetch('/api/v1/admin/component-settings', {
             method: 'POST',
-            headers: _pmcpHeaders(),
+            headers: _pconnHeaders(),
             body: JSON.stringify({ disabled_components: disabled })
         });
-        _pmcpNotify('success', `Task Scheduler ${enabled ? 'enabled' : 'disabled'} globally.`);
+        _pconnNotify('success', `Task Scheduler ${enabled ? 'enabled' : 'disabled'} globally.`);
     } catch (e) {
-        _pmcpNotify('error', 'Failed to update scheduler setting.');
+        _pconnNotify('error', 'Failed to update scheduler setting.');
         // Revert toggle
         const toggle = document.getElementById('scheduler-global-toggle');
         if (toggle) toggle.checked = !enabled;
@@ -1095,24 +1167,24 @@ window._toggleSchedulerGlobal = async function(enabled) {
 
 // ── Exports ───────────────────────────────────────────────────────────────────
 
-window.loadPlatformMcpAdminPanel        = loadPlatformMcpAdminPanel;
-window.renderPlatformMcpAdminPanel      = renderPlatformMcpAdminPanel;
-window.switchPlatformComponentsAdminTab = switchPlatformComponentsAdminTab;
-window.openPlatformMcpMarketplace       = openPlatformMcpMarketplace;
-window.closePlatformMcpMarketplace      = closePlatformMcpMarketplace;
-window.selectPmcpSource                 = selectPmcpSource;
-window.onPmcpSearchInput                = onPmcpSearchInput;
-window._loadMoreRegistry                = _loadMoreRegistry;
-window.installPlatformMcpServer         = installPlatformMcpServer;
-window.togglePlatformMcpServer          = togglePlatformMcpServer;
-window.updatePlatformMcpGovernance      = updatePlatformMcpGovernance;
-window.togglePlatformMcpAvailableTool   = togglePlatformMcpAvailableTool;
-window.deletePlatformMcpServer          = deletePlatformMcpServer;
-window._pmcpConfirmRemove               = _pmcpConfirmRemove;
-window.openPlatformMcpCredentials       = openPlatformMcpCredentials;
-window.closePlatformMcpCredentials      = closePlatformMcpCredentials;
-window.savePlatformMcpCredentials       = savePlatformMcpCredentials;
-window.openAddRegistrySourceModal       = openAddRegistrySourceModal;
-window.closeAddRegistrySourceModal      = closeAddRegistrySourceModal;
-window.submitAddRegistrySource          = submitAddRegistrySource;
-window.deleteRegistrySource             = deleteRegistrySource;
+window.loadPlatformConnectorAdminPanel        = loadPlatformConnectorAdminPanel;
+window.renderPlatformConnectorAdminPanel      = renderPlatformConnectorAdminPanel;
+window.switchPlatformComponentsAdminTab       = switchPlatformComponentsAdminTab;
+window.openPlatformConnectorMarketplace       = openPlatformConnectorMarketplace;
+window.closePlatformConnectorMarketplace      = closePlatformConnectorMarketplace;
+window.selectPmcpSource                       = selectPmcpSource;
+window.onPmcpSearchInput                      = onPmcpSearchInput;
+window._loadMoreRegistry                      = _loadMoreRegistry;
+window.installPlatformConnector               = installPlatformConnector;
+window.togglePlatformConnector                = togglePlatformConnector;
+window.updatePlatformConnectorGovernance      = updatePlatformConnectorGovernance;
+window.togglePlatformConnectorAvailableTool   = togglePlatformConnectorAvailableTool;
+window.deletePlatformConnector                = deletePlatformConnector;
+window._pconnConfirmRemove                    = _pconnConfirmRemove;
+window.openPlatformConnectorCredentials       = openPlatformConnectorCredentials;
+window.closePlatformConnectorCredentials      = closePlatformConnectorCredentials;
+window.savePlatformConnectorCredentials       = savePlatformConnectorCredentials;
+window.openAddRegistrySourceModal             = openAddRegistrySourceModal;
+window.closeAddRegistrySourceModal            = closeAddRegistrySourceModal;
+window.submitAddRegistrySource                = submitAddRegistrySource;
+window.deleteRegistrySource                   = deleteRegistrySource;

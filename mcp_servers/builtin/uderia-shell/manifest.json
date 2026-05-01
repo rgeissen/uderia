@@ -8,6 +8,36 @@
   "install_type": "builtin",
   "entry_point": "mcp_servers/builtin/uderia-shell/server.py",
   "tools": ["exec_command", "run_script", "list_processes", "kill_process"],
+  "tool_schemas": [
+    {
+      "name": "exec_command",
+      "description": "Execute a shell command inside an isolated Docker container and return stdout, stderr, and exit code.",
+      "arguments": [
+        {"name": "command", "type": "string", "description": "The shell command to execute (must be in the ALLOWED_COMMANDS allowlist).", "required": true},
+        {"name": "working_dir", "type": "string", "description": "Working directory inside the container (default: /workspace).", "required": false}
+      ]
+    },
+    {
+      "name": "run_script",
+      "description": "Run a multi-line script inside an isolated Docker container and return the output.",
+      "arguments": [
+        {"name": "script", "type": "string", "description": "The script content to execute.", "required": true},
+        {"name": "language", "type": "string", "description": "Script language — 'python', 'bash', or 'sh' (default: python).", "required": false}
+      ]
+    },
+    {
+      "name": "list_processes",
+      "description": "List currently running processes inside the active Docker container.",
+      "arguments": []
+    },
+    {
+      "name": "kill_process",
+      "description": "Stop a running Docker container by its container ID.",
+      "arguments": [
+        {"name": "container_id", "type": "string", "description": "The Docker container ID to stop.", "required": true}
+      ]
+    }
+  ],
   "credential_schema": {},
   "config_schema": {
     "DOCKER_IMAGE": {

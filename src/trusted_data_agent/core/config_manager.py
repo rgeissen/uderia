@@ -945,11 +945,11 @@ class ConfigManager:
 
         enabled_tools = set(enabled_tools_list)
 
-        # Platform MCP server tools are governed by their own chain (admin → user → profile).
+        # Platform connector tools are governed by their own chain (admin → user → profile).
         # They bypass the primary server's profile.tools[] filter, same as TDA_* tools.
         platform_tool_names: set = set()
         try:
-            from trusted_data_agent.core.platform_mcp_registry import get_effective_tool_names
+            from trusted_data_agent.core.platform_connector_registry import get_effective_tool_names
             platform_tool_names = get_effective_tool_names(profile_id)
         except Exception:
             pass
