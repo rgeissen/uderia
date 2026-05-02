@@ -45,3 +45,15 @@ def server_id_to_platform(server_id: str) -> Optional[str]:
 
 from trusted_data_agent.connectors import google_connector as _google
 register("google", _google)
+
+from trusted_data_agent.connectors import teams_connector as _teams
+register("teams", _teams)
+
+from trusted_data_agent.connectors import outlook_connector as _outlook
+register("outlook", _outlook)
+
+from trusted_data_agent.connectors import slack_connector as _slack
+register("slack", _slack)
+
+from trusted_data_agent.connectors import sharepoint_connector as _sharepoint
+register("sharepoint", _sharepoint)

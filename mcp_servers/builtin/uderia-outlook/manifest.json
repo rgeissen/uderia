@@ -1,0 +1,103 @@
+{
+  "id": "uderia-outlook",
+  "name": "uderia-outlook",
+  "display_name": "Uderia Outlook",
+  "description": "Microsoft Outlook mail, calendar, and contacts integration. Provides read_emails, send_email, search_emails, list_calendar, create_event, and get_contacts tools. Requires user Microsoft account connection.",
+  "version": "1.0.0",
+  "transport": "stdio",
+  "install_type": "builtin",
+  "entry_point": "mcp_servers/builtin/uderia-outlook/server.py",
+  "tools": ["read_emails", "send_email", "search_emails", "list_calendar", "create_event", "get_contacts"],
+  "tool_schemas": [
+    {
+      "name": "read_emails",
+      "description": "Read recent emails from the user's Outlook inbox.",
+      "arguments": [
+        {"name": "max_results", "type": "integer", "description": "Maximum number of emails to return (default: 10, max: 50).", "required": false},
+        {"name": "folder", "type": "string", "description": "Mail folder name (default: inbox).", "required": false}
+      ]
+    },
+    {
+      "name": "send_email",
+      "description": "Send an email via the user's Outlook account.",
+      "arguments": [
+        {"name": "to", "type": "string", "description": "Recipient email address(es), comma-separated.", "required": true},
+        {"name": "subject", "type": "string", "description": "Email subject line.", "required": true},
+        {"name": "body", "type": "string", "description": "Plain text email body.", "required": true},
+        {"name": "cc", "type": "string", "description": "CC email address(es), comma-separated (optional).", "required": false}
+      ]
+    },
+    {
+      "name": "search_emails",
+      "description": "Search Outlook emails by keyword.",
+      "arguments": [
+        {"name": "query", "type": "string", "description": "Search keyword or phrase.", "required": true},
+        {"name": "max_results", "type": "integer", "description": "Maximum results to return (default: 10, max: 50).", "required": false}
+      ]
+    },
+    {
+      "name": "list_calendar",
+      "description": "List upcoming Outlook Calendar events.",
+      "arguments": [
+        {"name": "max_results", "type": "integer", "description": "Maximum events to return (default: 10, max: 50).", "required": false},
+        {"name": "time_min", "type": "string", "description": "Start time in ISO 8601 format (e.g. 2026-05-01T00:00:00Z). Defaults to now.", "required": false}
+      ]
+    },
+    {
+      "name": "create_event",
+      "description": "Create a new Outlook Calendar event.",
+      "arguments": [
+        {"name": "subject", "type": "string", "description": "Event title.", "required": true},
+        {"name": "start_datetime", "type": "string", "description": "Start time in ISO 8601 format, e.g. 2026-05-15T10:00:00.", "required": true},
+        {"name": "end_datetime", "type": "string", "description": "End time in ISO 8601 format.", "required": true},
+        {"name": "description", "type": "string", "description": "Event description (optional).", "required": false},
+        {"name": "location", "type": "string", "description": "Event location (optional).", "required": false},
+        {"name": "attendees", "type": "array", "description": "List of attendee email addresses (optional).", "required": false}
+      ]
+    },
+    {
+      "name": "get_contacts",
+      "description": "Search the user's Outlook contacts by name or email.",
+      "arguments": [
+        {"name": "query", "type": "string", "description": "Search query (name or email fragment).", "required": true},
+        {"name": "max_results", "type": "integer", "description": "Maximum results to return (default: 10, max: 25).", "required": false}
+      ]
+    }
+  ],
+  "credential_schema": {
+    "AZURE_CLIENT_ID": {
+      "label": "Azure App (Client) ID",
+      "description": "Application (client) ID from your Azure App Registration (Azure Portal → App registrations → your app → Overview).",
+      "required": true,
+      "sensitive": false
+    },
+    "AZURE_CLIENT_SECRET": {
+      "label": "Azure Client Secret",
+      "description": "Client secret from Azure Portal → App registrations → your app → Certificates & secrets.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "config_schema": {
+    "AZURE_TENANT_ID": {
+      "label": "Azure Tenant ID (optional)",
+      "description": "Azure AD tenant ID to restrict to a single organisation. Leave empty to allow any Microsoft account (personal + work).",
+      "type": "string",
+      "default": "common"
+    }
+  },
+  "dependencies": [
+    "httpx>=0.24.0"
+  ],
+  "requires_docker": false,
+  "requires_user_auth": true,
+  "oauth_provider": "outlook",
+  "auth_schema": {
+    "type": "oauth2",
+    "display_name": "Microsoft",
+    "description": "Connect your Microsoft account to enable Outlook mail and calendar tools.",
+    "icon": "microsoft"
+  },
+  "security_acknowledgment_required": false,
+  "tags": ["microsoft", "outlook", "email", "calendar", "contacts", "productivity"]
+}

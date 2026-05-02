@@ -43,6 +43,7 @@ let _pconnSearchTimeout     = null;
 let _pconnCredentialsServerId = null;
 let _pconnLoadingMore       = false;
 let _pconnCurrentSearch     = '';
+let _pmcpActiveTag          = null;  // null = All; string = active tag filter
 
 // Admin split-panel state
 let _paTypeFilter   = 'all';   // 'all' | 'platform' | 'user'
@@ -484,6 +485,9 @@ function _renderMarketplaceModal() {
                     </div>
                 </div>
 
+                <!-- Tag filter bar (rendered dynamically when results load) -->
+                <div id="pmcp-tag-bar" class="hidden px-6 pb-2 pt-1 flex flex-wrap gap-1.5"></div>
+
                 <!-- Results area OR Add-Registry form (switched by tab) -->
                 <div class="flex-1 overflow-y-auto px-6 py-3 space-y-2" id="pmcp-browse-results">
                     <div class="text-center py-8 text-sm text-gray-400">Loading…</div>
@@ -600,6 +604,8 @@ function selectPmcpSource(sourceId) {
 function _showAddRegistryForm() {
     const searchBar = document.getElementById('pmcp-search-bar');
     if (searchBar) searchBar.classList.add('hidden');
+    const tagBar = document.getElementById('pmcp-tag-bar');
+    if (tagBar) { tagBar.classList.add('hidden'); tagBar.innerHTML = ''; }
 
     const resultsEl = document.getElementById('pmcp-browse-results');
     if (!resultsEl) return;
@@ -658,6 +664,9 @@ async function _browseRegistry(sourceId, search) {
     if (!resultsEl) return;
     _pconnBrowseResults = [];
     _pconnNextCursor = '';
+    _pmcpActiveTag = null;
+    const tagBar = document.getElementById('pmcp-tag-bar');
+    if (tagBar) { tagBar.classList.add('hidden'); tagBar.innerHTML = ''; }
     resultsEl.innerHTML = '<div class="text-center py-8 text-sm text-gray-400">Loading…</div>';
     try {
         const batch = await _fetchRegistryPage(sourceId, search, '');
@@ -758,12 +767,74 @@ function _normaliseRegistryServer(raw) {
     };
 }
 
-function _renderBrowseResults(container) {
-    const servers = (_pconnBrowseResults || []).filter(s => s != null);
-    if (!servers.length) {
-        container.innerHTML = '<div class="text-center py-8 text-sm text-gray-400">No connectors found.</div>';
+function _collectTags(servers) {
+    const counts = {};
+    for (const s of servers) {
+        for (const tag of (s.tags || [])) {
+            counts[tag] = (counts[tag] || 0) + 1;
+        }
+    }
+    // Sort by frequency desc, then alphabetically
+    return Object.entries(counts)
+        .sort(([a, ca], [b, cb]) => cb - ca || a.localeCompare(b))
+        .map(([tag]) => tag);
+}
+
+function _renderTagBar(allServers) {
+    const tagBar = document.getElementById('pmcp-tag-bar');
+    if (!tagBar) return;
+    const tags = _collectTags(allServers);
+    if (!tags.length) {
+        tagBar.classList.add('hidden');
+        tagBar.innerHTML = '';
         return;
     }
+    tagBar.classList.remove('hidden');
+    const allActive = _pmcpActiveTag === null;
+    const chips = [null, ...tags].map(tag => {
+        const isActive = tag === null ? allActive : _pmcpActiveTag === tag;
+        const label = tag === null ? 'All' : tag;
+        const matchCount = tag === null ? allServers.length : allServers.filter(s => (s.tags || []).includes(tag)).length;
+        return `<button onclick="setPmcpTagFilter(${tag === null ? 'null' : `'${_paEsc(tag)}'`})"
+                        class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-full transition-all font-medium"
+                        style="${isActive
+                            ? 'background:rgba(129,140,248,0.2);border:1px solid rgba(129,140,248,0.45);color:#a5b4fc'
+                            : 'background:rgba(255,255,255,0.04);border:1px solid var(--border-primary);color:var(--text-muted)'}">
+                    ${_paEsc(label)}
+                    <span class="text-[10px] opacity-60">${matchCount}</span>
+                </button>`;
+    });
+    tagBar.innerHTML = chips.join('');
+}
+
+function setPmcpTagFilter(tag) {
+    _pmcpActiveTag = tag;
+    const container = document.getElementById('pmcp-browse-results');
+    if (container) _renderBrowseResults(container);
+}
+
+function _renderBrowseResults(container) {
+    const allServers = (_pconnBrowseResults || []).filter(s => s != null);
+    if (!allServers.length) {
+        container.innerHTML = '<div class="text-center py-8 text-sm text-gray-400">No connectors found.</div>';
+        const tagBar = document.getElementById('pmcp-tag-bar');
+        if (tagBar) { tagBar.classList.add('hidden'); tagBar.innerHTML = ''; }
+        return;
+    }
+
+    // Update tag bar with all results (before filtering)
+    _renderTagBar(allServers);
+
+    // Apply active tag filter
+    const servers = _pmcpActiveTag
+        ? allServers.filter(s => (s.tags || []).includes(_pmcpActiveTag))
+        : allServers;
+
+    if (!servers.length) {
+        container.innerHTML = '<div class="text-center py-8 text-sm text-gray-400">No connectors match this tag.</div>';
+        return;
+    }
+
     const installedIds = new Set((_pconnInstalledServers || []).filter(s => s).map(s => s.id));
     const cardsHtml = servers.map(s => {
         const isInstalled = installedIds.has(s.id);
@@ -809,6 +880,12 @@ function _renderBrowseResults(container) {
             </div>`;
     }).join('');
 
+    const filteredCount = servers.length;
+    const totalCount = allServers.length;
+    const countLabel = _pmcpActiveTag && filteredCount !== totalCount
+        ? `${filteredCount} of ${totalCount} connector${totalCount !== 1 ? 's' : ''}`
+        : `${totalCount} connector${totalCount !== 1 ? 's' : ''}`;
+
     const loadMoreHtml = _pconnNextCursor ? `
         <div class="pt-2 pb-1 text-center">
             <button id="pmcp-load-more-btn"
@@ -817,9 +894,9 @@ function _renderBrowseResults(container) {
                     style="background:rgba(129,140,248,0.1);border:1px solid rgba(129,140,248,0.25);color:#818cf8">
                 Load more
             </button>
-            <p class="text-[10px] text-gray-600 mt-1">${servers.length} connectors loaded</p>
+            <p class="text-[10px] text-gray-600 mt-1">${totalCount} connectors loaded</p>
         </div>` : `
-        <p class="text-center text-[10px] text-gray-600 py-2">${servers.length} connector${servers.length !== 1 ? 's' : ''} total</p>`;
+        <p class="text-center text-[10px] text-gray-600 py-2">${countLabel}</p>`;
 
     container.innerHTML = cardsHtml + loadMoreHtml;
 }
@@ -844,6 +921,10 @@ function _paServerIcon(serverId) {
         'uderia-files':   `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>`,
         'uderia-browser': `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>`,
         'uderia-google':  `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>`,
+        'uderia-teams':   `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`,
+        'uderia-outlook': `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>`,
+        'uderia-slack':       `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>`,
+        'uderia-sharepoint': `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/></svg>`,
         'uderia-shell':   `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>`,
     };
     return icons[serverId] || `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/></svg>`;
@@ -859,6 +940,22 @@ const CREDENTIAL_SCHEMAS = {
     'uderia-google': [
         { key: 'GOOGLE_CLIENT_ID',     label: 'Google OAuth Client ID',     hint: 'From Google Cloud Console → Credentials', type: 'text'     },
         { key: 'GOOGLE_CLIENT_SECRET', label: 'Google OAuth Client Secret', hint: 'Keep this secret',                        type: 'password' },
+    ],
+    'uderia-teams': [
+        { key: 'AZURE_CLIENT_ID',     label: 'Azure App (Client) ID',     hint: 'Azure Portal → App registrations → your app → Overview', type: 'text'     },
+        { key: 'AZURE_CLIENT_SECRET', label: 'Azure Client Secret',       hint: 'Azure Portal → App registrations → Certificates & secrets', type: 'password' },
+    ],
+    'uderia-outlook': [
+        { key: 'AZURE_CLIENT_ID',     label: 'Azure App (Client) ID',     hint: 'Azure Portal → App registrations → your app → Overview', type: 'text'     },
+        { key: 'AZURE_CLIENT_SECRET', label: 'Azure Client Secret',       hint: 'Azure Portal → App registrations → Certificates & secrets', type: 'password' },
+    ],
+    'uderia-slack': [
+        { key: 'SLACK_CLIENT_ID',     label: 'Slack App Client ID',     hint: 'api.slack.com/apps → your app → Basic Information → App Credentials', type: 'text'     },
+        { key: 'SLACK_CLIENT_SECRET', label: 'Slack App Client Secret', hint: 'Keep this secret',                                                      type: 'password' },
+    ],
+    'uderia-sharepoint': [
+        { key: 'AZURE_CLIENT_ID',     label: 'Azure App (Client) ID',     hint: 'Azure Portal → App registrations → your app → Overview', type: 'text'     },
+        { key: 'AZURE_CLIENT_SECRET', label: 'Azure Client Secret',       hint: 'Azure Portal → App registrations → Certificates & secrets', type: 'password' },
     ],
     'uderia-shell':  [
         { key: 'ALLOWED_COMMANDS', label: 'Allowed commands (CSV)', hint: 'e.g. python,pip,ls,cat — leave empty to allow all', type: 'text' },
@@ -877,6 +974,62 @@ const SETUP_GUIDES = {
                 'Create OAuth 2.0 credentials (APIs &amp; Services → Credentials → Create → OAuth client ID → Web application)',
                 `Add <code style="font-size:10px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px">${callbackUri}</code> as an Authorised redirect URI`,
                 'Copy the Client ID and Client Secret below',
+            ];
+        },
+    },
+    'uderia-teams': {
+        title: 'Azure App Registration setup (Teams)',
+        steps: () => {
+            const callbackUri = `${window.location.origin}/api/v1/connectors/teams/callback`;
+            return [
+                'Go to <a href="https://portal.azure.com" target="_blank" rel="noopener" style="color:#818cf8;text-decoration:underline">portal.azure.com</a> → Azure Active Directory → App registrations → New registration',
+                'Set <strong>Supported account types</strong> to "Accounts in any organizational directory and personal Microsoft accounts"',
+                `Add <code style="font-size:10px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px">${callbackUri}</code> as a Redirect URI (Web platform)`,
+                'Under <strong>API permissions</strong> add: Team.ReadBasic.All, Channel.ReadBasic.All, ChannelMessage.Read.All, ChannelMessage.Send, OnlineMeetings.ReadWrite, User.Read (all Delegated)',
+                'Under <strong>Certificates &amp; secrets</strong> create a new client secret',
+                'Copy the Application (client) ID from Overview and the client secret value below',
+            ];
+        },
+    },
+    'uderia-outlook': {
+        title: 'Azure App Registration setup (Outlook)',
+        steps: () => {
+            const callbackUri = `${window.location.origin}/api/v1/connectors/outlook/callback`;
+            return [
+                'Go to <a href="https://portal.azure.com" target="_blank" rel="noopener" style="color:#818cf8;text-decoration:underline">portal.azure.com</a> → Azure Active Directory → App registrations → New registration',
+                'Set <strong>Supported account types</strong> to "Accounts in any organizational directory and personal Microsoft accounts"',
+                `Add <code style="font-size:10px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px">${callbackUri}</code> as a Redirect URI (Web platform)`,
+                'Under <strong>API permissions</strong> add: Mail.Read, Mail.Send, Mail.ReadWrite, Calendars.ReadWrite, Contacts.Read, User.Read (all Delegated)',
+                'Under <strong>Certificates &amp; secrets</strong> create a new client secret',
+                'Copy the Application (client) ID from Overview and the client secret value below',
+            ];
+        },
+    },
+    'uderia-slack': {
+        title: 'Slack App setup',
+        steps: () => {
+            const callbackUri = `${window.location.origin}/api/v1/connectors/slack/callback`;
+            return [
+                'Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener" style="color:#818cf8;text-decoration:underline">api.slack.com/apps</a> → Create New App → From scratch',
+                'Under <strong>OAuth &amp; Permissions</strong> → Redirect URLs, add: <code style="font-size:10px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px">' + callbackUri + '</code>',
+                'Add <strong>Bot Token Scopes</strong>: channels:read, channels:history, chat:write, users:read, files:read',
+                'Add <strong>User Token Scopes</strong>: identity.basic, identity.email, search:read',
+                'Under <strong>Basic Information</strong> copy the Client ID and Client Secret below',
+                'Install the app to your workspace (OAuth &amp; Permissions → Install to Workspace)',
+            ];
+        },
+    },
+    'uderia-sharepoint': {
+        title: 'Azure App Registration setup (SharePoint)',
+        steps: () => {
+            const callbackUri = `${window.location.origin}/api/v1/connectors/sharepoint/callback`;
+            return [
+                'Go to <a href="https://portal.azure.com" target="_blank" rel="noopener" style="color:#818cf8;text-decoration:underline">portal.azure.com</a> → Azure Active Directory → App registrations → New registration',
+                'Set <strong>Supported account types</strong> to "Accounts in any organizational directory and personal Microsoft accounts"',
+                `Add <code style="font-size:10px;background:rgba(255,255,255,0.06);padding:1px 4px;border-radius:3px">${callbackUri}</code> as a Redirect URI (Web platform)`,
+                'Under <strong>API permissions</strong> add: Files.Read.All, Files.ReadWrite.All, Sites.Read.All, Sites.ReadWrite.All, User.Read (all Delegated)',
+                'Under <strong>Certificates &amp; secrets</strong> create a new client secret',
+                'Copy the Application (client) ID from Overview and the client secret value below',
             ];
         },
     },
@@ -1115,6 +1268,10 @@ function _getBuiltinToolsForServer(serverId) {
         'uderia-files':   ['read_file', 'write_file', 'list_dir', 'search_files'],
         'uderia-browser': ['navigate', 'click', 'fill_form', 'screenshot', 'scrape', 'extract_data'],
         'uderia-google':  ['read_emails', 'send_email', 'search_emails', 'list_calendar', 'create_event', 'get_contacts'],
+        'uderia-teams':      ['list_teams', 'list_channels', 'get_messages', 'send_message', 'create_meeting'],
+        'uderia-outlook':    ['read_emails', 'send_email', 'search_emails', 'list_calendar', 'create_event', 'get_contacts'],
+        'uderia-slack':      ['list_channels', 'get_messages', 'send_message', 'search_messages', 'list_users'],
+        'uderia-sharepoint': ['list_sites', 'list_libraries', 'list_files', 'read_file', 'upload_file', 'search_files'],
         'uderia-shell':   ['exec_command', 'run_script', 'list_processes', 'kill_process'],
     };
     return MAP[serverId] || [];
