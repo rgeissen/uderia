@@ -56,6 +56,12 @@ class User(Base):
     oauth_provider = Column(String(50), nullable=True, index=True)  # 'google', 'github', 'microsoft', etc.
     oauth_id = Column(String(255), nullable=True)  # Provider's unique user ID
     oauth_metadata = Column(JSON, nullable=True)  # Store additional OAuth profile data
+
+    # SSO / OIDC fields (Phase 1)
+    auth_method = Column(String(20), nullable=True)  # 'password', 'oauth', 'oidc'
+    sso_config_id = Column(String(36), nullable=True)  # References sso_configurations.id
+    sso_session_id = Column(String(36), nullable=True)  # Current SSO session ID
+    sso_groups = Column(Text, nullable=True)  # JSON array of groups from IdP
     
     # Relationships
     auth_tokens = relationship("AuthToken", back_populates="user", cascade="all, delete-orphan")

@@ -151,6 +151,12 @@ def init_database():
         # Create scheduled tasks tables (Track B — autonomous scheduling)
         _create_scheduled_tasks_tables()
 
+        # Create SSO / OIDC configuration tables (Phase 1 SSO)
+        _create_sso_tables()
+
+        # Create SAML 2.0 + group-sync tables (Phase 2 / Phase 3 SSO)
+        _create_saml_tables()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -1728,6 +1734,135 @@ def _create_scheduled_tasks_tables():
 
     except Exception as e:
         logger.error(f"Error creating scheduled_tasks tables: {e}", exc_info=True)
+
+
+def _create_sso_tables():
+    """
+    Create SSO / OIDC configuration tables and add SSO columns to users.
+    Safe to call multiple times (CREATE TABLE IF NOT EXISTS + ALTER TABLE checks).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "30_sso.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                cursor.executescript(f.read())
+            logger.debug("Applied schema: 30_sso.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS sso_configurations (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    provider TEXT NOT NULL DEFAULT 'oidc',
+                    issuer_url TEXT NOT NULL,
+                    client_id TEXT NOT NULL,
+                    client_secret TEXT NOT NULL,
+                    discovery_doc TEXT,
+                    discovery_cached_at TEXT,
+                    scopes TEXT NOT NULL DEFAULT '["openid","profile","email"]',
+                    email_claim TEXT NOT NULL DEFAULT 'email',
+                    name_claim TEXT NOT NULL DEFAULT 'name',
+                    groups_claim TEXT,
+                    sub_claim TEXT NOT NULL DEFAULT 'sub',
+                    group_tier_map TEXT,
+                    default_tier TEXT NOT NULL DEFAULT 'user',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    auto_provision_users INTEGER NOT NULL DEFAULT 1,
+                    require_email_verification INTEGER NOT NULL DEFAULT 0,
+                    display_order INTEGER NOT NULL DEFAULT 0,
+                    button_label TEXT,
+                    icon_url TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS sso_sessions (
+                    id TEXT PRIMARY KEY,
+                    user_uuid TEXT NOT NULL,
+                    sso_config_id TEXT NOT NULL,
+                    id_token_hash TEXT NOT NULL,
+                    sid TEXT,
+                    sub TEXT NOT NULL,
+                    issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    expires_at TEXT,
+                    revoked INTEGER NOT NULL DEFAULT 0,
+                    revoked_at TEXT
+                );
+            """)
+
+        # Migrate users table: add SSO columns if not present
+        sso_columns = [
+            ("auth_method", "TEXT"),
+            ("sso_config_id", "TEXT"),
+            ("sso_session_id", "TEXT"),
+            ("sso_groups", "TEXT"),
+        ]
+        for col, col_type in sso_columns:
+            try:
+                cursor.execute(f"SELECT {col} FROM users LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info(f"Adding {col} column to users table for SSO")
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
+                conn.commit()
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating SSO tables: {e}", exc_info=True)
+
+
+def _create_saml_tables():
+    """
+    Create SAML 2.0 provider configuration table and group-sync audit log.
+    Safe to call multiple times (uses CREATE TABLE IF NOT EXISTS).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "31_saml.sql"
+        if schema_path.exists():
+            cursor.executescript(schema_path.read_text())
+            logger.debug("Applied schema: 31_saml.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS saml_configurations (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL,
+                    sp_entity_id TEXT NOT NULL, sp_acs_url TEXT,
+                    sp_private_key TEXT, sp_certificate TEXT,
+                    idp_entity_id TEXT NOT NULL, idp_sso_url TEXT NOT NULL,
+                    idp_slo_url TEXT, idp_certificate TEXT NOT NULL,
+                    email_attr TEXT DEFAULT 'email', name_attr TEXT DEFAULT 'displayName',
+                    groups_attr TEXT, default_tier TEXT DEFAULT 'user',
+                    group_tier_map TEXT, auto_provision_users INTEGER DEFAULT 1,
+                    enabled INTEGER DEFAULT 1, button_label TEXT, icon_url TEXT,
+                    display_order INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS sso_sync_events (
+                    id TEXT PRIMARY KEY, user_uuid TEXT NOT NULL,
+                    config_id TEXT, config_type TEXT, sync_type TEXT NOT NULL,
+                    old_tier TEXT, new_tier TEXT, old_groups TEXT, new_groups TEXT,
+                    changed INTEGER DEFAULT 0,
+                    synced_at TEXT DEFAULT (datetime('now'))
+                );
+            """)
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating SAML tables: {e}", exc_info=True)
 
 
 def _run_user_table_migrations():

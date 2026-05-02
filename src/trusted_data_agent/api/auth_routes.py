@@ -3088,3 +3088,692 @@ async def get_oauth_accounts(current_user):
             'status': 'error',
             'message': 'Failed to fetch OAuth accounts'
         }), 500
+
+
+# ── SSO / OIDC Routes ─────────────────────────────────────────────────────────
+
+@auth_bp.route('/sso/configurations', methods=['GET'])
+@require_admin
+async def list_sso_configurations(current_user):
+    """List all SSO configurations (admin only)."""
+    from trusted_data_agent.auth.oidc_provider import list_sso_configs
+    try:
+        configs = list_sso_configs()
+        return jsonify({'status': 'success', 'configurations': configs}), 200
+    except Exception as exc:
+        logger.error(f"Error listing SSO configs: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to list SSO configurations'}), 500
+
+
+@auth_bp.route('/sso/configurations', methods=['POST'])
+@require_admin
+async def create_sso_configuration(current_user):
+    """Create a new SSO configuration (admin only)."""
+    from trusted_data_agent.auth.oidc_provider import create_sso_config
+    try:
+        data = await request.get_json()
+        required = ['name', 'issuer_url', 'client_id', 'client_secret']
+        missing = [f for f in required if not data.get(f)]
+        if missing:
+            return jsonify({'status': 'error', 'message': f'Missing required fields: {missing}'}), 400
+
+        cfg = create_sso_config(data)
+        return jsonify({'status': 'success', 'configuration': cfg}), 201
+    except Exception as exc:
+        logger.error(f"Error creating SSO config: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to create SSO configuration'}), 500
+
+
+@auth_bp.route('/sso/configurations/<config_id>', methods=['GET'])
+@require_admin
+async def get_sso_configuration(current_user, config_id):
+    """Get a specific SSO configuration (admin only)."""
+    from trusted_data_agent.auth.oidc_provider import get_sso_config
+    try:
+        cfg = get_sso_config(config_id)
+        if not cfg:
+            return jsonify({'status': 'error', 'message': 'Not found'}), 404
+        return jsonify({'status': 'success', 'configuration': cfg}), 200
+    except Exception as exc:
+        logger.error(f"Error fetching SSO config: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to fetch SSO configuration'}), 500
+
+
+@auth_bp.route('/sso/configurations/<config_id>', methods=['PUT'])
+@require_admin
+async def update_sso_configuration(current_user, config_id):
+    """Update an SSO configuration (admin only)."""
+    from trusted_data_agent.auth.oidc_provider import update_sso_config
+    try:
+        data = await request.get_json()
+        cfg = update_sso_config(config_id, data)
+        if not cfg:
+            return jsonify({'status': 'error', 'message': 'Not found'}), 404
+        return jsonify({'status': 'success', 'configuration': cfg}), 200
+    except Exception as exc:
+        logger.error(f"Error updating SSO config: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to update SSO configuration'}), 500
+
+
+@auth_bp.route('/sso/configurations/<config_id>', methods=['DELETE'])
+@require_admin
+async def delete_sso_configuration(current_user, config_id):
+    """Delete an SSO configuration (admin only)."""
+    from trusted_data_agent.auth.oidc_provider import delete_sso_config
+    try:
+        ok = delete_sso_config(config_id)
+        if not ok:
+            return jsonify({'status': 'error', 'message': 'Not found'}), 404
+        return jsonify({'status': 'success', 'message': 'Configuration deleted'}), 200
+    except Exception as exc:
+        logger.error(f"Error deleting SSO config: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to delete SSO configuration'}), 500
+
+
+@auth_bp.route('/sso/configurations/<config_id>/test', methods=['POST'])
+@require_admin
+async def test_sso_configuration(current_user, config_id):
+    """Test an SSO configuration by probing the discovery endpoint (admin only)."""
+    from trusted_data_agent.auth.oidc_provider import test_sso_config
+    try:
+        result = await test_sso_config(config_id)
+        status_code = 200 if result.get('success') else 400
+        return jsonify({'status': 'success' if result.get('success') else 'error', **result}), status_code
+    except Exception as exc:
+        logger.error(f"Error testing SSO config: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(exc)}), 500
+
+
+@auth_bp.route('/sso/providers', methods=['GET'])
+async def list_sso_providers():
+    """
+    Return enabled SSO providers for the login page (no auth required).
+    Returns only the public information needed to render the login button.
+    """
+    from trusted_data_agent.auth.oidc_provider import list_sso_configs
+    try:
+        configs = list_sso_configs(enabled_only=True)
+        providers = [
+            {
+                'id': c['id'],
+                'name': c['name'],
+                'button_label': c.get('button_label') or f"Sign in with {c['name']}",
+                'icon_url': c.get('icon_url'),
+            }
+            for c in configs
+        ]
+        return jsonify({'status': 'success', 'providers': providers}), 200
+    except Exception as exc:
+        logger.error(f"Error listing SSO providers: {exc}", exc_info=True)
+        return jsonify({'status': 'success', 'providers': []}), 200
+
+
+@auth_bp.route('/sso/initiate/<config_id>', methods=['GET'])
+async def initiate_sso(config_id):
+    """
+    Initiate SSO login flow — redirect to IdP authorization endpoint.
+    """
+    from trusted_data_agent.auth.oidc_provider import build_authorization_url
+    from quart import redirect
+    from urllib.parse import urlencode
+    try:
+        from trusted_data_agent.auth.oauth_config import OAuthConfig
+        redirect_uri = OAuthConfig.APP_BASE_URL.rstrip('/') + f'/api/v1/auth/sso/callback/{config_id}'
+        auth_url = await build_authorization_url(config_id, redirect_uri)
+        if not auth_url:
+            error_params = urlencode({'error': 'SSO provider not configured or disabled'})
+            return redirect(f'/login?{error_params}')
+        return redirect(auth_url)
+    except Exception as exc:
+        logger.error(f"Error initiating SSO for {config_id}: {exc}", exc_info=True)
+        from urllib.parse import urlencode
+        error_params = urlencode({'error': 'SSO initiation failed'})
+        from quart import redirect
+        return redirect(f'/login?{error_params}')
+
+
+@auth_bp.route('/sso/callback/<config_id>', methods=['GET'])
+async def sso_callback(config_id):
+    """
+    Handle OIDC authorization code callback.
+    Validates id_token, provisions user if needed, issues JWT.
+    """
+    from trusted_data_agent.auth.oidc_provider import (
+        handle_callback, get_sso_config, record_sso_session
+    )
+    from quart import redirect
+    from urllib.parse import urlencode
+
+    args = request.args
+    error = args.get('error')
+    if error:
+        desc = args.get('error_description', error)
+        logger.warning(f"SSO callback error for config {config_id}: {desc}")
+        error_params = urlencode({'error': desc})
+        return redirect(f'/login?{error_params}')
+
+    code = args.get('code')
+    state = args.get('state')
+    if not code or not state:
+        error_params = urlencode({'error': 'Invalid SSO callback — missing code or state'})
+        return redirect(f'/login?{error_params}')
+
+    try:
+        user_info = await handle_callback(state=state, code=code)
+        if not user_info:
+            error_params = urlencode({'error': 'SSO authentication failed'})
+            return redirect(f'/login?{error_params}')
+
+        cfg = get_sso_config(config_id)
+        if not cfg:
+            error_params = urlencode({'error': 'SSO provider not found'})
+            return redirect(f'/login?{error_params}')
+
+        jwt_token, user_dict, new_user_created = await _provision_sso_user(user_info, cfg)
+        if not jwt_token:
+            error_params = urlencode({'error': 'Failed to authenticate SSO user'})
+            return redirect(f'/login?{error_params}')
+
+        if user_dict:
+            record_sso_session(
+                user_uuid=user_dict['id'],
+                config_id=config_id,
+                id_token=user_info['id_token'],
+                sub=user_info['sub'],
+                sid=user_info.get('raw_claims', {}).get('sid'),
+            )
+
+        if new_user_created and user_dict:
+            user_id = user_dict['id']
+            ensure_user_default_profile(user_id)
+            ensure_user_default_collection(user_id)
+            ensure_user_default_extensions(user_id)
+            ensure_user_default_skills(user_id)
+
+        token_params = urlencode({'token': jwt_token, 'method': 'sso'})
+        return redirect(f'/?{token_params}')
+
+    except Exception as exc:
+        logger.error(f"Error in SSO callback for {config_id}: {exc}", exc_info=True)
+        error_params = urlencode({'error': 'SSO authentication error'})
+        return redirect(f'/login?{error_params}')
+
+
+async def _provision_sso_user(user_info: dict, cfg: dict, config_type: str = 'oidc'):
+    """
+    Find or create a user from SSO claims (OIDC or SAML).
+    Returns (jwt_token, user_dict, new_user_created).
+
+    Phase 3: always re-syncs group membership and tier on every login
+    so IdP-side revocations are reflected immediately.
+    """
+    import secrets
+    from datetime import timezone
+    from trusted_data_agent.auth.security import hash_password, generate_auth_token
+    from trusted_data_agent.auth.saml_provider import log_sync_event
+
+    email = user_info.get('email')
+    sub = user_info.get('sub')
+    name = user_info.get('name') or email
+
+    if not email and not sub:
+        logger.error("SSO user_info missing both email and sub — cannot provision user")
+        return None, None, False
+
+    groups = list(user_info.get('groups') or [])
+    group_tier_map = cfg.get('group_tier_map') or {}
+    if isinstance(group_tier_map, str):
+        try:
+            import json
+            group_tier_map = json.loads(group_tier_map)
+        except Exception:
+            group_tier_map = {}
+
+    # Resolve effective tier from groups (highest-privilege mapping wins)
+    _tier_order = {'user': 0, 'developer': 1, 'admin': 2}
+    tier = cfg.get('default_tier', 'user')
+    for group in groups:
+        mapped = group_tier_map.get(group)
+        if mapped and _tier_order.get(mapped, 0) > _tier_order.get(tier, 0):
+            tier = mapped
+
+    is_admin = (tier == 'admin')
+
+    # Collect sync event args to call log_sync_event OUTSIDE the DB session
+    # (SQLite allows only one concurrent writer; calling it inside would deadlock)
+    pending_sync = None
+
+    try:
+        with get_db_session() as db_session:
+            from trusted_data_agent.auth.models import User
+            import json as _json
+
+            # Look up by (sso_config_id, sub) first — most precise match
+            user = None
+            if sub:
+                user = db_session.query(User).filter_by(
+                    sso_config_id=cfg['id'],
+                ).filter(User.oauth_id == sub).first()
+
+            if not user and email:
+                user = db_session.query(User).filter_by(email=email).first()
+
+            new_user_created = False
+            if not user:
+                if not cfg.get('auto_provision_users', True):
+                    logger.warning(f"SSO login for unknown user {email} rejected — auto_provision disabled")
+                    return None, None, False
+
+                base_username = (email.split('@')[0] if email else sub or 'ssouser').lower()
+                username = base_username
+                counter = 1
+                while db_session.query(User).filter_by(username=username).first():
+                    username = f"{base_username}_{counter}"
+                    counter += 1
+
+                password_placeholder = secrets.token_urlsafe(32)
+                user = User(
+                    username=username,
+                    email=email or f"{sub}@sso.local",
+                    password_hash=hash_password(password_placeholder),
+                    full_name=name,
+                    display_name=name,
+                    is_active=True,
+                    profile_tier=tier,
+                    is_admin=is_admin,
+                    email_verified=user_info.get('email_verified', False) or is_admin,
+                    oauth_provider=config_type,
+                    oauth_id=sub,
+                    auth_method=config_type,
+                    sso_config_id=cfg['id'],
+                )
+                db_session.add(user)
+                db_session.flush()
+                new_user_created = True
+                logger.info(f"Provisioned new SSO user {user.id} ({email}) via {config_type}, tier={tier}")
+                pending_sync = (user.id, cfg['id'], config_type, 'login', None, tier, [], groups)
+            else:
+                if not user.is_active:
+                    logger.warning(f"Deactivated user {user.id} attempted SSO login")
+                    return None, None, False
+
+                # Phase 3: always re-sync groups and tier for existing users
+                old_tier = user.profile_tier
+                old_groups = []
+                try:
+                    old_groups = _json.loads(user.sso_groups) if user.sso_groups else []
+                except Exception:
+                    old_groups = []
+
+                user.auth_method = config_type
+                user.sso_config_id = cfg['id']
+                if sub:
+                    user.oauth_id = sub
+                if name and not user.full_name:
+                    user.full_name = name
+
+                # Always apply group → tier mapping (not just when tier != 'user')
+                user.profile_tier = tier
+                user.is_admin = is_admin
+                pending_sync = (user.id, cfg['id'], config_type, 'login', old_tier, tier, old_groups, groups)
+
+                if old_tier != tier:
+                    logger.info(f"SSO group sync: user {user.id} tier {old_tier} → {tier}")
+
+            user.sso_groups = _json.dumps(groups) if groups else None
+            user.last_login_at = datetime.now(timezone.utc)
+            db_session.commit()
+
+            jwt_token, _ = generate_auth_token(
+                user_id=user.id,
+                username=user.username,
+                ip_address=None,
+            )
+            result = (jwt_token, user.to_dict(), new_user_created)
+
+        # Session closed — now safe to write the sync event with its own connection
+        if pending_sync:
+            try:
+                log_sync_event(*pending_sync)
+            except Exception as sync_exc:
+                logger.warning(f"SSO sync event write failed (non-fatal): {sync_exc}")
+
+        return result
+
+    except Exception as exc:
+        logger.error(f"Error provisioning SSO user: {exc}", exc_info=True)
+        return None, None, False
+
+
+@auth_bp.route('/sso/backchannel-logout', methods=['POST'])
+async def sso_backchannel_logout():
+    """
+    Handle OIDC back-channel logout token from IdP.
+    Expects application/x-www-form-urlencoded with logout_token field.
+    """
+    from trusted_data_agent.auth.oidc_provider import revoke_sso_session_by_sid
+    try:
+        form = await request.form
+        logout_token = form.get('logout_token')
+        if not logout_token:
+            return jsonify({'error': 'missing logout_token'}), 400
+
+        # Decode claims from logout token (unverified — just need sid/sub)
+        import base64 as _b64
+        import json as _json
+        try:
+            _, payload_b64, _ = logout_token.split('.')
+            padding = 4 - len(payload_b64) % 4
+            if padding != 4:
+                payload_b64 += '=' * padding
+            claims = _json.loads(_b64.urlsafe_b64decode(payload_b64))
+        except Exception:
+            return jsonify({'error': 'invalid logout_token'}), 400
+
+        sid = claims.get('sid')
+        sub = claims.get('sub')
+
+        revoked = 0
+        if sid:
+            revoked = revoke_sso_session_by_sid(sid)
+            logger.info(f"Back-channel logout: revoked {revoked} session(s) for sid={sid}")
+
+        return '', 200
+
+    except Exception as exc:
+        logger.error(f"Error in back-channel logout: {exc}", exc_info=True)
+        return jsonify({'error': 'internal error'}), 500
+
+
+# ============================================================================
+# SAML 2.0 Routes — Phase 2 SSO
+# ============================================================================
+
+@auth_bp.route('/saml/configurations', methods=['GET'])
+@require_admin
+async def list_saml_configurations(current_user):
+    """List all SAML configurations (admin only)."""
+    from trusted_data_agent.auth.saml_provider import list_saml_configs
+    try:
+        configs = list_saml_configs(enabled_only=False)
+        return jsonify({'status': 'success', 'configurations': configs}), 200
+    except Exception as exc:
+        logger.error(f"Error listing SAML configurations: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to list SAML configurations'}), 500
+
+
+@auth_bp.route('/saml/configurations', methods=['POST'])
+@require_admin
+async def create_saml_configuration(current_user):
+    """Create a new SAML configuration (admin only)."""
+    from trusted_data_agent.auth.saml_provider import create_saml_config
+    try:
+        data = await request.get_json()
+        required = ['name', 'sp_entity_id', 'idp_entity_id', 'idp_sso_url', 'idp_certificate']
+        missing = [f for f in required if not data.get(f)]
+        if missing:
+            return jsonify({'status': 'error', 'message': f'Missing required fields: {missing}'}), 400
+        cfg = create_saml_config(data)
+        return jsonify({'status': 'success', 'configuration': cfg}), 201
+    except Exception as exc:
+        logger.error(f"Error creating SAML configuration: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to create SAML configuration'}), 500
+
+
+@auth_bp.route('/saml/configurations/<config_id>', methods=['GET'])
+@require_admin
+async def get_saml_configuration(current_user, config_id):
+    """Get a SAML configuration by ID (admin only)."""
+    from trusted_data_agent.auth.saml_provider import get_saml_config
+    cfg = get_saml_config(config_id)
+    if not cfg:
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
+    return jsonify({'status': 'success', 'configuration': cfg}), 200
+
+
+@auth_bp.route('/saml/configurations/<config_id>', methods=['PUT'])
+@require_admin
+async def update_saml_configuration(current_user, config_id):
+    """Update a SAML configuration (admin only)."""
+    from trusted_data_agent.auth.saml_provider import update_saml_config
+    try:
+        data = await request.get_json()
+        cfg = update_saml_config(config_id, data)
+        if not cfg:
+            return jsonify({'status': 'error', 'message': 'Not found'}), 404
+        return jsonify({'status': 'success', 'configuration': cfg}), 200
+    except Exception as exc:
+        logger.error(f"Error updating SAML configuration: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to update SAML configuration'}), 500
+
+
+@auth_bp.route('/saml/configurations/<config_id>', methods=['DELETE'])
+@require_admin
+async def delete_saml_configuration(current_user, config_id):
+    """Delete a SAML configuration (admin only)."""
+    from trusted_data_agent.auth.saml_provider import delete_saml_config
+    deleted = delete_saml_config(config_id)
+    if not deleted:
+        return jsonify({'status': 'error', 'message': 'Not found'}), 404
+    return jsonify({'status': 'success', 'message': 'Deleted'}), 200
+
+
+@auth_bp.route('/saml/<config_id>/metadata', methods=['GET'])
+async def saml_sp_metadata(config_id):
+    """
+    Return SP metadata XML for this SAML configuration.
+    Admins paste this URL into their IdP's SP registration form.
+    No authentication required — metadata is public.
+    """
+    from trusted_data_agent.auth.saml_provider import get_sp_metadata
+    from quart import Response
+    try:
+        base_url = request.host_url.rstrip('/')
+        xml = get_sp_metadata(config_id, base_url)
+        if not xml:
+            return jsonify({'error': 'SAML configuration not found'}), 404
+        return Response(xml, content_type='application/samlmetadata+xml; charset=utf-8')
+    except Exception as exc:
+        logger.error(f"Error generating SAML metadata: {exc}", exc_info=True)
+        return jsonify({'error': 'internal error'}), 500
+
+
+@auth_bp.route('/saml/<config_id>/initiate', methods=['GET'])
+async def saml_initiate(config_id):
+    """
+    Initiate SAML 2.0 authentication flow.
+    Builds AuthnRequest and redirects user to IdP SSO URL.
+    """
+    from trusted_data_agent.auth.saml_provider import build_saml_auth_request
+    from quart import redirect
+    try:
+        base_url = request.host_url.rstrip('/')
+        result = build_saml_auth_request(config_id, base_url)
+        if not result:
+            return jsonify({'error': 'SAML configuration not found or disabled'}), 404
+        redirect_url, relay_state = result
+        return redirect(redirect_url)
+    except Exception as exc:
+        logger.error(f"Error initiating SAML flow: {exc}", exc_info=True)
+        return jsonify({'error': 'internal error'}), 500
+
+
+@auth_bp.route('/saml/<config_id>/acs', methods=['POST'])
+async def saml_acs(config_id):
+    """
+    SAML Assertion Consumer Service — receives POST from IdP after authentication.
+    Validates the assertion, provisions the user, and redirects to the app.
+    """
+    from trusted_data_agent.auth.saml_provider import (
+        process_saml_response, get_saml_config, consume_relay_state
+    )
+    from quart import redirect
+    from urllib.parse import urlencode
+
+    try:
+        form = await request.form
+        saml_response = form.get('SAMLResponse')
+        relay_state = form.get('RelayState', '')
+
+        if not saml_response:
+            return redirect(f'/login?{urlencode({"error": "Missing SAMLResponse"})}')
+
+        # Extract user info from the SAML assertion
+        user_info = process_saml_response(config_id, saml_response)
+        if not user_info:
+            return redirect(f'/login?{urlencode({"error": "SAML assertion validation failed"})}')
+
+        cfg = get_saml_config(config_id)
+        if not cfg:
+            return redirect(f'/login?{urlencode({"error": "SAML provider not found"})}')
+
+        jwt_token, user_dict, new_user_created = await _provision_sso_user(
+            user_info, cfg, config_type='saml'
+        )
+        if not jwt_token:
+            return redirect(f'/login?{urlencode({"error": "Failed to authenticate SAML user"})}')
+
+        if new_user_created and user_dict:
+            user_id = user_dict['id']
+            ensure_user_default_profile(user_id)
+            ensure_user_default_collection(user_id)
+            ensure_user_default_extensions(user_id)
+            ensure_user_default_skills(user_id)
+
+        return redirect(f'/?{urlencode({"token": jwt_token, "method": "saml"})}')
+
+    except Exception as exc:
+        logger.error(f"Error in SAML ACS: {exc}", exc_info=True)
+        return redirect(f'/login?{urlencode({"error": "SAML authentication error"})}')
+
+
+# ============================================================================
+# Phase 3 — Group sync admin endpoints
+# ============================================================================
+
+@auth_bp.route('/sso/users', methods=['GET'])
+@require_admin
+async def list_sso_provisioned_users(current_user):
+    """List all SSO-provisioned users with their current groups and tier (admin only)."""
+    from trusted_data_agent.auth.saml_provider import list_sso_users
+    try:
+        users = list_sso_users()
+        return jsonify({'status': 'success', 'users': users, 'count': len(users)}), 200
+    except Exception as exc:
+        logger.error(f"Error listing SSO users: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to list SSO users'}), 500
+
+
+@auth_bp.route('/sso/users/<user_id>/sync', methods=['POST'])
+@require_admin
+async def manual_sso_sync(current_user, user_id):
+    """
+    Manually re-sync an SSO user's groups from their stored claims.
+    Re-applies group → tier mapping using the current provider configuration.
+    """
+    from trusted_data_agent.auth.saml_provider import list_sso_users, log_sync_event
+    import json as _json
+
+    try:
+        users = list_sso_users(user_uuid=user_id)
+        if not users:
+            return jsonify({'status': 'error', 'message': 'SSO user not found'}), 404
+
+        user_data = users[0]
+        config_type = user_data.get('auth_method', 'oidc')
+        config_id = user_data.get('sso_config_id')
+
+        # Load current provider config
+        cfg = None
+        if config_type == 'saml':
+            from trusted_data_agent.auth.saml_provider import get_saml_config
+            cfg = get_saml_config(config_id) if config_id else None
+        else:
+            from trusted_data_agent.auth.oidc_provider import get_sso_config
+            cfg = get_sso_config(config_id) if config_id else None
+
+        if not cfg:
+            return jsonify({'status': 'error', 'message': 'SSO provider config not found'}), 404
+
+        groups = user_data.get('sso_groups', [])
+        group_tier_map = cfg.get('group_tier_map') or {}
+        if isinstance(group_tier_map, str):
+            try:
+                group_tier_map = _json.loads(group_tier_map)
+            except Exception:
+                group_tier_map = {}
+
+        _tier_order = {'user': 0, 'developer': 1, 'admin': 2}
+        new_tier = cfg.get('default_tier', 'user')
+        for group in groups:
+            mapped = group_tier_map.get(group)
+            if mapped and _tier_order.get(mapped, 0) > _tier_order.get(new_tier, 0):
+                new_tier = mapped
+
+        old_tier = user_data.get('profile_tier', 'user')
+
+        with get_db_session() as db_session:
+            from trusted_data_agent.auth.models import User
+            u = db_session.query(User).filter_by(id=user_id).first()
+            if u:
+                u.profile_tier = new_tier
+                u.is_admin = (new_tier == 'admin')
+                db_session.commit()
+
+        log_sync_event(user_id, config_id, config_type, 'manual',
+                       old_tier, new_tier, groups, groups)
+
+        return jsonify({
+            'status': 'success',
+            'user_id': user_id,
+            'old_tier': old_tier,
+            'new_tier': new_tier,
+            'groups': groups,
+            'changed': old_tier != new_tier,
+        }), 200
+
+    except Exception as exc:
+        logger.error(f"Error syncing SSO user: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Sync failed'}), 500
+
+
+@auth_bp.route('/sso/users/<user_id>/sync-history', methods=['GET'])
+@require_admin
+async def get_sso_sync_history(current_user, user_id):
+    """Return group-sync audit history for an SSO user (admin only)."""
+    from trusted_data_agent.auth.saml_provider import get_sync_history
+    try:
+        history = get_sync_history(user_id)
+        return jsonify({'status': 'success', 'events': history}), 200
+    except Exception as exc:
+        logger.error(f"Error getting sync history: {exc}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'Failed to get sync history'}), 500
+
+
+# Update the public /sso/providers endpoint to include SAML providers
+# (overrides the earlier GET /sso/providers registered in Phase 1)
+# We do this by adding a new route that also queries SAML configs.
+@auth_bp.route('/sso/all-providers', methods=['GET'])
+async def list_all_sso_providers():
+    """
+    Return all enabled SSO providers (OIDC + SAML) for the login page.
+    Public endpoint — no authentication required.
+    """
+    from trusted_data_agent.auth.oidc_provider import list_sso_configs
+    from trusted_data_agent.auth.saml_provider import list_saml_configs
+    try:
+        oidc = [
+            {'id': c['id'], 'type': 'oidc', 'button_label': c.get('button_label') or c['name'],
+             'icon_url': c.get('icon_url'), 'display_order': c.get('display_order', 0)}
+            for c in list_sso_configs(enabled_only=True)
+        ]
+        saml = [
+            {'id': c['id'], 'type': 'saml', 'button_label': c.get('button_label') or c['name'],
+             'icon_url': c.get('icon_url'), 'display_order': c.get('display_order', 0)}
+            for c in list_saml_configs(enabled_only=True)
+        ]
+        providers = sorted(oidc + saml, key=lambda x: (x['display_order'], x['button_label']))
+        return jsonify({'providers': providers}), 200
+    except Exception as exc:
+        logger.error(f"Error listing all SSO providers: {exc}", exc_info=True)
+        return jsonify({'providers': []}), 200

@@ -1924,7 +1924,7 @@ Turn 2: [query] -> [llm_call] -> [response] -> [complete]         |
 | **SOX** | Audit trails for financial reporting | Tamper-evident record of every AI-assisted operation |
 | **ISO 27001** | Information security management | Encrypted prompts, signed execution logs, key management |
 
-Full technical details: [**Security Architecture (docs/Architecture/SECURITY_ARCHITECTURE.md)**](docs/Architecture/SECURITY_ARCHITECTURE.md)
+Full technical details: [**Security Architecture (docs/Architecture/SECURITY_ARCHITECTURE.md)**](docs/Architecture/SECURITY_ARCHITECTURE.md) — covers all 12 security domains including authentication systems (JWT, OAuth 2.0, OIDC, SAML 2.0), RBAC authorization, secrets management, prompt encryption, Execution Provenance Chain, audit logging, threat model, and enterprise compliance mapping (EU AI Act, GDPR, SOX, ISO 27001, HIPAA, FedRAMP).
 
 [⬆️ Back to Table of Contents](#table-of-contents)
 
@@ -3444,6 +3444,9 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **02-May-2026:** Comprehensive Security Architecture — Formal documentation of all 12 security domains: key inventory, authentication systems (JWT, OAuth 2.0, SAML 2.0, OIDC), authorization model (RBAC tiers, decorator chain, pane visibility), secrets management, license-based prompt encryption, Execution Provenance Chain (EPC), audit logging, network security, platform connector governance, threat model (19 threats), enterprise compliance mapping (EU AI Act, GDPR, SOX, ISO 27001, HIPAA, FedRAMP), and cryptographic performance impact. See [Security Architecture](docs/Architecture/SECURITY_ARCHITECTURE.md).
+*   **02-May-2026:** JIT Provisioning & Group Sync (Phase 3) — Every SSO login re-evaluates user tier from IdP group assertions using highest-privilege-wins resolution. Group-to-tier mappings configurable per SSO configuration; supports SAML `memberOf` attributes and OIDC group claims. Full sync audit log (tier changes, group changes, login events) queryable via REST.
+*   **02-May-2026:** SAML 2.0 Enterprise SSO (Phase 2) — Full SAML 2.0 Service Provider implementation with XML digital signature verification (RSA-SHA256/SHA512 via signxml), SP metadata endpoint, IdP-initiated and SP-initiated flows, ACS URL per configuration, multi-configuration support (test before activate), and secure DEFLATE-compressed AuthnRequest generation. Admin REST API for full lifecycle management.
 *   **01-May-2026:** Task Scheduler — Autonomous agent scheduling via natural conversation. Create cron and interval tasks that run through the identical execution pipeline as interactive queries; manage them through an interactive split-panel canvas with per-task governance (overlap policy, token budget), session context pinning (fresh or current session), and multi-channel result delivery (email, webhook).
 *   **28-Apr-2026:** Independent Phase Parallelization — Independent plan phases and date-range tool calls now execute concurrently, reducing multi-phase query time from N × phase_latency to 1 × phase_latency.
 *   **27-Apr-2026:** Engine Modularization — PlanExecutor refactored into five engine classes (`IdeateEngine`, `FocusEngine`, `CoordinateEngine`, `OptimizeEngine`, `ConversationEngine`) via `EngineRegistry`; `executor.py` reduced from ~6,800 to ~3,160 lines.

@@ -26,7 +26,7 @@ function _pconnNotify(type, msg) {
 
 function _pconnConfirm(message, onConfirm) {
     if (window.showConfirmation) {
-        window.showConfirmation(message, onConfirm);
+        window.showConfirmation(message, '', onConfirm);
     } else {
         if (confirm(message)) onConfirm();
     }
