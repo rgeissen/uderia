@@ -206,6 +206,32 @@ export async function loadSkillsPanel() {
     }
 }
 
+// ── Dynamic focus (called from eventHandlers.js on skills_applied) ──────────
+
+export function highlightSkill(skillId) {
+    // Switch tab directly — do NOT call tabBtn.click() here because that triggers
+    // loadSkillsPanel() via handleResourceTabClick, which wipes the card DOM before
+    // we can highlight it.
+    document.querySelectorAll('.resource-tab').forEach(t => t.classList.remove('active'));
+    const tabBtn = document.querySelector('.resource-tab[data-type="skills"]');
+    if (tabBtn) tabBtn.classList.add('active');
+    document.querySelectorAll('.resource-panel').forEach(p => {
+        p.style.display = p.id === 'skills-panel' ? 'flex' : 'none';
+    });
+
+    const card = document.querySelector(`[data-skill-id="${CSS.escape(skillId)}"]`);
+    if (!card) {
+        // Panel not yet populated (first visit) — load it now.
+        loadSkillsPanel();
+        return;
+    }
+    if (window.state?.currentlySelectedResource) window.state.currentlySelectedResource.classList.remove('resource-selected');
+    card.open = true;
+    card.classList.add('resource-selected');
+    if (window.state) window.state.currentlySelectedResource = card;
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+}
+
 // ── Toggle handler ──────────────────────────────────────────────────────────
 
 async function handleSkillToggle(skillId, field, currentValue) {

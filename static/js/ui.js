@@ -5220,7 +5220,6 @@ export function highlightResource(resourceName, type) {
         }
     }
 
-
     if (resourceCategory) {
         const resourceTab = document.querySelector(`.resource-tab[data-type="${type}"]`);
         if (resourceTab) resourceTab.click();
@@ -5238,8 +5237,9 @@ export function highlightResource(resourceName, type) {
                 resourceElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 350);
         }
-    } else {
+        return true;
     }
+    return false;
 }
 
 export function addSessionToList(session, isActive = false, isLastChild = false) {

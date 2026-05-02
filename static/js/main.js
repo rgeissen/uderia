@@ -4,15 +4,15 @@
  * It initializes the application by setting up event listeners and loading initial data.
  */
 
-import { initializeEventListeners } from './eventHandlers.js?v=3.4';
+import { initializeEventListeners } from './eventHandlers.js?v=3.7';
 import { finalizeConfiguration } from './handlers/configManagement.js';
 import { initializeConfigurationUI } from './handlers/configurationHandler.js';
 import * as API from './api.js';
 import * as DOM from './domElements.js';
 import { state } from './state.js';
 import { setupPanelToggle } from './utils.js';
-import * as UI from './ui.js?v=1.5';
-import { handleViewSwitch } from './ui.js?v=1.5';
+import * as UI from './ui.js?v=1.6';
+import { handleViewSwitch } from './ui.js?v=1.6';
 import { initializeVoiceRecognition } from './voice.js';
 import { subscribeToNotifications } from './notifications.js?v=3.7';
 import { initializeMarketplace, unsubscribeFromCollection } from './handlers/marketplaceHandler.js';
@@ -28,6 +28,7 @@ import { initializeUploadUI, initializeUploadCapabilities } from './handlers/cha
 import { loadKnowledgeGraphsPanel } from './handlers/knowledgeGraphPanelHandler.js';
 import { loadContextPanel } from './handlers/contextPanelHandler.js';
 import { initSkillsPanelEvents } from './handlers/skillsPanelHandler.js';
+import { initComponentsPanelEvents } from './handlers/componentsPanelHandler.js';
 
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
@@ -525,6 +526,9 @@ async function initializeRAGAutoCompletion() {
 
             // Update Extensions panel (user-level, refresh on profile switch for freshness)
             import('./handlers/extensionsPanelHandler.js').then(mod => mod.loadExtensionsPanel());
+
+            // Update Components panel to reflect the active profile's componentConfig
+            import('./handlers/componentsPanelHandler.js').then(mod => mod.loadComponentsPanel());
 
             // Refresh #skill autocomplete for the new profile's enabled skills
             loadActivatedSkills();
@@ -2320,6 +2324,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeVoiceRecognition();
     initializeUploadUI();
     initSkillsPanelEvents();
+    initComponentsPanelEvents();
 
     // Initialize industrial hierarchy path highlighting for session tree
     initializePathHighlighting();
@@ -2328,7 +2333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncWrapperStates();
 
     // Import and wire repository tabs
-    const { wireRepositoryTabs } = await import('./eventHandlers.js?v=3.4');
+    const { wireRepositoryTabs } = await import('./eventHandlers.js?v=3.7');
     wireRepositoryTabs();
     
     // Initialize utility sessions filter for sidebar

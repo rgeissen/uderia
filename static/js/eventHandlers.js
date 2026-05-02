@@ -7,8 +7,8 @@
 import * as DOM from './domElements.js';
 import { state, setCanvasSplitMode } from './state.js';
 import * as API from './api.js';
-import * as UI from './ui.js?v=1.5';
-import { handleViewSwitch, toggleSideNav } from './ui.js?v=1.5';
+import * as UI from './ui.js?v=1.6';
+import { handleViewSwitch, toggleSideNav } from './ui.js?v=1.6';
 import * as Utils from './utils.js';
 import { copyToClipboard, copyTableToClipboard, classifyConfirmation } from './utils.js';
 import { renameSession, deleteSession } from './api.js'; // Import the rename/delete API functions
@@ -27,8 +27,9 @@ import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowMan
 import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
 import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
 import { loadContextPanel, renderContextWindowSnapshot } from './handlers/contextPanelHandler.js';
-import { loadSkillsPanel } from './handlers/skillsPanelHandler.js';
-import { loadExtensionsPanel } from './handlers/extensionsPanelHandler.js';
+import { loadSkillsPanel, highlightSkill } from './handlers/skillsPanelHandler.js';
+import { loadExtensionsPanel, highlightExtension } from './handlers/extensionsPanelHandler.js';
+import { highlightComponent } from './handlers/componentsPanelHandler.js';
 import { openContextAnalyticsModal } from './handlers/contextAnalyticsModal.js';
 
 // ─── KG Live Animation Bridge (lazy-loaded) ────────────────────────────
@@ -1110,6 +1111,18 @@ async function processStream(responseBody, originSessionId) {
                                     eventData.type === 'conversation_tool_completed') {
                                     _tryKGAnimate(eventData.type, payload);
                                 }
+
+                                // Resource Panel: highlight the tool being invoked (llm_only with MCP tools)
+                                if (eventData.type === 'conversation_tool_invoked' && payload.tool_name) {
+                                    const n = payload.tool_name;
+                                    if (n.startsWith('TDA_')) {
+                                        highlightComponent(n);
+                                    } else if (n.startsWith('generate_')) {
+                                        UI.highlightResource(n, 'charts');
+                                    } else {
+                                        UI.highlightResource(n, 'tools');
+                                    }
+                                }
                             }
                         } else if (eventData.type === 'llm_execution' ||
                                    eventData.type === 'llm_execution_complete' ||
@@ -1194,6 +1207,9 @@ async function processStream(responseBody, originSessionId) {
                                 details: skillsPayload,
                                 type: 'skills_applied'
                             }, false, 'skills');
+                            // Focus the first applied skill in the Skills panel
+                            const appliedSkills = (skillsPayload.skills || []);
+                            if (appliedSkills.length > 0) highlightSkill(appliedSkills[0].name);
                         } else if (eventData.type === 'extension_start') {
                             const extPayload = eventData.payload || {};
                             UI.updateStatusWindow({
@@ -1201,6 +1217,7 @@ async function processStream(responseBody, originSessionId) {
                                 details: 'Processing...',
                                 type: 'extension_running'
                             }, false, 'extension');
+                            if (extPayload.name) highlightExtension(extPayload.name);
                         } else if (eventData.type === 'extension_complete') {
                             const extPayload = eventData.payload || {};
                             UI.updateStatusWindow({
@@ -1208,6 +1225,7 @@ async function processStream(responseBody, originSessionId) {
                                 details: extPayload,
                                 type: 'extension_complete'
                             }, false, 'extension');
+                            if (extPayload.name) highlightExtension(extPayload.name);
                         } else if (eventData.type === 'context_window_snapshot') {
                             // Context Window Manager snapshot — render budget visualization
                             const snapshotPayload = eventData.payload || {};
@@ -1314,8 +1332,20 @@ async function processStream(responseBody, originSessionId) {
                     } else if (eventName === 'tool_result' || eventName === 'tool_error' || eventName === 'tool_intent') {
                         UI.updateStatusWindow(eventData);
                         if (eventData.tool_name) {
-                            const toolType = eventData.tool_name.startsWith('generate_') ? 'charts' : 'tools';
-                            UI.highlightResource(eventData.tool_name, toolType);
+                            const n = eventData.tool_name;
+                            if (n.startsWith('TDA_')) {
+                                highlightComponent(n);
+                            } else if (n.startsWith('generate_')) {
+                                UI.highlightResource(n, 'charts');
+                            } else {
+                                // Regular MCP tool: highlight in Tools panel. If not found in the
+                                // loaded tools data, at least ensure the Tools tab is visible.
+                                const found = UI.highlightResource(n, 'tools');
+                                if (!found) {
+                                    const tab = document.querySelector('.resource-tab[data-type="tools"]');
+                                    if (tab) tab.click();
+                                }
+                            }
                         }
                     // --- Extension Results (combined event, own SSE type) ---
                     } else if (eventName === 'extension_results') {
@@ -1446,6 +1476,11 @@ async function processStream(responseBody, originSessionId) {
                             eventName === 'genie_component_invoked' || eventName === 'genie_component_completed') {
                             _tryKGAnimate(eventName, eventData);
                         }
+
+                        // Resource Panel: highlight component tool invoked by genie coordinator (TDA_Charting etc.)
+                        if (eventName === 'genie_component_invoked' && eventData.tool_name) {
+                            highlightComponent(eventData.tool_name);
+                        }
                         // KG Live Animation: end animations on genie coordination complete
                         if (eventName === 'genie_coordination_complete') _tryKGAnimateEnd();
                     } else if (eventName === 'cancelled') {
@@ -1566,6 +1601,20 @@ async function processStream(responseBody, originSessionId) {
                         }, true, 'context_window');
                     } else {
                         UI.updateStatusWindow(eventData);
+
+                        // Resource Panel highlighting: most tool events arrive as SSE 'message' type
+                        // (no named event), so we handle them here by checking eventData.type.
+                        // tool_intent always carries eventData.details.tool_name (= the action dict).
+                        if (eventData.type === 'tool_intent' && eventData.details?.tool_name) {
+                            const n = eventData.details.tool_name;
+                            if (n.startsWith('TDA_')) {
+                                highlightComponent(n);
+                            } else if (n.startsWith('generate_')) {
+                                UI.highlightResource(n, 'charts');
+                            } else {
+                                UI.highlightResource(n, 'tools');
+                            }
+                        }
 
                         // KG Live Animation: dispatch tool_enabled events (phase_start, plan_generated, kg_enrichment)
                         if (eventData.type) {
@@ -3178,6 +3227,11 @@ function handleResourceTabClick(e) {
         if (type === 'extensions') {
             loadExtensionsPanel();
         }
+
+        // Lazy-load Components panel on first click (or refresh on subsequent)
+        if (type === 'components') {
+            import('./handlers/componentsPanelHandler.js').then(mod => mod.loadComponentsPanel());
+        }
     }
 }
 
@@ -4172,7 +4226,7 @@ export function initializeEventListeners() {
                     const newScore = newVote === 'up' ? 1 : newVote === 'down' ? -1 : 0;
                     
                     // Immediately update table row feedback badge (before server refresh)
-                    const { updateTableRowFeedback } = await import('./ui.js?v=1.5');
+                    const { updateTableRowFeedback } = await import('./ui.js?v=1.6');
                     updateTableRowFeedback(caseId, newScore);
                     console.log('[CaseFeedback] Updated table row feedback immediately for', caseId);
                     
@@ -4195,7 +4249,7 @@ export function initializeEventListeners() {
                     // Update the case details panel to show updated feedback score
                     // (Don't refresh entire table - we already updated the row immediately above)
                     console.log('[CaseFeedback] Refreshing case details panel for case', caseId);
-                    const { selectCaseRow } = await import('./ui.js?v=1.5');
+                    const { selectCaseRow } = await import('./ui.js?v=1.6');
                     await selectCaseRow(caseId);
                 } else if (sessionId && !isNaN(turnId)) {
                     // Session-based feedback

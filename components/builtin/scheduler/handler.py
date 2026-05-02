@@ -226,7 +226,13 @@ class SchedulerComponentHandler(BaseComponentHandler):
             list_runs, run_task_now,
         )
 
-        action = arguments.get("action", "list")
+        action = arguments.get("action") or ""
+        # If the LLM omitted action but supplied create fields, infer create intent
+        if not action:
+            if all(k in arguments for k in ("name", "prompt", "schedule")):
+                action = "create"
+            else:
+                action = "list"
         user_uuid = context.get("user_uuid", "")
         profile_id = context.get("profile_id", "")
 

@@ -881,6 +881,7 @@
                                 <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="knowledge-graphs">Knowledge Graphs</button>
                                 <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="skills">Skills</button>
                                 <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="extensions">Extensions</button>
+                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="components">Components</button>
                                 <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="context">Context</button>
                             </nav>
                             <div id="panels-container" class="flex-1 min-h-0">
@@ -908,6 +909,9 @@
                                 </div>
                                 <div id="extensions-panel" class="resource-panel flex-col h-full" style="display: none;">
                                     <div id="extensions-panel-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-2"></div>
+                                </div>
+                                <div id="components-panel" class="resource-panel flex-col h-full" style="display: none;">
+                                    <div id="components-panel-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-2"></div>
                                 </div>
                                 <div id="context-panel" class="resource-panel flex-col h-full" style="display: none;">
                                     <div id="context-panel-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
@@ -8883,7 +8887,7 @@
     <script src="{{ url_for('static', filename='js/executionDashboard.js') }}?v=2.9"></script>
     <script src="{{ url_for('static', filename='js/templateManager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/adminManager.js') }}?v=3.0"></script>
-    <script type="module" src="{{ url_for('static', filename='js/main.js') }}?v=4.3"></script>
+    <script type="module" src="{{ url_for('static', filename='js/main.js') }}?v=4.6"></script>
     <script type="module" src="{{ url_for('static', filename='js/handlers/ragCollectionManagement.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/accessTokenManager.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/documentUploadConfigManager.js') }}"></script>
@@ -10426,7 +10430,7 @@
                         if (buttonText === 'Configure Application') {
                             // Profile needs configuration - go to credentials view
                             console.log('[Welcome Button] Configure Application clicked - switching to credentials view');
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=1.6');
                             handleViewSwitch('credentials-view');
                             return;
                         }
@@ -10448,7 +10452,7 @@
                             // Import required modules
                             const { checkServerStatus } = await import('/static/js/api.js');
                             const { finalizeConfiguration } = await import('/static/js/handlers/configManagement.js');
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=1.6');
                             
                             // Get current config from status
                             const status = await checkServerStatus();
@@ -10523,7 +10527,7 @@
                             } catch (validationError) {
                                 console.error('[Welcome Button] Session creation/validation failed:', validationError);
                                 // Credentials may be invalid - redirect to configuration
-                                const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
+                                const { handleViewSwitch } = await import('/static/js/ui.js?v=1.6');
                                 handleViewSwitch('credentials-view');
                                 return;
                             }
@@ -10547,7 +10551,7 @@
                         } catch (error) {
                             console.error('[Welcome Button] Error initializing:', error);
                             // Redirect to configuration on any error
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=1.6');
                             handleViewSwitch('credentials-view');
                         }
                     });

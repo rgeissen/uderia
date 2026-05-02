@@ -66,7 +66,7 @@ function _ensureModalExists() {
             </div>
 
             <!-- Configuration -->
-            <div class="mb-6">
+            <div id="kg-constructor-config" class="mb-6">
                 <!-- Profile selector -->
                 <div class="mb-3">
                     <label class="block text-xs text-gray-400 mb-1">Target Profile</label>
@@ -147,8 +147,8 @@ function _ensureModalExists() {
                 </div>
 
                 <button id="kg-constructor-done-btn"
-                        class="mt-4 card-btn card-btn--neutral w-full">
-                    Close
+                        class="mt-4 card-btn card-btn--primary w-full">
+                    Done
                 </button>
             </div>
         </div>
@@ -258,8 +258,9 @@ async function _handleGenerateKG() {
         // Clear timers
         timers.forEach(t => clearTimeout(t));
 
-        // Hide status spinner
+        // Hide status spinner + collapse the config form
         statusEl.classList.add('hidden');
+        _overlay.querySelector('#kg-constructor-config').classList.add('hidden');
 
         // Show results
         const resultsEl = _overlay.querySelector('#kg-results');
@@ -343,12 +344,13 @@ function _hideModal() {
 }
 
 function _resetModalState() {
-    // Reset results to hidden
+    // Reset results to hidden, restore config form
     const results = _overlay.querySelector('#kg-results');
     const genStatus = _overlay.querySelector('#kg-generate-status');
 
     results.classList.add('hidden');
     genStatus.classList.add('hidden');
+    _overlay.querySelector('#kg-constructor-config').classList.remove('hidden');
 
     // Reset inputs
     _overlay.querySelector('#kg-constructor-graphname').value = '';

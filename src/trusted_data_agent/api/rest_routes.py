@@ -13175,6 +13175,75 @@ async def unpublish_extension(marketplace_id: str):
 # Component Library Endpoints
 # =============================================================================
 
+@rest_api_bp.route("/v1/profiles/<profile_id>/components", methods=["GET"])
+async def get_profile_components(profile_id: str):
+    """
+    Return all components with their effective enabled/disabled state for a specific profile.
+    Merges global governance, per-user overrides, and per-profile componentConfig.
+    Used by the Resource Panel Components tab.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.components.manager import get_component_manager
+        from trusted_data_agent.components.settings import (
+            get_component_settings,
+            is_component_available,
+        )
+        from trusted_data_agent.core.config_manager import get_config_manager
+
+        config_manager = get_config_manager()
+        profile = config_manager.get_profile(profile_id, user_uuid)
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
+
+        profile_type = profile.get("profile_type", "tool_enabled")
+        component_config = profile.get("componentConfig") or {}
+
+        settings = get_component_settings()
+        manager = get_component_manager()
+
+        components = []
+        for comp in manager.get_all_components():
+            if not settings.get("user_components_enabled", True) and comp.source != "builtin":
+                continue
+
+            d = comp.to_api_dict()
+
+            globally_disabled = not is_component_available(comp.component_id, user_uuid)
+
+            prof_cfg = component_config.get(comp.component_id, {})
+            # user_disabled = user explicitly set enabled:false in componentConfig
+            user_disabled = prof_cfg.get("enabled") is False
+
+            enabled_for = comp.profile_defaults.get("enabled_for", [])
+            is_default_on = profile_type in enabled_for
+
+            if globally_disabled:
+                profile_enabled = False
+            elif "enabled" in prof_cfg:
+                profile_enabled = bool(prof_cfg["enabled"])
+            else:
+                profile_enabled = is_default_on
+
+            intensity = prof_cfg.get("intensity") or comp.profile_defaults.get("default_intensity")
+
+            d["globally_disabled"] = globally_disabled
+            d["profile_enabled"] = profile_enabled
+            d["user_disabled"] = user_disabled
+            d["is_default_on"] = is_default_on
+            d["intensity"] = intensity
+            components.append(d)
+
+        return jsonify({"components": components}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get profile components for {profile_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to get profile components."}), 500
+
+
 @rest_api_bp.route("/v1/components", methods=["GET"])
 async def list_components():
     """
