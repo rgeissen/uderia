@@ -216,17 +216,12 @@ export async function loadComponentsPanel() {
 // ── Dynamic focus (called from eventHandlers.js on TDA_ tool events) ─────────
 
 export function highlightComponent(toolName) {
-    // Always clear previous selection first — mirrors UI.highlightResource() so that
-    // when a TDA_ internal tool fires (TDA_FinalReport etc.) the prior MCP tool card
-    // is properly deselected even though no new card will be highlighted.
-    if (window.state?.currentlySelectedResource) {
-        window.state.currentlySelectedResource.classList.remove('resource-selected');
-    }
-
     const card = document.querySelector(`[data-tool-name="${CSS.escape(toolName)}"]`);
 
     if (!card) {
-        // No card — internal tool or panel not yet loaded. Pre-load silently, no tab switch.
+        // No card for this tool (e.g. TDA_FinalReport, TDA_LLMTask — internal tools with no
+        // component entry). Pre-load the panel if it's empty, but leave the current selection
+        // untouched so the last highlighted card stays visible.
         const panelContent = document.getElementById('components-panel-content');
         if (!panelContent || panelContent.children.length === 0) {
             loadComponentsPanel();
@@ -234,7 +229,10 @@ export function highlightComponent(toolName) {
         return;
     }
 
-    // Card exists — switch to Components tab and highlight it.
+    // Card exists — clear previous selection, switch to Components tab, and highlight.
+    document.querySelector('.resource-selected')?.classList.remove('resource-selected');
+    if (state) state.currentlySelectedResource = null;
+
     document.querySelectorAll('.resource-tab').forEach(t => t.classList.remove('active'));
     const tabBtn = document.querySelector('.resource-tab[data-type="components"]');
     if (tabBtn) tabBtn.classList.add('active');
@@ -243,7 +241,7 @@ export function highlightComponent(toolName) {
     });
     card.open = true;
     card.classList.add('resource-selected');
-    if (window.state) window.state.currentlySelectedResource = card;
+    if (state) state.currentlySelectedResource = card;
     setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
 }
 

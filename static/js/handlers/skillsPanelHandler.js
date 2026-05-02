@@ -225,10 +225,10 @@ export function highlightSkill(skillId) {
         loadSkillsPanel();
         return;
     }
-    if (window.state?.currentlySelectedResource) window.state.currentlySelectedResource.classList.remove('resource-selected');
+    if (state?.currentlySelectedResource) state.currentlySelectedResource.classList.remove('resource-selected');
     card.open = true;
     card.classList.add('resource-selected');
-    if (window.state) window.state.currentlySelectedResource = card;
+    if (state) state.currentlySelectedResource = card;
     setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
 }
 

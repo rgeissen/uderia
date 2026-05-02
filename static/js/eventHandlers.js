@@ -20,16 +20,16 @@ import {
     renameActiveSession
 } from './handlers/sessionManagement.js?v=3.6';
 import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
-import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
+import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.1';
 import { getPendingAttachments, clearPendingAttachments, renderAttachmentChips, isUploadInProgress } from './handlers/chatDocumentUpload.js';
 import { renderComponent, hasRenderer } from './componentRenderers.js';
 import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowManager.js';
 import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
 import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
 import { loadContextPanel, renderContextWindowSnapshot } from './handlers/contextPanelHandler.js';
-import { loadSkillsPanel, highlightSkill } from './handlers/skillsPanelHandler.js';
-import { loadExtensionsPanel, highlightExtension } from './handlers/extensionsPanelHandler.js';
-import { highlightComponent } from './handlers/componentsPanelHandler.js';
+import { loadSkillsPanel, highlightSkill } from './handlers/skillsPanelHandler.js?v=1.1';
+import { loadExtensionsPanel, highlightExtension } from './handlers/extensionsPanelHandler.js?v=1.1';
+import { highlightComponent } from './handlers/componentsPanelHandler.js?v=1.2';
 import { openContextAnalyticsModal } from './handlers/contextAnalyticsModal.js';
 
 // ─── KG Live Animation Bridge (lazy-loaded) ────────────────────────────
@@ -1115,9 +1115,7 @@ async function processStream(responseBody, originSessionId) {
                                 // Resource Panel: highlight the tool being invoked (llm_only with MCP tools)
                                 if (eventData.type === 'conversation_tool_invoked' && payload.tool_name) {
                                     const n = payload.tool_name;
-                                    if (n.startsWith('TDA_')) {
-                                        highlightComponent(n);
-                                    } else if (n.startsWith('generate_')) {
+                                    if (n.startsWith('generate_')) {
                                         UI.highlightResource(n, 'charts');
                                     } else {
                                         UI.highlightResource(n, 'tools');
@@ -1333,18 +1331,10 @@ async function processStream(responseBody, originSessionId) {
                         UI.updateStatusWindow(eventData);
                         if (eventData.tool_name) {
                             const n = eventData.tool_name;
-                            if (n.startsWith('TDA_')) {
-                                highlightComponent(n);
-                            } else if (n.startsWith('generate_')) {
+                            if (n.startsWith('generate_')) {
                                 UI.highlightResource(n, 'charts');
                             } else {
-                                // Regular MCP tool: highlight in Tools panel. If not found in the
-                                // loaded tools data, at least ensure the Tools tab is visible.
-                                const found = UI.highlightResource(n, 'tools');
-                                if (!found) {
-                                    const tab = document.querySelector('.resource-tab[data-type="tools"]');
-                                    if (tab) tab.click();
-                                }
+                                UI.highlightResource(n, 'tools');
                             }
                         }
                     // --- Extension Results (combined event, own SSE type) ---
@@ -1479,7 +1469,7 @@ async function processStream(responseBody, originSessionId) {
 
                         // Resource Panel: highlight component tool invoked by genie coordinator (TDA_Charting etc.)
                         if (eventName === 'genie_component_invoked' && eventData.tool_name) {
-                            highlightComponent(eventData.tool_name);
+                            UI.highlightResource(eventData.tool_name, 'tools');
                         }
                         // KG Live Animation: end animations on genie coordination complete
                         if (eventName === 'genie_coordination_complete') _tryKGAnimateEnd();
@@ -1607,9 +1597,7 @@ async function processStream(responseBody, originSessionId) {
                         // tool_intent always carries eventData.details.tool_name (= the action dict).
                         if (eventData.type === 'tool_intent' && eventData.details?.tool_name) {
                             const n = eventData.details.tool_name;
-                            if (n.startsWith('TDA_')) {
-                                highlightComponent(n);
-                            } else if (n.startsWith('generate_')) {
+                            if (n.startsWith('generate_')) {
                                 UI.highlightResource(n, 'charts');
                             } else {
                                 UI.highlightResource(n, 'tools');
@@ -3230,7 +3218,7 @@ function handleResourceTabClick(e) {
 
         // Lazy-load Components panel on first click (or refresh on subsequent)
         if (type === 'components') {
-            import('./handlers/componentsPanelHandler.js').then(mod => mod.loadComponentsPanel());
+            import('./handlers/componentsPanelHandler.js?v=1.2').then(mod => mod.loadComponentsPanel());
         }
     }
 }
