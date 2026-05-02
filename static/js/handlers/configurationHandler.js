@@ -6647,17 +6647,20 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                     const isEnabled = compSettings.enabled !== undefined ? compSettings.enabled : true;
                     const intensity = compSettings.intensity || comp.profile_defaults?.default_intensity || 'medium';
                     const hasIntensity = comp.component_type === 'action';
+                    const globallyDisabled = !!comp.globally_disabled;
 
                     return `
-                        <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-800/30 border border-gray-700/20">
+                        <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-800/30 border border-gray-700/20"
+                             style="${globallyDisabled ? 'opacity:0.45;pointer-events:none' : ''}">
                             <div class="flex items-center gap-3">
                                 <span class="text-sm text-gray-200">${comp.display_name}</span>
                                 <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-700/50 text-gray-400 uppercase tracking-wider">${comp.component_type}</span>
+                                ${globallyDisabled ? `<span class="text-[10px] px-1.5 py-0.5 rounded" style="background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.2)">Disabled globally</span>` : ''}
                             </div>
                             <div class="flex items-center gap-3">
                                 ${hasIntensity ? `
                                 <select class="comp-intensity-select text-xs bg-gray-800 border border-gray-600 rounded px-2 py-1 text-gray-300"
-                                        data-component-id="${comp.component_id}" ${!isEnabled ? 'disabled' : ''}>
+                                        data-component-id="${comp.component_id}" ${(!isEnabled || globallyDisabled) ? 'disabled' : ''}>
                                     <option value="minimal" ${intensity === 'minimal' ? 'selected' : ''}>Minimal</option>
                                     <option value="low" ${intensity === 'low' ? 'selected' : ''}>Low</option>
                                     <option value="medium" ${intensity === 'medium' ? 'selected' : ''}>Medium</option>
@@ -6665,7 +6668,8 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                                 </select>` : ''}
                                 <label class="ind-toggle ind-toggle--sm">
                                     <input type="checkbox" class="comp-toggle"
-                                           data-component-id="${comp.component_id}" ${isEnabled ? 'checked' : ''}>
+                                           data-component-id="${comp.component_id}" ${isEnabled ? 'checked' : ''}
+                                           ${globallyDisabled ? 'disabled' : ''}>
                                     <span class="ind-track"></span>
                                 </label>
                             </div>

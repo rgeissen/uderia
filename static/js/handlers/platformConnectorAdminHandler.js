@@ -1337,16 +1337,12 @@ async function _buildComponentAdminSidebar() {
     nav.innerHTML = components.map(comp => {
         const meta = _COMP_META[comp.component_id] || { accent: '#64748b', icon: '' };
         const tabId = comp.component_id === 'scheduler' ? 'task-scheduler' : comp.component_id;
-        const isSystem = comp.component_type === 'system';
         const isDisabled = disabledList.includes(comp.component_id);
-        const dotColor = isSystem ? '#64748b' : (isDisabled ? '#6b7280' : meta.accent);
-        const dotTitle = isSystem ? 'System' : (isDisabled ? 'Disabled' : 'Active');
         return `<button type="button" data-platform-tab="${tabId}" class="platform-comp-subtab ind-tab ind-tab--sidebar w-full"
-                        style="--tab-color:${meta.accent.replace('#','').match(/../g).map(x=>parseInt(x,16)).join(',')}"
+                        style="--tab-color:${meta.accent.replace('#','').match(/../g).map(x=>parseInt(x,16)).join(',')};${isDisabled ? 'opacity:0.5' : ''}"
                         onclick="window.switchPlatformComponentsAdminTab('${tabId}')">
                     <span style="color:${meta.accent}">${meta.icon}</span>
                     <span class="text-sm font-medium flex-1 text-left truncate" style="color:var(--text-primary)">${_paEsc(comp.display_name)}</span>
-                    <span class="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:${dotColor}" title="${dotTitle}"></span>
                 </button>`;
     }).join('');
 }
