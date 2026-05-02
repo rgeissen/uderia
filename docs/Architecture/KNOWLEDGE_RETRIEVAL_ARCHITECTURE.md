@@ -18,17 +18,18 @@ This document provides a comprehensive architectural deep-dive into the retrieva
 4. [Knowledge Retrieval for Ideate Profiles](#knowledge-retrieval-for-ideate-profiles)
 5. [Vector Store Abstraction](#vector-store-abstraction)
 6. [Document Ingestion Pipeline](#document-ingestion-pipeline)
-7. [Retrieval Pipeline](#retrieval-pipeline)
-8. [Scoring Algorithms](#scoring-algorithms)
-9. [Configuration System](#configuration-system)
-10. [LLM Synthesis](#llm-synthesis)
-11. [Multi-User Access Control](#multi-user-access-control)
-12. [Event System](#event-system)
-13. [Comparison: Knowledge vs Planner Repositories](#comparison-knowledge-vs-planner-repositories)
-14. [Performance Characteristics](#performance-characteristics)
-15. [Advanced Features](#advanced-features)
-16. [Troubleshooting](#troubleshooting)
-17. [File Reference](#file-reference)
+7. [CDC Sync Infrastructure](#cdc-sync-infrastructure)
+8. [Retrieval Pipeline](#retrieval-pipeline)
+9. [Scoring Algorithms](#scoring-algorithms)
+10. [Configuration System](#configuration-system)
+11. [LLM Synthesis](#llm-synthesis)
+12. [Multi-User Access Control](#multi-user-access-control)
+13. [Event System](#event-system)
+14. [Comparison: Knowledge vs Planner Repositories](#comparison-knowledge-vs-planner-repositories)
+15. [Performance Characteristics](#performance-characteristics)
+16. [Advanced Features](#advanced-features)
+17. [Troubleshooting](#troubleshooting)
+18. [File Reference](#file-reference)
 
 ---
 
@@ -188,6 +189,8 @@ This intentional simplicity ensures predictable, fast, grounded responses.
 
 Knowledge retrieval is not exclusive to `rag_focused` profiles. **Ideate** (`llm_only`) profiles can also enable knowledge retrieval via `knowledgeConfig.enabled = true`. This allows conversational profiles to ground their answers in verified documents while retaining their direct-conversation execution model.
 
+> **Profile scope clarification**: Knowledge retrieval is **mandatory** for Focus (`rag_focused`) — the entire execution path is built around it. For Ideate (`llm_only`), it is **optional** and must be explicitly enabled via `knowledgeConfig.enabled = true`. Optimize (`tool_enabled`) profiles can also use the `knowledge_context` context window module when collections are configured, but retrieval there feeds the planner prompt rather than driving the synthesis step directly.
+
 ### How It Works
 
 When an `llm_only` profile has `knowledgeConfig.enabled = true`, the executor:
@@ -312,20 +315,22 @@ For a comprehensive deep-dive into the abstraction layer, see [Vector Store Abst
    ▼
 2. DocumentUploadHandler.prepare_document_for_llm()
    │  - Extract text content from file format
-   │  - Calculate content hash for deduplication
+   │  - Calculate SHA-256 content hash
    │  - Extract metadata (title, author if available)
    │
    ▼
 3. RepositoryConstructor.construct()
    │  - Apply chunking strategy
-   │  - Generate embeddings for each chunk
+   │  - Generate embeddings for each chunk (with ingest_epoch)
    │  - Store chunks + embeddings in ChromaDB
    │  - Save original document to disk
    │
    ▼
 4. Register in knowledge_documents table
    │  - document_id, filename, title, author
-   │  - category, tags, content_hash
+   │  - category, tags, content_hash, ingest_epoch
+   │  - source_uri (if provided — enables CDC sync)
+   │  - sync_enabled = 1 when source_uri is set
    │  - Link to collection_id
    │
    ▼
@@ -333,6 +338,8 @@ For a comprehensive deep-dive into the abstraction layer, see [Vector Store Abst
    │  - Chunk count, embedding progress
    │  - Final completion status
 ```
+
+Documents uploaded without a `source_uri` are static — they participate in manual re-upload only. Documents with a `source_uri` are registered for CDC sync and will be automatically checked on each sync interval.
 
 ### Chunking Strategies
 
@@ -387,8 +394,12 @@ Each chunk stored in ChromaDB carries metadata for filtering and scoring:
   "tags": "roadmap,2026,features",
   "created_at": "2026-01-15T10:30:00+00:00",
   "source": "upload",
-  "strategy_type": "knowledge"
+  "strategy_type": "knowledge",
+  "ingest_epoch": 1746220800
 }
+```
+
+The `ingest_epoch` field is the Unix timestamp of the ingestion pass that created this chunk. CDC sync uses it to identify and delete stale chunks from previous versions of the same document (see [Ingest Epoch — Stale Chunk Cleanup](#ingest-epoch--stale-chunk-cleanup)).
 ```
 
 ### Embedding Model
@@ -396,6 +407,230 @@ Each chunk stored in ChromaDB carries metadata for filtering and scoring:
 Documents are embedded using **`all-MiniLM-L6-v2`** (384-dimensional vectors) via the `sentence-transformers` library. This model provides a strong balance of speed and quality for semantic similarity tasks.
 
 ChromaDB stores both the embedding vectors and the original chunk text, enabling retrieval by semantic similarity with full content access.
+
+---
+
+## CDC Sync Infrastructure
+
+Knowledge repositories support **Change Data Management (CDC) sync** — automatic detection of source document changes and selective re-embedding without manual re-upload. This turns static repositories into living knowledge bases that stay current as upstream documents evolve.
+
+> **Scope**: CDC sync only detects changes to already-registered documents. It does **not** discover new files added to a directory. New file ingestion is handled by the agent pack build pipeline (see [Agent Pack Build Pipeline](#agent-pack-build-pipeline)).
+
+### Overview
+
+```
+Source Document (file / HTTP / Google Drive)
+          │
+          ▼
+  sync_knowledge_collection()   ← scheduled or manual trigger
+          │
+          ├─ Fetch content from source_uri
+          ├─ SHA-256 hash comparison
+          │
+          ├── unchanged → mark last_checked_at, continue
+          │
+          └── changed → re-ingest via same pipeline as manual upload
+                          │
+                          ├─ client-side chunking: ingest_epoch cleanup removes stale chunks
+                          └─ server-side chunking: delete + re-submit to backend
+```
+
+### Document-Level CDC Fields
+
+Every knowledge document in the `knowledge_documents` table carries these CDC fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `source_uri` | TEXT NULL | URI where the document can be fetched. `NULL` = upload-only (no sync) |
+| `sync_enabled` | INTEGER (0/1) | Whether this document participates in CDC sync (default: 1 when `source_uri` is set) |
+| `content_hash` | TEXT NULL | SHA-256 hex digest of the last ingested content bytes |
+| `last_checked_at` | TEXT NULL | ISO 8601 timestamp of the last check (successful or not) |
+| `ingest_epoch` | INTEGER NULL | Unix timestamp of the most recent ingest pass; used for stale chunk cleanup |
+
+### Collection-Level CDC Fields
+
+The `collections` table carries three CDC-related columns:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sync_interval` | TEXT | How often the scheduler fires (e.g. `daily`, `hourly`, `weekly`). Configurable in Platform Jobs UI. |
+| `source_root` | TEXT NULL | Base directory for resolving relative `file://` URIs. `NULL` = use env var or auto-detect. |
+| `embedding_model_locked` | INTEGER (0/1) | Set to `1` after first successful re-index or build import. Prevents the model-mismatch warning banner. |
+
+### Supported Source URI Schemes
+
+| Scheme | Example | Notes |
+|--------|---------|-------|
+| `file://` | `file://docs/Architecture/foo.md` | Local filesystem. Relative path (no leading `/`) resolved against `source_root`. |
+| `https://` | `https://example.com/spec.pdf` | HTTP GET via `aiohttp` (fallback: `urllib`). |
+| `http://` | `http://intranet/guide.md` | Same as `https://`. |
+| `gdrive://` | `gdrive://<file_id>` | Google Drive via the platform connector. Requires user's Google account connected in Platform Components → Connectors. |
+
+New schemes are added by registering a coroutine in the `SOURCE_RESOLVERS` dict in `knowledge_sync.py` — no other files need changing.
+
+### Relative `file://` URIs and Source Root
+
+The agent pack build pipeline stores **root-relative paths** rather than absolute filesystem paths:
+
+```
+Before (absolute, breaks on any other machine):
+  file:///Users/rainer/my_private_code/uderia/docs/Architecture/foo.md
+
+After (root-relative, portable):
+  file://docs/Architecture/foo.md
+```
+
+At sync time, `_fetch_local_file()` resolves relative paths (no leading `/`) against the **Source Root**, using a three-tier priority chain:
+
+```
+1. Collection source_root field   ← set via Platform Jobs UI (preferred)
+2. UDERIA_DOCS_ROOT env var        ← server-level override
+3. Auto-detect: Path(__file__).resolve().parents[3]   ← zero-config fallback
+                                     (4 levels above knowledge_sync.py = repo root)
+```
+
+Absolute paths (leading `/` on Unix, `C:\` on Windows) bypass resolution and are used as-is.
+
+### Sync Engine
+
+**File**: `src/trusted_data_agent/core/knowledge_sync.py`
+
+The sync engine exposes two public coroutines:
+
+#### `sync_knowledge_collection(collection_id, user_uuid, older_than_seconds=3600)`
+
+Hash-check CDC sync. Only processes documents whose `last_checked_at` is older than `older_than_seconds`.
+
+| Trigger | `older_than_seconds` | Effect |
+|---------|----------------------|--------|
+| Platform Jobs UI "Sync Now" button | `0` | Force-checks all documents regardless of last check time |
+| APScheduler (`sync_interval`) | `3600` (default) | Throttles to max once per hour per document |
+
+**Algorithm per document:**
+
+```
+1. Fetch content bytes from source_uri (via scheme resolver)
+2. If fetch fails → log warning, increment errors, continue
+3. SHA-256(content_bytes) == content_hash?
+   → Yes: mark last_checked_at, increment unchanged, continue
+   → No:  call _sync_upsert_document() to re-ingest
+4. _sync_upsert_document():
+   a. Write content to a temp file
+   b. Client-side path: extract text → chunk → embed → upsert (new ingest_epoch)
+      Then query for chunks with document_id == old AND ingest_epoch < new_epoch → delete
+   c. Server-side path (Teradata EVS): delete existing doc → re-submit to add_document_files()
+   d. Update knowledge_documents row with new content_hash, ingest_epoch, last_checked_at
+```
+
+**Return value:**
+```json
+{
+  "checked": 85,
+  "updated": 3,
+  "unchanged": 81,
+  "errors": 1,
+  "duration_seconds": 4.2
+}
+```
+
+#### `reindex_knowledge_collection(collection_id, user_uuid, strategy="in_place")`
+
+Force re-embeds **every** document in the collection regardless of content hash. Used when changing the embedding model.
+
+- Iterates all documents (not just sync-enabled ones)
+- Skips documents with no `source_uri` (no source to re-fetch from)
+- After completion: sets `embedding_model_locked = 1` on the collection, suppressing the model-mismatch warning banner in the UI
+
+```json
+{
+  "strategy": "in_place",
+  "reindexed": 82,
+  "skipped": 3,
+  "errors": 0,
+  "duration_seconds": 47.8
+}
+```
+
+### Ingest Epoch — Stale Chunk Cleanup
+
+Each re-ingest pass generates a new `ingest_epoch = int(time.time())`. New chunks are stored with this epoch value in their metadata. After the upsert, the engine queries the backend for chunks belonging to the same `document_id` with an `ingest_epoch` **older than** the current epoch — those are stale chunks from a previous version of the document — and deletes them.
+
+```python
+stale_filter = AndFilter([
+    FieldFilter("document_id", FilterOp.EQ, doc_id),
+    FieldFilter("ingest_epoch", FilterOp.LT, ingest_epoch),
+])
+stale_ids = await backend.get(collection_name, where=stale_filter, ...).ids
+if stale_ids:
+    await backend.delete(collection_name, ids=stale_ids)
+```
+
+This ensures the vector store never accumulates duplicate embeddings of stale document versions.
+
+### Agent Pack Build Pipeline
+
+The Uderia Expert agent pack (`agent_packs/uderia_expert/build.py`) provides the primary ingestion path for file-based knowledge repositories. It performs a **full filesystem scan** on each run, discovering and registering all documents under the configured directory tree.
+
+**Key behaviors:**
+
+- **Full scan on every run**: The pipeline walks the entire directory tree. It registers new files, updates changed files, and removes deleted files. CDC sync does not discover new files — that's exclusively the pipeline's job.
+- **Root-relative URIs**: The build pipeline stores `file://docs/Architecture/foo.md` (relative to the repo root) rather than absolute paths, making the knowledge base portable across machines and deployment environments.
+- **Two invocation modes**:
+  - `--import`: Full scan + register + embed all documents
+  - `--update`: Re-scan and update changed files only
+
+**PATCH loop in `do_import()`:**
+
+After initial import, the build pipeline PATCHes each document's `source_uri` via the API:
+
+```python
+# build.py — do_import() CDC PATCH
+rel_path = doc_info["rel_path"]   # e.g. "docs/Architecture/foo.md"
+source_uri = f"file://{rel_path}" # e.g. "file://docs/Architecture/foo.md"
+# PATCH /api/v1/knowledge/documents/{id}  body: {source_uri: source_uri, sync_enabled: true}
+```
+
+This wires every ingested document into the CDC sync system automatically.
+
+### Platform Jobs UI — Source Root Configuration
+
+The Platform Jobs panel (accessible via Setup → Platform Components → Scheduler) provides collection-level CDC controls under the **Platform Jobs** sub-tab.
+
+For each knowledge collection, the detail panel shows:
+
+```
+Sync Interval       [  Daily      ▼ ]
+Source Root
+┌─────────────────────────────────────────────────────┐
+│ /opt/uderia/                                  [Set] │
+└─────────────────────────────────────────────────────┘
+ℹ Relative file:// paths are resolved against this directory.
+  Leave blank to auto-detect from the installation root.
+
+[ Sync Now ]   [ Re-index ]
+```
+
+- **Source Root field**: Pre-populated from `collection.source_root`; placeholder shows `effective_source_root` (the resolved path the server will actually use given the three-tier chain)
+- **Set button**: PATCHes `source_root` to the entered value (or `null` if cleared)
+- **Sync Now**: Calls `POST /v1/knowledge/repositories/{id}/sync` with `older_than_seconds=0` — always force-checks all documents
+- **Re-index**: Calls `POST /v1/knowledge/repositories/{id}/reindex` — re-embeds all documents from source
+
+**`effective_source_root` in the API response:**
+
+`GET /api/v1/rag/collections` returns an `effective_source_root` field for knowledge collections. This is the path the server will actually resolve relative `file://` URIs against, computed from the same three-tier chain. The UI uses this as the placeholder text so operators can verify what path is in effect before setting an explicit override.
+
+### REST API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/knowledge/repositories/{id}/sync` | Trigger CDC sync. Optional `?older_than_seconds=N` (default 3600; 0 = force-check all) |
+| `POST` | `/v1/knowledge/repositories/{id}/reindex` | Force re-embed all documents and lock embedding model |
+| `PATCH` | `/v1/knowledge/repositories/{id}` | Update collection fields including `source_root`, `sync_interval`, `embedding_model_locked` |
+| `GET` | `/v1/rag/collections` | List collections; knowledge collections include `source_root` and `effective_source_root` |
+
+### Scheduler Integration
+
+The Task Scheduler (APScheduler) fires `sync_knowledge_collection()` automatically based on each collection's `sync_interval`. The scheduler job is registered when the collection is created or when `sync_interval` is updated. Fired runs use the default `older_than_seconds=3600` throttle to avoid hammering sources on every tick.
 
 ---
 
@@ -941,7 +1176,7 @@ When a user switches away from a session with active knowledge retrieval, the fu
 |--------|---------------------|----------------------|
 | **Profile class** | Optimize (`tool_enabled`) | Focus (`rag_focused`) + Ideate (`llm_only` opt-in) |
 | **Purpose** | Self-improving execution strategies | Grounded document retrieval |
-| **Data source** | Auto-captured execution traces | Uploaded documents (PDF, DOCX, TXT, MD) |
+| **Data source** | Auto-captured execution traces | Uploaded documents (PDF, DOCX, TXT, MD) + CDC-synced from file:// / https:// / gdrive:// |
 | **Storage format** | JSON case files on disk + ChromaDB | Chunks in ChromaDB only |
 | **MCP server required** | Yes (tied to specific MCP server) | No |
 | **Chunking** | None (full case as single document) | Paragraph / sentence / fixed-size / semantic |
@@ -1079,9 +1314,42 @@ This transparent failure mode prevents hallucination — the system never fabric
 3. Use `maxChunksPerDocument` to limit repetitive content from single sources
 4. Increase `minRelevanceScore` to filter out marginally relevant chunks
 
+### Sync Now Returns 0 Checked
+
+**Symptom**: Clicking "Sync Now" in Platform Jobs returns `checked=0`.
+
+**Checks**:
+1. **No sync-enabled documents**: Documents only appear as sync candidates if they have a `source_uri` and `sync_enabled = 1`. Documents uploaded without a source_uri are skipped.
+2. **Throttle not bypassed**: Only the "Sync Now" UI button passes `older_than_seconds=0`. Verify the button is calling `POST /v1/knowledge/repositories/{id}/sync` (the trigger endpoint), not the scheduled path.
+
+### Sync Now Returns Stale Count (0 Updated Despite File Changes)
+
+**Symptom**: `checked=85 unchanged=85 updated=0` even after editing source files.
+
+**Checks**:
+1. **Wrong source_root**: The sync engine may be reading from the wrong directory and finding the original files. Check `effective_source_root` in the collection API response.
+2. **Absolute URI on a different path**: If `source_uri` contains an absolute path (`file:///old/path/...`) that still exists and contains old content, the hash matches the stored hash. Re-run the agent pack build pipeline (`--import`) to update all URIs to root-relative form, then set `source_root` in Platform Jobs.
+
+### CDC Sync Fetch Errors (`file not found`)
+
+**Symptom**: Sync log shows `Fetch failed for 'filename' (doc=...): [Errno 2] No such file or directory`.
+
+**Resolution**:
+1. **Set Source Root explicitly**: Go to Platform Jobs → collection detail → Source Root field. Enter the absolute path to the root directory of your Uderia installation (e.g. `/opt/uderia`). Click Set.
+2. **Verify the resolved path**: `effective_source_root` in the API response shows what the server will resolve against. The resolved path should be `{effective_source_root}/docs/Architecture/foo.md`.
+3. **Set environment variable**: Alternatively, set `UDERIA_DOCS_ROOT=/opt/uderia` in the server's environment. This applies to all collections without a per-collection override.
+
+### CDC Sync Fetch Errors (`Google account not connected`)
+
+**Symptom**: `gdrive://` sync returns `Google account not connected`.
+
+**Resolution**: Visit Platform Components → Connectors → Google and connect your Google account via the OAuth flow. The connected account must have read access to the Drive files referenced by the `gdrive://{file_id}` URIs.
+
 ---
 
 ## File Reference
+
+### Core Retrieval
 
 | File | Key Lines | Description |
 |------|-----------|-------------|
@@ -1095,15 +1363,33 @@ This transparent failure mode prevents hallucination — the system never fabric
 | `src/trusted_data_agent/agent/rag_retriever.py` | 1753–1809 | Non-ChromaDB (vector store abstraction) query path |
 | `src/trusted_data_agent/agent/rag_access_context.py` | 22–100 | RAGAccessContext class — access control encapsulation |
 | `src/trusted_data_agent/agent/conversation_agent.py` | 65–140 | ConversationAgentExecutor — agent-based synthesis |
-| `src/trusted_data_agent/agent/repository_constructor.py` | 40–312 | Chunking strategies |
+| `src/trusted_data_agent/agent/repository_constructor.py` | 40–312 | Chunking strategies (ingest_epoch stamped on each chunk) |
 | `src/trusted_data_agent/core/config_manager.py` | 2197–2239 | Three-tier config resolution |
 | `src/trusted_data_agent/core/collection_utils.py` | — | Collection utility functions |
-| `src/trusted_data_agent/api/knowledge_routes.py` | 175–393 | Document upload API |
+| `src/trusted_data_agent/api/knowledge_routes.py` | 175–393 | Document upload API; `trigger_knowledge_sync()` (manual sync endpoint) |
 | `src/trusted_data_agent/vectorstore/base.py` | 31–150 | VectorStoreBackend abstract interface |
 | `src/trusted_data_agent/vectorstore/factory.py` | 64–150 | Backend factory with singleton caching |
-| `src/trusted_data_agent/vectorstore/capabilities.py` | — | VectorStoreCapability enum (8 capabilities) |
+| `src/trusted_data_agent/vectorstore/capabilities.py` | — | VectorStoreCapability enum |
 | `components/builtin/context_window/modules/knowledge_context/handler.py` | — | CW knowledge module (budget allocation) |
+
+### CDC Sync Infrastructure
+
+| File | Key Lines | Description |
+|------|-----------|-------------|
+| `src/trusted_data_agent/core/knowledge_sync.py` | 38–65 | `_fetch_local_file()` — file:// resolver with source_root chain |
+| `src/trusted_data_agent/core/knowledge_sync.py` | 68–82 | `_fetch_http()` — http/https resolver (aiohttp + urllib fallback) |
+| `src/trusted_data_agent/core/knowledge_sync.py` | 85–119 | `_fetch_google_drive()` — gdrive:// resolver via platform connector |
+| `src/trusted_data_agent/core/knowledge_sync.py` | 121–126 | `SOURCE_RESOLVERS` dict — scheme → resolver registry |
+| `src/trusted_data_agent/core/knowledge_sync.py` | 129–153 | `fetch_source()` — scheme dispatch |
+| `src/trusted_data_agent/core/knowledge_sync.py` | 160–260 | `sync_knowledge_collection()` — hash-check CDC sync |
+| `src/trusted_data_agent/core/knowledge_sync.py` | 263–421 | `_sync_upsert_document()` — re-ingest changed document (client + server-side paths) |
+| `src/trusted_data_agent/core/knowledge_sync.py` | 428–end | `reindex_knowledge_collection()` — force re-embed + lock embedding model |
+| `src/trusted_data_agent/core/collection_db.py` | — | `get_sync_candidates()`, `mark_document_checked()`, `upsert_document_metadata()` |
+| `src/trusted_data_agent/auth/database.py` | — | Auto-migration: adds `source_root TEXT DEFAULT NULL` to collections table on startup |
+| `src/trusted_data_agent/api/rest_routes.py` | — | `get_rag_collections()` — adds `source_root` + `effective_source_root` to knowledge collections |
+| `agent_packs/uderia_expert/build.py` | — | `process_docs()`: stores root-relative `file://` URIs; `do_import()`: CDC PATCH loop |
+| `static/js/handlers/jobsHandler.js` | — | Platform Jobs UI: Source Root field, Sync Now, Re-index buttons |
 
 ---
 
-*Last updated: March 2026*
+*Last updated: May 2026*

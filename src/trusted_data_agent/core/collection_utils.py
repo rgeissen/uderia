@@ -310,7 +310,12 @@ async def import_collection_from_zip(
             "vector_store_config_id": resolved_vs_config_id,
             "owner_user_id": user_uuid,
             "enabled": True,
-            "visibility": "private"
+            "visibility": "private",
+            # CDC fields: import_epoch reset (chunks are fresh), model unlocked so user
+            # can run Re-index to verify/lock after importing with their preferred model.
+            # source_uri / sync_enabled are user-private — not restored from export.
+            "sync_interval": metadata.get('sync_interval', 'daily'),
+            "embedding_model_locked": 0,
         }
 
         collection_id = db.create_collection(new_collection)
@@ -458,7 +463,15 @@ async def _add_batch_to_backend(
 
 
 def _populate_knowledge_documents(collection_id: int, all_metadatas: list) -> int:
-    """Populate the knowledge_documents table from chunk metadata. Returns doc count."""
+    """Populate the knowledge_documents table from chunk metadata. Returns doc count.
+
+    CDC fields set at import time:
+      ingest_epoch   — reset to now (chunks were re-ingested, not original upload time)
+      content_hash   — reconstructed from concatenated chunk text (best-effort)
+      embedding_model_locked — collection-level; stays 0 (set by reindex when user re-locks)
+      source_uri / sync_enabled — intentionally left NULL/0 (user-private, not exported)
+    """
+    import hashlib as _hashlib
     from trusted_data_agent.auth.database import DATABASE_URL
 
     try:
@@ -466,31 +479,53 @@ def _populate_knowledge_documents(collection_id: int, all_metadatas: list) -> in
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         now = datetime.now(timezone.utc).isoformat()
+        import_epoch = int(datetime.now(timezone.utc).timestamp())
 
-        seen_doc_ids = set()
+        # Group chunks by document_id to reconstruct content_hash
+        doc_chunks: dict = {}
         for meta in all_metadatas:
             doc_id = meta.get("document_id", "")
-            if doc_id and doc_id not in seen_doc_ids:
-                seen_doc_ids.add(doc_id)
-                cursor.execute("""
-                    INSERT OR IGNORE INTO knowledge_documents
-                    (collection_id, document_id, filename, document_type, title,
-                     author, source, category, tags, file_size, content_hash, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    collection_id,
-                    doc_id,
-                    meta.get("filename", ""),
-                    meta.get("document_type", "json"),
-                    meta.get("title", meta.get("filename", "")),
-                    meta.get("author", ""),
-                    "import",
-                    meta.get("category", ""),
-                    meta.get("tags", ""),
-                    0,
-                    "",
-                    now,
-                ))
+            if doc_id:
+                doc_chunks.setdefault(doc_id, []).append(meta)
+
+        seen_doc_ids: set = set()
+        for doc_id, chunks in doc_chunks.items():
+            if doc_id in seen_doc_ids:
+                continue
+            seen_doc_ids.add(doc_id)
+
+            # Use first chunk's metadata for document-level fields
+            meta = chunks[0]
+
+            # Reconstruct content_hash from all chunk texts (order by chunk_index)
+            sorted_chunks = sorted(chunks, key=lambda c: c.get("chunk_index", 0))
+            combined_text = " ".join(c.get("content", c.get("text", "")) for c in sorted_chunks)
+            reconstructed_hash = _hashlib.sha256(combined_text.encode("utf-8", errors="replace")).hexdigest()
+
+            chunk_count = len(chunks)
+
+            cursor.execute("""
+                INSERT OR IGNORE INTO knowledge_documents
+                (collection_id, document_id, filename, document_type, title,
+                 author, source, category, tags, file_size, content_hash,
+                 ingest_epoch, chunk_count, source_uri, sync_enabled, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?)
+            """, (
+                collection_id,
+                doc_id,
+                meta.get("filename", ""),
+                meta.get("document_type", "json"),
+                meta.get("title", meta.get("filename", "")),
+                meta.get("author", ""),
+                "import",
+                meta.get("category", ""),
+                meta.get("tags", ""),
+                0,
+                reconstructed_hash,
+                import_epoch,
+                chunk_count,
+                now,
+            ))
 
         conn.commit()
         conn.close()
@@ -582,6 +617,11 @@ async def export_collection_to_zip(
             "chunk_size": collection['chunk_size'],
             "chunk_overlap": collection['chunk_overlap'],
             "embedding_model": collection['embedding_model'],
+            # CDC metadata — sync_interval exported so importers can set up schedules;
+            # embedding_model_locked exported so importers know the intended model.
+            # source_uri and sync_enabled are intentionally NOT exported (user-private data).
+            "sync_interval": collection.get('sync_interval', 'daily'),
+            "embedding_model_locked": 0,  # always reset to 0 on import (importer must re-lock after reindex)
             "collection_name": collection_name,
             "document_count": total_count,
             "exported_at": datetime.now(timezone.utc).isoformat(),

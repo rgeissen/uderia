@@ -2724,7 +2724,34 @@ async def get_rag_collections():
             # Use persisted counts from database (fast, no backend calls)
             coll_copy["count"] = coll.get("chunk_count", 0) or 0
             coll_copy["document_count"] = coll.get("document_count", 0) or 0
-            
+
+            # CDC fields — sync aggregate and model lock status for card UI
+            if coll.get("repository_type") == "knowledge":
+                try:
+                    agg = collection_db.get_sync_aggregate(coll["id"])
+                    coll_copy["sync_doc_count"] = agg.get("sync_doc_count", 0)
+                    coll_copy["stale_doc_count"] = agg.get("stale_doc_count", 0)
+                except Exception:
+                    coll_copy["sync_doc_count"] = 0
+                    coll_copy["stale_doc_count"] = 0
+            else:
+                coll_copy["sync_doc_count"] = 0
+                coll_copy["stale_doc_count"] = 0
+            coll_copy["embedding_model_locked"] = int(coll.get("embedding_model_locked") or 0)
+            coll_copy["sync_interval"] = coll.get("sync_interval") or "daily"
+            coll_copy["source_root"] = coll.get("source_root") or None
+
+            # Effective source root for UI display: collection setting → env var → auto-detect
+            if coll.get("repository_type") == "knowledge":
+                import os as _os
+                from pathlib import Path as _Path
+                _effective = (
+                    coll.get("source_root")
+                    or _os.environ.get("UDERIA_DOCS_ROOT")
+                    or str(_Path(__file__).resolve().parents[3])
+                )
+                coll_copy["effective_source_root"] = _effective
+
             enhanced_collections.append(coll_copy)
         
         # Add rating statistics in bulk (efficient single query)

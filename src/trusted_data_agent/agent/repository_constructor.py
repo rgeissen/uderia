@@ -584,6 +584,12 @@ class KnowledgeRepositoryConstructor(RepositoryConstructor):
         Drop-in replacement for ``construct()`` when a backend is available.
         Called from knowledge_routes.py so that non-ChromaDB backends are
         supported without blocking the Quart event loop.
+
+        Args:
+            ingest_epoch: Unix timestamp of this write — stamped on every chunk
+                          so generation-based cleanup can delete stale chunks via
+                          a metadata filter (client-side backends only).
+                          Defaults to int(time.time()) when not provided.
         """
         if self._backend is None:
             raise RuntimeError(
@@ -591,10 +597,12 @@ class KnowledgeRepositoryConstructor(RepositoryConstructor):
                 "Pass backend= to create_repository_constructor()."
             )
 
+        import time as _time
         from trusted_data_agent.vectorstore import CollectionConfig, VectorDocument
         from trusted_data_agent.vectorstore.embedding_providers import get_embedding_provider
 
         progress_callback = kwargs.get("progress_callback")
+        ingest_epoch: int = kwargs.get("ingest_epoch") or int(_time.time())
 
         # Step 1: Validate input
         if progress_callback:
@@ -650,6 +658,7 @@ class KnowledgeRepositoryConstructor(RepositoryConstructor):
                     **chunk.metadata,
                     "chunk_index": chunk.chunk_index,
                     "token_count": len(chunk.content) // 4,
+                    "ingest_epoch": ingest_epoch,
                 },
             )
             for chunk in chunks

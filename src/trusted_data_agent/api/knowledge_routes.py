@@ -241,6 +241,8 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
     chunk_size = int(form.get('chunk_size', 1000))
     chunk_overlap = int(form.get('chunk_overlap', 200))
     embedding_model = form.get('embedding_model', 'all-MiniLM-L6-v2')
+    source_uri = form.get('source_uri', '') or None
+    sync_enabled = 1 if form.get('sync_enabled', '').lower() == 'true' and source_uri else 0
     
     def format_sse(data: dict, event: str = "message") -> str:
         """Format data as Server-Sent Event."""
@@ -271,7 +273,8 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
             cursor.execute("""
                 SELECT collection_name, repository_type, owner_user_id, chunking_strategy,
                        chunk_size, chunk_overlap,
-                       optimized_chunking, ss_chunk_size, header_height, footer_height
+                       optimized_chunking, ss_chunk_size, header_height, footer_height,
+                       embedding_model, embedding_model_locked
                 FROM collections WHERE id = ?
             """, (collection_id,))
             
@@ -317,6 +320,43 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
             # Calculate file hash
             content_hash = hashlib.sha256(file_content).hexdigest()
 
+            # ── CDC: hash check — skip re-embedding if content unchanged ──────
+            _cdc_db = get_collection_db()
+            _existing_doc = _cdc_db.get_document_by_filename(collection_id, filename)
+            if _existing_doc and _existing_doc.get("content_hash") == content_hash:
+                _cdc_db.mark_document_checked(_existing_doc["document_id"])
+                os.unlink(temp_file.name)
+                yield format_sse({
+                    "type": "complete",
+                    "status": "unchanged",
+                    "message": f"'{filename}' — content unchanged, skipped re-embedding",
+                    "document_id": _existing_doc["document_id"],
+                    "chunks_stored": 0,
+                }, "complete")
+                return
+
+            # Reuse existing document_id on update, generate new one on insert
+            _cdc_document_id = _existing_doc["document_id"] if _existing_doc else str(uuid4())
+            _ingest_epoch = int(time.time())
+
+            # ── CDC: embedding model mismatch guard ───────────────────────────
+            # Warn (non-blocking) when the collection has a locked embedding
+            # model that differs from the model being used for this upload.
+            # Mixed embeddings degrade search quality — user should reindex.
+            _coll_embedding_model = result.get("embedding_model") or "all-MiniLM-L6-v2"
+            _coll_model_locked = bool(result.get("embedding_model_locked"))
+            if _coll_model_locked and embedding_model != _coll_embedding_model:
+                yield format_sse({
+                    "type": "model_mismatch",
+                    "collection_embedding_model": _coll_embedding_model,
+                    "upload_embedding_model": embedding_model,
+                    "message": (
+                        f"Warning: collection uses '{_coll_embedding_model}' but upload uses "
+                        f"'{embedding_model}'. Mixed embeddings degrade search quality. "
+                        f"Use the Re-index button to rebuild all documents with a single model."
+                    ),
+                }, "model_mismatch")
+
             # ── Server-side chunking path (streaming) ─────────────────────────
             # Pass the raw file to the backend SDK — skip text extraction &
             # local chunking entirely.
@@ -331,7 +371,7 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                     os.unlink(temp_file.name)
                     return
 
-                document_id = str(uuid4())
+                document_id = _cdc_document_id  # preserve ID across updates
 
                 yield format_sse({
                     "type": "progress",
@@ -385,39 +425,33 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                         )
                         return  # Skip DB write — don't register a document with 0 chunks
 
-                    # ── Persist document metadata (fast SQLite write) ────
+                    # ── Persist document metadata via CDC upsert ────────
                     try:
-                        from trusted_data_agent.core.collection_db import CollectionDatabase
-                        _db = CollectionDatabase()
-                        _conn = _db._get_connection()
-                        _cur = _conn.cursor()
-                        _cur.execute("""
-                            INSERT OR IGNORE INTO knowledge_documents
-                            (collection_id, document_id, filename,
-                             document_type, title, author, source,
-                             category, tags, file_size, content_hash,
-                             created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            collection_id, document_id, filename,
-                            os.path.splitext(filename)[1].lstrip('.'),
-                            title, author, 'upload', category,
-                            ','.join(tags), len(file_content),
-                            content_hash,
-                            datetime.now(timezone.utc).isoformat(),
-                        ))
-                        _conn.commit()
-                        _conn.close()
+                        get_collection_db().upsert_document_metadata(
+                            document_id=document_id,
+                            collection_id=collection_id,
+                            filename=filename,
+                            content_hash=content_hash,
+                            ingest_epoch=_ingest_epoch,
+                            chunk_count=0,  # deferred — updated by _deferred_chunk_count
+                            source_uri=source_uri,
+                            sync_enabled=sync_enabled,
+                            document_type=os.path.splitext(filename)[1].lstrip('.'),
+                            title=title,
+                            author=author,
+                            source='upload',
+                            category=category,
+                            tags=','.join(tags),
+                            file_size=len(file_content),
+                        )
                     except Exception as meta_err:
                         app_logger.warning(
                             f"Failed to persist document metadata for "
                             f"'{filename}': {meta_err}"
                         )
 
-                    # ── Increment document count ─────────────────────────
-                    get_collection_db().increment_counts(
-                        collection_id, document_delta=1
-                    )
+                    # ── Authoritative count recompute ────────────────────
+                    get_collection_db().sync_collection_counts(collection_id)
 
                     # ── Clean up temp file ────────────────────────────────
                     try:
@@ -641,6 +675,8 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                 source='upload',
                 file_size=len(file_content),
                 content_hash=content_hash,
+                ingest_epoch=_ingest_epoch,
+                document_id=_cdc_document_id,
                 save_original=True,
                 progress_callback=progress_callback
             )
@@ -664,51 +700,67 @@ async def upload_knowledge_document_stream(current_user: dict, collection_id: in
                     yield format_sse({"type": "error", "message": str(verify_err)}, "error")
                     return
 
-                # Store metadata in database (same as original)
-                from trusted_data_agent.core.collection_db import CollectionDatabase
-                db = CollectionDatabase()
-
-                doc_data = {
-                    'collection_id': collection_id,
-                    'document_id': result['metadata']['document_id'],
-                    'filename': filename,
-                    'document_type': result['metadata']['document_type'],
-                    'title': title,
-                    'author': author,
-                    'source': 'upload',
-                    'category': category,
-                    'tags': tags,
-                    'file_size': len(file_content),
-                    'content_hash': content_hash,
-                    'created_at': datetime.now(timezone.utc).isoformat()
-                }
-
-                conn = db._get_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO knowledge_documents
-                    (collection_id, document_id, filename, document_type, title, author,
-                     source, category, tags, file_size, content_hash, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    doc_data['collection_id'], doc_data['document_id'], doc_data['filename'],
-                    doc_data['document_type'], doc_data['title'], doc_data['author'],
-                    doc_data['source'], doc_data['category'], ','.join(doc_data['tags']),
-                    doc_data['file_size'], doc_data['content_hash'], doc_data['created_at']
-                ))
-                conn.commit()
-                conn.close()
-
-                # Persist counts
                 chunks_stored = result.get('chunks_stored', 0)
-                get_collection_db().increment_counts(
-                    collection_id, document_delta=1, chunk_delta=chunks_stored)
 
+                # ── CDC: delete stale chunks from previous ingest epoch ────────
+                # New chunks are already stored; now remove any chunks written
+                # during an earlier ingest for this document (identified by a
+                # lower ingest_epoch in their metadata).
+                if _existing_doc:
+                    try:
+                        from trusted_data_agent.vectorstore.filters import FieldFilter, AndFilter, FilterOp
+                        stale_filter = AndFilter([
+                            FieldFilter("document_id", FilterOp.EQ, _cdc_document_id),
+                            FieldFilter("ingest_epoch", FilterOp.LT, _ingest_epoch),
+                        ])
+                        stale_result = await backend.get(
+                            collection_name,
+                            where=stale_filter,
+                            include_documents=False,
+                            include_metadata=False,
+                            limit=10_000,
+                        )
+                        stale_ids = [d.id for d in stale_result.documents] if stale_result and stale_result.documents else []
+                        if stale_ids:
+                            await backend.delete(collection_name, ids=stale_ids)
+                            app_logger.info(
+                                f"[CDC] Removed {len(stale_ids)} stale chunks for "
+                                f"'{filename}' (doc={_cdc_document_id})"
+                            )
+                    except Exception as cleanup_err:
+                        # Non-fatal: stale chunks will be swept on next write
+                        app_logger.warning(
+                            f"[CDC] Stale chunk cleanup skipped for '{filename}': {cleanup_err}"
+                        )
+
+                # ── Persist document metadata via CDC upsert ──────────────────
+                get_collection_db().upsert_document_metadata(
+                    document_id=_cdc_document_id,
+                    collection_id=collection_id,
+                    filename=filename,
+                    content_hash=content_hash,
+                    ingest_epoch=_ingest_epoch,
+                    chunk_count=chunks_stored,
+                    source_uri=source_uri,
+                    sync_enabled=sync_enabled,
+                    document_type=result['metadata'].get('document_type', ''),
+                    title=title,
+                    author=author,
+                    source='upload',
+                    category=category,
+                    tags=','.join(tags),
+                    file_size=len(file_content),
+                )
+
+                # ── Authoritative count recompute ─────────────────────────────
+                get_collection_db().sync_collection_counts(collection_id)
+
+                write_status = "updated" if _existing_doc else "created"
                 yield format_sse({
                     "type": "complete",
-                    "status": "success",
+                    "status": write_status,
                     "message": f"Successfully uploaded {filename}",
-                    "document_id": result['metadata']['document_id'],
+                    "document_id": _cdc_document_id,
                     "chunks_stored": chunks_stored
                 }, "complete")
             else:
@@ -1811,3 +1863,175 @@ async def get_teradata_bm25_status(current_user: dict, collection_id: int):
         "scoring_method": backend_config.get("td_scoring_method", "rrf"),
         "sparse_weight": float(backend_config.get("td_sparse_weight", 0.3)),
     }), 200
+
+
+# ── CDC endpoints ─────────────────────────────────────────────────────────────
+
+@knowledge_api_bp.route(
+    "/v1/knowledge/repositories/<int:collection_id>/documents/<document_id>",
+    methods=["PATCH"]
+)
+@require_auth
+async def patch_knowledge_document(current_user: dict, collection_id: int, document_id: str):
+    """Update CDC sync configuration for a document.
+
+    Body (JSON):
+        source_uri    — URI to sync from (null to clear)
+        sync_enabled  — true/false
+        sync_interval — 'hourly', '6h', 'daily', 'weekly' (optional, updates collection)
+    """
+    try:
+        db = get_collection_db()
+        collection = db.get_collection_by_id(collection_id)
+        if not collection:
+            return jsonify({"error": "Collection not found"}), 404
+        if collection["owner_user_id"] != current_user.id:
+            return jsonify({"error": "Access denied"}), 403
+
+        body = await request.get_json(silent=True) or {}
+        source_uri = body.get("source_uri")
+        sync_enabled = 1 if body.get("sync_enabled") else 0
+        sync_interval = body.get("sync_interval")
+
+        # Disable sync if URI is cleared
+        if not source_uri:
+            sync_enabled = 0
+
+        db.update_document_sync_config(
+            document_id=document_id,
+            source_uri=source_uri,
+            sync_enabled=sync_enabled,
+            sync_interval=sync_interval,
+        )
+        return jsonify({"status": "ok", "document_id": document_id}), 200
+
+    except Exception as e:
+        app_logger.error(f"PATCH document sync config failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@knowledge_api_bp.route(
+    "/v1/knowledge/repositories/<int:collection_id>/sync",
+    methods=["POST"]
+)
+@require_auth
+async def trigger_knowledge_sync(current_user: dict, collection_id: int):
+    """Manually trigger a CDC sync run for all sync-enabled documents in a collection.
+
+    Returns:
+        {checked, updated, unchanged, errors, duration_seconds}
+    """
+    try:
+        db = get_collection_db()
+        collection = db.get_collection_by_id(collection_id)
+        if not collection:
+            return jsonify({"error": "Collection not found"}), 404
+        if collection["owner_user_id"] != current_user.id:
+            return jsonify({"error": "Access denied"}), 403
+
+        from trusted_data_agent.core.knowledge_sync import sync_knowledge_collection
+        # Manual trigger always force-checks all documents (older_than_seconds=0).
+        # The 1-hour throttle only applies to scheduled background runs.
+        result = await sync_knowledge_collection(collection_id, current_user.id, older_than_seconds=0)
+        return jsonify(result), 200
+
+    except Exception as e:
+        app_logger.error(f"Knowledge sync trigger failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@knowledge_api_bp.route(
+    "/v1/knowledge/repositories/<int:collection_id>/reindex",
+    methods=["POST"]
+)
+@require_auth
+async def reindex_knowledge_collection(current_user: dict, collection_id: int):
+    """Re-embed all documents in a collection using the current embedding model.
+
+    Chooses strategy automatically:
+        in_place   — collection has marketplace listing or active subscribers
+        shadow_swap — private unsubscribed collections (same ingest path,
+                      strategy name preserved for future isolation enhancement)
+
+    Body (optional JSON):
+        { "strategy": "in_place" | "shadow_swap" }   (overrides auto-select)
+
+    Returns:
+        { strategy, reindexed, skipped, errors, duration_seconds }
+    """
+    try:
+        db = get_collection_db()
+        collection = db.get_collection_by_id(collection_id)
+        if not collection:
+            return jsonify({"error": "Collection not found"}), 404
+        if collection["owner_user_id"] != current_user.id:
+            return jsonify({"error": "Access denied"}), 403
+
+        # Strategy decision (auto unless caller overrides)
+        body = {}
+        try:
+            body = await request.get_json(silent=True) or {}
+        except Exception:
+            pass
+
+        sub_count = db.get_subscription_count(collection_id)
+        is_marketplace = bool(collection.get("is_marketplace_listed"))
+        auto_strategy = "in_place" if (sub_count > 0 or is_marketplace) else "shadow_swap"
+        strategy = body.get("strategy") or auto_strategy
+
+        # Unlock embedding model so re-index proceeds unguarded, then re-lock after
+        db.update_collection(collection_id, {"embedding_model_locked": 0})
+
+        app_logger.info(
+            f"[REINDEX] collection={collection_id} strategy={strategy} "
+            f"subscribers={sub_count} marketplace={is_marketplace}"
+        )
+
+        from trusted_data_agent.core.knowledge_sync import reindex_knowledge_collection as _do_reindex
+        result = await _do_reindex(collection_id, current_user.id, strategy=strategy)
+        return jsonify(result), 200
+
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 404
+    except Exception as e:
+        app_logger.error(f"Reindex request failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@knowledge_api_bp.route(
+    "/v1/knowledge/repositories/<int:collection_id>",
+    methods=["PATCH"]
+)
+@require_auth
+async def patch_knowledge_collection(current_user: dict, collection_id: int):
+    """Update mutable collection settings.
+
+    Accepted fields:
+        embedding_model_locked  — 0 or 1
+        sync_interval           — 'hourly', '6h', 'daily', 'weekly'
+        description             — free-text description
+
+    Returns:
+        { "status": "ok", "updated": {...} }
+    """
+    try:
+        db = get_collection_db()
+        collection = db.get_collection_by_id(collection_id)
+        if not collection:
+            return jsonify({"error": "Collection not found"}), 404
+        if collection["owner_user_id"] != current_user.id:
+            return jsonify({"error": "Access denied"}), 403
+
+        body = await request.get_json(silent=True) or {}
+        ALLOWED = {"embedding_model_locked", "sync_interval", "description", "source_root"}
+        updates = {k: v for k, v in body.items() if k in ALLOWED}
+
+        if not updates:
+            return jsonify({"error": "No updatable fields provided", "allowed": sorted(ALLOWED)}), 400
+
+        db.update_collection(collection_id, updates)
+        return jsonify({"status": "ok", "updated": updates}), 200
+
+    except Exception as e:
+        app_logger.error(f"PATCH collection failed: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500

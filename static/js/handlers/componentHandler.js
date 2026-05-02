@@ -336,6 +336,13 @@ function _renderDetailPanel(comp) {
         </div>`
     });
 
+    // Jobs tab — only for the scheduler component (after Profiles)
+    if (comp.component_id === 'scheduler') {
+        const jobsIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>`;
+        tabs.push({ id: 'comp-tab-jobs', label: 'Jobs', icon: jobsIcon, panelId: 'comp-panel-jobs' });
+        tabPanels.push({ id: 'comp-panel-jobs', html: '<div id="jobs-tab-root"></div>' });
+    }
+
     const tabBarHTML = tabs.map((t, i) => `
         <button class="ind-tab ind-tab--underline ${i === 0 ? 'active' : ''}"
                 style="--tab-color: 6, 182, 212"
@@ -384,6 +391,11 @@ function _renderDetailPanel(comp) {
     // Async-load connections tab (canvas component only)
     if (comp.component_id === 'canvas') {
         _loadConnections();
+    }
+
+    // Init Jobs tab (scheduler component only)
+    if (comp.component_id === 'scheduler') {
+        window.jobsHandler?.initJobsTab('jobs-tab-root');
     }
 }
 

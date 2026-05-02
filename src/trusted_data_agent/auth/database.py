@@ -157,6 +157,9 @@ def init_database():
         # Create SAML 2.0 + group-sync tables (Phase 2 / Phase 3 SSO)
         _create_saml_tables()
 
+        # Knowledge repository CDC fields (ingest_epoch, source_uri, sync controls)
+        _run_knowledge_cdc_migrations()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -1963,6 +1966,126 @@ def _run_consumption_table_migrations():
 
     except Exception as e:
         logger.error(f"Error running consumption table migrations: {e}", exc_info=True)
+
+
+def _run_knowledge_cdc_migrations():
+    """
+    Add CDC fields to knowledge_documents and collections tables.
+    Safe to call multiple times — checks column existence before altering.
+
+    knowledge_documents:
+        source_uri       — where the document was fetched from (NULL = manual upload)
+        ingest_epoch     — Unix timestamp of last successful write; generation cleanup key
+        sync_enabled     — 1 = scheduler re-checks source_uri on each sync run
+        last_checked_at  — ISO8601 UTC of last hash-check (manual or scheduled)
+
+    collections:
+        sync_interval         — scheduler cadence: 'hourly','6h','daily','weekly'
+        embedding_model_locked — 1 after a validated re-index; 0 = consistency unverified
+    """
+    import sqlite3
+
+    try:
+        db_path = DEFAULT_DB_PATH
+        if not db_path.exists():
+            return
+
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # knowledge_documents: source_uri
+        try:
+            cursor.execute("SELECT source_uri FROM knowledge_documents LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding source_uri to knowledge_documents")
+            cursor.execute("ALTER TABLE knowledge_documents ADD COLUMN source_uri TEXT")
+            conn.commit()
+
+        # knowledge_documents: ingest_epoch
+        try:
+            cursor.execute("SELECT ingest_epoch FROM knowledge_documents LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding ingest_epoch to knowledge_documents")
+            cursor.execute("ALTER TABLE knowledge_documents ADD COLUMN ingest_epoch INTEGER")
+            # Backfill from created_at so existing docs have a valid epoch
+            cursor.execute("""
+                UPDATE knowledge_documents
+                SET ingest_epoch = CAST(strftime('%s', created_at) AS INTEGER)
+                WHERE ingest_epoch IS NULL AND created_at IS NOT NULL
+            """)
+            conn.commit()
+            if cursor.rowcount > 0:
+                logger.info(f"CDC: backfilled ingest_epoch for {cursor.rowcount} existing documents")
+
+        # knowledge_documents: sync_enabled
+        try:
+            cursor.execute("SELECT sync_enabled FROM knowledge_documents LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding sync_enabled to knowledge_documents")
+            cursor.execute("ALTER TABLE knowledge_documents ADD COLUMN sync_enabled INTEGER DEFAULT 0")
+            conn.commit()
+
+        # knowledge_documents: last_checked_at
+        try:
+            cursor.execute("SELECT last_checked_at FROM knowledge_documents LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding last_checked_at to knowledge_documents")
+            cursor.execute("ALTER TABLE knowledge_documents ADD COLUMN last_checked_at TEXT")
+            conn.commit()
+
+        # knowledge_documents: chunk_count (per-document; summed by sync_collection_counts)
+        try:
+            cursor.execute("SELECT chunk_count FROM knowledge_documents LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding chunk_count to knowledge_documents")
+            cursor.execute("ALTER TABLE knowledge_documents ADD COLUMN chunk_count INTEGER DEFAULT 0")
+            conn.commit()
+
+        # collections: sync_interval
+        try:
+            cursor.execute("SELECT sync_interval FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding sync_interval to collections")
+            cursor.execute("ALTER TABLE collections ADD COLUMN sync_interval TEXT DEFAULT 'daily'")
+            conn.commit()
+
+        # collections: embedding_model_locked
+        try:
+            cursor.execute("SELECT embedding_model_locked FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding embedding_model_locked to collections")
+            cursor.execute("ALTER TABLE collections ADD COLUMN embedding_model_locked INTEGER DEFAULT 0")
+            conn.commit()
+
+        # collections: source_root (base directory for resolving relative file:// URIs)
+        try:
+            cursor.execute("SELECT source_root FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding source_root to collections")
+            cursor.execute("ALTER TABLE collections ADD COLUMN source_root TEXT DEFAULT NULL")
+            conn.commit()
+
+        # Staleness sweep index
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_knowledge_docs_sync
+            ON knowledge_documents (collection_id, sync_enabled, last_checked_at)
+        """)
+
+        # Upsert lookup index (get_document_by_filename)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_knowledge_docs_filename
+            ON knowledge_documents (collection_id, filename)
+        """)
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error running knowledge CDC migrations: {e}", exc_info=True)
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def _create_default_admin_if_needed():
