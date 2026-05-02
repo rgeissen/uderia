@@ -2065,6 +2065,14 @@ def _run_knowledge_cdc_migrations():
             cursor.execute("ALTER TABLE collections ADD COLUMN source_root TEXT DEFAULT NULL")
             conn.commit()
 
+        # collections: next_sync_at (explicit schedule anchor; auto-advances by interval after each sync)
+        try:
+            cursor.execute("SELECT next_sync_at FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding next_sync_at to collections")
+            cursor.execute("ALTER TABLE collections ADD COLUMN next_sync_at TEXT DEFAULT NULL")
+            conn.commit()
+
         # Staleness sweep index
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_knowledge_docs_sync

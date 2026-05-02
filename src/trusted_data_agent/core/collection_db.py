@@ -694,7 +694,8 @@ class CollectionDatabase:
                         last_checked_at IS NULL
                         OR datetime(last_checked_at) < datetime('now', ? || ' seconds')
                     ) THEN 1 ELSE 0 END
-                ) as stale_doc_count
+                ) as stale_doc_count,
+                MAX(CASE WHEN sync_enabled = 1 THEN last_checked_at ELSE NULL END) as last_sync_at
             FROM knowledge_documents
             WHERE collection_id = ?
         """, (f"-{stale_threshold}", collection_id))
@@ -704,6 +705,7 @@ class CollectionDatabase:
         return {
             "sync_doc_count": int(agg["sync_doc_count"] or 0),
             "stale_doc_count": int(agg["stale_doc_count"] or 0),
+            "last_sync_at": agg["last_sync_at"],  # ISO timestamp or None
         }
 
     def get_subscription_count(self, collection_id: int) -> int:

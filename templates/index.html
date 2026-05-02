@@ -1080,12 +1080,12 @@
                                             <div class="grid md:grid-cols-2 gap-x-12 gap-y-6 relative">
                                                 <!-- Timeline connector line for desktop -->
                                                 <div class="hidden md:block absolute left-1/2 top-0 bottom-0 w-px bg-white/10 welcome-timeline-item"></div>
-                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10" style="border-color:rgba(241,95,34,0.4)">
                                                     <div class="flex items-start gap-3">
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
-                                                            <p class="text-sm font-semibold text-teradata-orange">28-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">Independent Phase Parallelization — Independent plan phases and date-range calls run concurrently, reducing multi-phase query time from N × phase_latency to 1 × phase_latency.</p>
+                                                            <p class="text-sm font-semibold text-teradata-orange">02-May-2026</p>
+                                                            <p class="text-base text-white font-medium">Continuous Knowledge Sync (CDC) — Repositories stay current automatically. Only changed documents are re-processed; deleted content is removed. Sync results show exactly which files changed.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1093,8 +1093,35 @@
                                                     <div class="flex items-start gap-3">
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
-                                                            <p class="text-sm font-semibold text-teradata-orange">27-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">Engine Modularization — Fusion Optimizer split into five engine classes (Ideate, Focus, Coordinate, Optimize, Conversation) via EngineRegistry; executor reduced from ~6,800 to ~3,160 lines.</p>
+                                                            <p class="text-sm font-semibold text-teradata-orange">02-May-2026</p>
+                                                            <p class="text-base text-white font-medium">Knowledge Sync Scheduling — Set exactly when repositories sync using a datetime anchor in Platform Jobs; the schedule auto-advances after each run. Repository cards include a Manage button that opens the sync job directly.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">02-May-2026</p>
+                                                            <p class="text-base text-white font-medium">SAML 2.0 &amp; JIT Provisioning — Connect to corporate identity providers via SAML 2.0; user roles update automatically at login based on IdP group membership.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">01-May-2026</p>
+                                                            <p class="text-base text-white font-medium">Task Scheduler — Schedule any agent query to run automatically on a cron or interval; manage schedules through conversation or the split-panel UI, with results delivered by email or webhook.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">28-Apr-2026</p>
+                                                            <p class="text-base text-white font-medium">Parallel Query Execution — Multi-step queries run faster: independent plan phases and date-range iterations now execute in parallel instead of sequentially.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1103,16 +1130,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">16-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">Knowledge Graphs first-class citizens of Agent Packs — Export bundles the active KG per profile; import fully restores graph data with safe non-displacing activation. Two-mode import dialog: create new or merge into existing KG.</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
-                                                    <div class="flex items-start gap-3">
-                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
-                                                        <div>
-                                                            <p class="text-sm font-semibold text-teradata-orange">15-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">Teradata EVS Hybrid Search — Native server-side BM25 for server-side chunked collections; VantageCloud performs RRF fusion internally. Enable via the BM25 card in the repository inspector.</p>
+                                                            <p class="text-base text-white font-medium">Knowledge Graphs in Agent Packs — Export and import Knowledge Graphs as part of agent packs; import restores graphs without displacing existing active graphs.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1121,7 +1139,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">10-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">Genie Coordinator Pass-Through — Skips coordinator synthesis for single-expert queries with no prior context, cutting coordinator token cost in half</p>
+                                                            <p class="text-base text-white font-medium">Genie Coordinator Pass-Through — Single-expert queries skip the synthesis step, cutting coordinator token cost and response time in half.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1130,7 +1148,16 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">04-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">OpenRouter Support - Unified gateway to 100+ open and proprietary models via a single API key with full LangChain and Fusion Optimizer integration</p>
+                                                            <p class="text-base text-white font-medium">OpenRouter Support — Access 100+ models (Llama, Mistral, Gemma, and more) via a single API key.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">15-Apr-2026</p>
+                                                            <p class="text-base text-white font-medium">Teradata Hybrid Search — Enable BM25 hybrid search on Teradata VantageCloud knowledge repositories directly from the repository inspector.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1139,7 +1166,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">10-Mar-2026</p>
-                                                            <p class="text-base text-white font-medium">Hybrid Search - Semantic, hybrid (RRF), and keyword (BM25) search modes for Qdrant Cloud knowledge repositories</p>
+                                                            <p class="text-base text-white font-medium">Hybrid Search — Choose between semantic, hybrid (RRF), and keyword (BM25) search on Qdrant Cloud knowledge repositories.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1148,7 +1175,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">08-Mar-2026</p>
-                                                            <p class="text-base text-white font-medium">Teradata EVS Backend - Enterprise vector store with server-side embedding and connection resilience</p>
+                                                            <p class="text-base text-white font-medium">Teradata VantageCloud Backend — Store and search knowledge in Teradata VantageCloud with server-side embedding and enterprise-grade connection resilience.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1157,16 +1184,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">07-Mar-2026</p>
-                                                            <p class="text-base text-white font-medium">ChromaDB & Qdrant Cloud Backends - Production-ready vector backends with embedded and cloud options</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
-                                                    <div class="flex items-start gap-3">
-                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
-                                                        <div>
-                                                            <p class="text-sm font-semibold text-teradata-orange">06-Mar-2026</p>
-                                                            <p class="text-base text-white font-medium">Vector Store Abstraction Layer - Pluggable multi-backend vector database architecture with unified interface</p>
+                                                            <p class="text-base text-white font-medium">ChromaDB &amp; Qdrant Cloud — Zero-config local knowledge storage (ChromaDB) or managed cloud vector search (Qdrant), selectable per repository.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1175,7 +1193,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">01-Mar-2026</p>
-                                                            <p class="text-base text-white font-medium">Context Window Management - Intelligent token budget control with configurable context types and live optimization</p>
+                                                            <p class="text-base text-white font-medium">Context Window Management — Control how much of your conversation history and knowledge the agent sees; configure per profile with live token budget visualization.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1184,16 +1202,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">29-Feb-2026</p>
-                                                            <p class="text-base text-white font-medium">Canvas Component - Interactive code editor with SQL syntax highlighting and in-place execution</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
-                                                    <div class="flex items-start gap-3">
-                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
-                                                        <div>
-                                                            <p class="text-sm font-semibold text-teradata-orange">28-Feb-2026</p>
-                                                            <p class="text-base text-white font-medium">Generative UI Components - Plugin-based component architecture with hot-reload and profile-level controls</p>
+                                                            <p class="text-base text-white font-medium">Canvas Component — Write and run SQL directly in the chat canvas with syntax highlighting and live result rendering.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1202,7 +1211,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">27-Feb-2026</p>
-                                                            <p class="text-base text-white font-medium">Data Visualization (Chart Component) - Interactive charting with 16 chart types and intelligent data-to-visual mapping</p>
+                                                            <p class="text-base text-white font-medium">Data Visualization — Turn query results into interactive charts (16 types) automatically; the agent picks the right visual for your data.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1211,7 +1220,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">23-Feb-2026</p>
-                                                            <p class="text-base text-white font-medium">Extensions - Post-processing pipeline with 6 built-in extensions and custom framework support</p>
+                                                            <p class="text-base text-white font-medium">Extensions — Transform agent responses on the fly: extract JSON, classify, summarize, generate PDFs, or chain custom transformations with a single <code>#</code> trigger.</p>
                                                         </div>
                                                     </div>
                                                 </div>

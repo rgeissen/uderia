@@ -2023,7 +2023,7 @@ async def patch_knowledge_collection(current_user: dict, collection_id: int):
             return jsonify({"error": "Access denied"}), 403
 
         body = await request.get_json(silent=True) or {}
-        ALLOWED = {"embedding_model_locked", "sync_interval", "description", "source_root"}
+        ALLOWED = {"embedding_model_locked", "sync_interval", "description", "source_root", "next_sync_at"}
         updates = {k: v for k, v in body.items() if k in ALLOWED}
 
         if not updates:

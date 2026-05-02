@@ -7,6 +7,7 @@ import { state } from '../state.js';
 import { populateMcpServerDropdown } from './rag/utils.js';
 import { openCollectionInspection, loadRagCollections } from '../ui.js?v=1.5';
 import { groupByAgentPack, createPackContainerCard, attachPackContainerHandlers, updatePackContainerDocCounts } from './agentPackGrouping.js';
+import { openSchedulerToCollection } from './componentHandler.js';
 
 /**
  * Initialize Knowledge repository handlers
@@ -1426,6 +1427,16 @@ function attachKnowledgeRepositoryCardHandlers(container, repositories) {
         });
     });
 
+    // "Manage" button — deep-link to Platform Jobs for this collection
+    container.querySelectorAll('.manage-sync-job-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const repoId = btn.dataset.repoId;
+            await openSchedulerToCollection(repoId);
+        });
+    });
+
     // Delete button handlers
     const deleteButtons = container.querySelectorAll('.delete-knowledge-repo-btn');
     console.log('[Knowledge] Found', deleteButtons.length, 'delete buttons');
@@ -1953,6 +1964,14 @@ function createKnowledgeRepositoryCard(repo) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
                     Sync Now
+                </button>
+                <button class="manage-sync-job-btn card-btn" data-repo-id="${repoId}"
+                        title="Open Platform Jobs to manage this sync configuration"
+                        style="border-color:rgba(52,211,153,0.2);color:var(--text-muted)">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                    </svg>
+                    Manage
                 </button>` : ''}
                 ${showModelMismatchBanner ? `
                 <button class="reindex-knowledge-btn card-btn" data-repo-id="${repoId}"

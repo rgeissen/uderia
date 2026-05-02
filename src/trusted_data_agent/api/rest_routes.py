@@ -2731,12 +2731,35 @@ async def get_rag_collections():
                     agg = collection_db.get_sync_aggregate(coll["id"])
                     coll_copy["sync_doc_count"] = agg.get("sync_doc_count", 0)
                     coll_copy["stale_doc_count"] = agg.get("stale_doc_count", 0)
+                    coll_copy["last_sync_at"] = agg.get("last_sync_at")
+                    # Prefer stored next_sync_at (user-set schedule anchor); fall back to last+interval
+                    _stored_next = coll.get("next_sync_at")
+                    _last = agg.get("last_sync_at")
+                    if _stored_next:
+                        coll_copy["next_sync_at"] = _stored_next
+                    elif _last:
+                        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                        _secs = {"hourly": 3600, "6h": 21600, "daily": 86400, "weekly": 604800}.get(
+                            coll.get("sync_interval") or "daily", 86400)
+                        try:
+                            _last_dt = _dt.fromisoformat(_last.replace("Z", "+00:00"))
+                            if _last_dt.tzinfo is None:
+                                _last_dt = _last_dt.replace(tzinfo=_tz.utc)
+                            coll_copy["next_sync_at"] = (_last_dt + _td(seconds=_secs)).isoformat()
+                        except Exception:
+                            coll_copy["next_sync_at"] = None
+                    else:
+                        coll_copy["next_sync_at"] = None
                 except Exception:
                     coll_copy["sync_doc_count"] = 0
                     coll_copy["stale_doc_count"] = 0
+                    coll_copy["last_sync_at"] = None
+                    coll_copy["next_sync_at"] = None
             else:
                 coll_copy["sync_doc_count"] = 0
                 coll_copy["stale_doc_count"] = 0
+                coll_copy["last_sync_at"] = None
+                coll_copy["next_sync_at"] = None
             coll_copy["embedding_model_locked"] = int(coll.get("embedding_model_locked") or 0)
             coll_copy["sync_interval"] = coll.get("sync_interval") or "daily"
             coll_copy["source_root"] = coll.get("source_root") or None

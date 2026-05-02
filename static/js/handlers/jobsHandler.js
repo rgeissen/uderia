@@ -321,6 +321,34 @@
         return `${diffD}d ago`;
     }
 
+    function _isoToDatetimeLocal(iso) {
+        if (!iso) return '';
+        try {
+            const d = new Date(iso);
+            // datetime-local needs "YYYY-MM-DDTHH:MM" in local time
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        } catch { return ''; }
+    }
+
+    function _nextSyncLabel(iso) {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        const diffMs = d.getTime() - Date.now();
+        if (diffMs <= 0) {
+            const overM = Math.floor(-diffMs / 60000);
+            if (overM < 60)  return `overdue by ${overM}m`;
+            const overH = Math.floor(overM / 60);
+            if (overH < 24)  return `overdue by ${overH}h`;
+            return `overdue by ${Math.floor(overH / 24)}d`;
+        }
+        const diffM = Math.floor(diffMs / 60000);
+        if (diffM < 60)  return `in ${diffM}m`;
+        const diffH = Math.floor(diffM / 60);
+        if (diffH < 24)  return `in ${diffH}h`;
+        return `in ${Math.floor(diffH / 24)}d`;
+    }
+
     // ── Toast ──────────────────────────────────────────────────────────────────
 
     function _toast(msg, type = 'success') {
@@ -335,9 +363,11 @@
     let _root = null;
     let _profiles = [];
     let _tasks = [];
+    let _collections = [];
     let _activeTaskId = null;
     let _activeSyncId = null;
     let _activeSubTab = 'scheduled';
+    let _pendingCollectionId = null;
 
     // ══════════════════════════════════════════════════════════════════════════
     // Entry point
@@ -831,12 +861,19 @@
         try {
             const data = await _api('GET', '/rag/collections');
             const colls = (data.collections || data || []).filter(c => c.repository_type === 'knowledge');
+            _collections = colls;
             _renderSyncList(colls, list);
             if (colls.length) {
-                // Restore active selection or auto-select first
-                const toSelect = _activeSyncId
-                    ? colls.find(c => String(c.id) === _activeSyncId) || colls[0]
-                    : colls[0];
+                // A deep-link request takes priority over normal restore/auto-select
+                let toSelect = null;
+                if (_pendingCollectionId !== null) {
+                    toSelect = colls.find(c => String(c.id) === String(_pendingCollectionId)) || colls[0];
+                    _pendingCollectionId = null;
+                } else {
+                    toSelect = _activeSyncId
+                        ? colls.find(c => String(c.id) === _activeSyncId) || colls[0]
+                        : colls[0];
+                }
                 _openSyncPanel(toSelect);
             }
         } catch (e) {
@@ -885,7 +922,7 @@
         if (syncCount > 0) dotClass = staleCount > 0 ? 'amber' : 'green';
 
         const backendColor = backend === 'teradata' ? '#f59e0b' : backend === 'qdrant' ? '#8b5cf6' : '#22d3ee';
-        const lastChecked = coll.last_checked_at ? _relTime(coll.last_checked_at) : null;
+        const lastChecked = coll.last_sync_at ? _relTime(coll.last_sync_at) : null;
         const hasSync = syncCount > 0;
         const masterChecked = hasSync ? 'checked' : '';
         const intervalLabel = INTERVALS.find(i => i.value === interval)?.label || interval;
@@ -897,12 +934,11 @@
                     <span style="font-size:13px;font-weight:500;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px">${_esc(coll.name || coll.collection_name)}</span>
                     <span class="job-badge" style="background:rgba(${backendColor === '#22d3ee' ? '6,182,212' : backendColor === '#f59e0b' ? '245,158,11' : '139,92,246'},.12);border-color:rgba(${backendColor === '#22d3ee' ? '6,182,212' : backendColor === '#f59e0b' ? '245,158,11' : '139,92,246'},.3);color:${backendColor}">${backend}</span>
                 </div>
-                <div style="display:flex;align-items:center;gap:8px">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                     ${hasSync
-                        ? `<span class="job-meta">${syncCount}/${total} synced · ${intervalLabel}</span>`
+                        ? `<span class="job-meta">${syncCount}/${total} synced · ${intervalLabel}${lastChecked ? ' · ' + lastChecked : ''}</span>`
                         : `<span class="job-meta">No sync configured</span>`
                     }
-                    ${lastChecked ? `<span class="job-meta">${ICONS.clock} ${lastChecked}</span>` : ''}
                     ${staleCount > 0 ? `<span class="job-badge" style="background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.25);color:#f59e0b">${staleCount} stale</span>` : ''}
                 </div>
             </div>
@@ -999,6 +1035,17 @@
             `<option value="${i.value}" ${interval === i.value ? 'selected' : ''}>${i.label}</option>`
         ).join('');
 
+        // Last / next sync timing
+        const lastSyncAt  = coll.last_sync_at  || null;
+        const nextSyncAt  = coll.next_sync_at  || null;
+        const lastStr  = lastSyncAt ? _relTime(lastSyncAt)  : 'Never';
+        const lastFull = lastSyncAt ? new Date(lastSyncAt).toLocaleString() : '';
+        const nextStr  = nextSyncAt ? _nextSyncLabel(nextSyncAt) : '—';
+        const nextFull = nextSyncAt ? new Date(nextSyncAt).toLocaleString() : '';
+        const nextColor = nextSyncAt && new Date(nextSyncAt) < new Date() ? '#f59e0b' : 'var(--text-muted)';
+        // Convert stored ISO to datetime-local value (strip seconds + tz)
+        const nextLocalValue = nextSyncAt ? _isoToDatetimeLocal(nextSyncAt) : '';
+
         return `
         <div>
             <div class="jobs-detail-title">${_esc(coll.name || coll.collection_name)}</div>
@@ -1011,7 +1058,7 @@
                     : `<span class="job-badge" style="background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.25);color:#f59e0b">model unlocked</span>`}
             </div>
 
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
                 <div style="flex:1;min-width:120px">
                     <label class="jobs-field-label">Sync Interval</label>
                     <select class="jobs-input jobs-select" id="sd-interval" style="width:100%">${intervalOpts}</select>
@@ -1024,6 +1071,33 @@
                         ${ICONS.reindex} Re-index
                     </button>
                 </div>
+            </div>
+
+            <div style="display:flex;gap:20px;margin-bottom:10px;font-size:12px">
+                <div title="${_esc(lastFull)}">
+                    <span style="color:var(--text-muted)">Last run:</span>
+                    <span style="color:var(--text-primary);margin-left:4px">${_esc(lastStr)}</span>
+                </div>
+                <div title="${_esc(nextFull)}">
+                    <span style="color:var(--text-muted)">Next due:</span>
+                    <span style="color:${nextColor};margin-left:4px">${_esc(nextStr)}</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px">
+                <label class="jobs-field-label">Next Run</label>
+                <div style="display:flex;gap:6px;align-items:center">
+                    <input class="jobs-input" id="sd-next-run" type="datetime-local"
+                           value="${_esc(nextLocalValue)}"
+                           style="flex:1;font-size:12px">
+                    <button class="jobs-btn jobs-btn-secondary" id="sd-next-run-set" style="white-space:nowrap;padding:6px 10px">
+                        ${ICONS.check} Set
+                    </button>
+                </div>
+                <div style="margin-top:5px;font-size:11px;color:var(--text-muted);line-height:1.5">
+                    Sets the schedule anchor. After each sync the next run advances by one interval.
+                </div>
+                <div id="sd-next-run-result"></div>
             </div>
 
             <div style="margin-bottom:14px">
@@ -1067,6 +1141,30 @@
                 _loadAndRenderSync();
             } catch (err) {
                 _toast(err.message, 'error');
+            }
+        });
+
+        // Next Run — Set button (stores schedule anchor; auto-advances by interval after each sync)
+        container.querySelector('#sd-next-run-set')?.addEventListener('click', async () => {
+            const btn = container.querySelector('#sd-next-run-set');
+            const input = container.querySelector('#sd-next-run');
+            const resultEl = container.querySelector('#sd-next-run-result');
+            const rawVal = input?.value || '';
+            // Convert datetime-local (YYYY-MM-DDTHH:MM, local time) to ISO UTC string, or null to clear
+            const isoVal = rawVal ? new Date(rawVal).toISOString() : null;
+            btn.disabled = true;
+            btn.innerHTML = `<span class="jobs-spinner"></span>`;
+            try {
+                await _api('PATCH', `/knowledge/repositories/${collId}`, { next_sync_at: isoVal });
+                btn.disabled = false;
+                btn.innerHTML = ICONS.check + ' Set';
+                if (resultEl) resultEl.innerHTML = `<div class="jobs-result-line">${ICONS.check} Next run ${isoVal ? 'set to ' + new Date(isoVal).toLocaleString() : 'cleared'}</div>`;
+                setTimeout(() => { if (resultEl) resultEl.innerHTML = ''; }, 3500);
+                _loadAndRenderSync();
+            } catch (err) {
+                btn.disabled = false;
+                btn.innerHTML = ICONS.check + ' Set';
+                if (resultEl) resultEl.innerHTML = `<div class="jobs-result-line error">${ICONS.x} ${_esc(err.message)}</div>`;
             }
         });
 
@@ -1276,8 +1374,36 @@
             .replace(/'/g, '&#x27;');
     }
 
+    // ── Deep-link entry point ──────────────────────────────────────────────────
+
+    /**
+     * Navigate the Platform Jobs sub-tab to a specific collection.
+     * Called externally (e.g. from a knowledge repository card "Manage" button)
+     * after the scheduler component detail has been opened.
+     */
+    function openToCollection(collectionId) {
+        // Switch to Platform Jobs sub-tab
+        if (_root) {
+            _root.querySelectorAll('.jobs-sub-tab').forEach(b => b.classList.remove('active'));
+            const syncBtn = _root.querySelector('[data-subtab="sync"]');
+            if (syncBtn) syncBtn.classList.add('active');
+            _activeSubTab = 'sync';
+            _root.querySelectorAll('[id^="jobs-panel-"]').forEach(p => p.classList.add('hidden'));
+            document.getElementById('jobs-panel-sync')?.classList.remove('hidden');
+        }
+
+        // If collections already loaded, select the matching one immediately
+        if (_collections.length > 0) {
+            const coll = _collections.find(c => String(c.id) === String(collectionId));
+            if (coll) _openSyncPanel(coll);
+        } else {
+            // _loadAndRenderSync hasn't completed yet; store for pick-up
+            _pendingCollectionId = collectionId;
+        }
+    }
+
     // ── Export ─────────────────────────────────────────────────────────────────
 
-    window.jobsHandler = { initJobsTab };
+    window.jobsHandler = { initJobsTab, openToCollection };
 
 })();

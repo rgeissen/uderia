@@ -3498,18 +3498,16 @@ function getSystemPromptSummaryHTML() {
                 <p class="text-xs text-gray-400 mb-3">Latest enhancements and updates to the Uderia Platform.</p>
                 <div class="whats-new-container">
                     <ul class="list-disc list-inside text-xs text-gray-300 space-y-1">
-                       <li><strong>10-Apr-2026:</strong> Genie Coordinator Pass-Through — Skips coordinator synthesis for single-expert queries with no prior context, cutting coordinator token cost in half.</li>
-                       <li><strong>06-Nov-2025:</strong> UI Real-Time Monitoring of Rest Requests</li>
-                       <li><strong>31-Oct-2025:</strong> Fully configurable Context Management (Turn & Session)</li>
-                       <li><strong>28-Oct-2025:</strong> Turn Replay & Turn Reload Plan</li>
-                       <li><strong>24-Oct-2025:</strong> Stop Button Added - Ability to immediately Stop Workflows</li>
-                       <li><strong>23-Oct-2025:</strong> Robust Multi-Tool Phase Handling</li>
-                       <li><strong>11-Oct-2025:</strong> Friendly.AI Integration</li>
-                       <li><strong>10-Oct-2025:</strong> Context Aware Rendering of the Collateral Report</li>
-                       <li><strong>19-SEP-2025:</strong> Microsoft Azure Integration</li>
-                       <li><strong>18-SEP-2025:</strong> REST Interface for Engine Configuration, Execution & Monitoring </li>
-                       <li><strong>12-SEP-2025:</strong> Significant Formatting Upgrade (Canonical Baseline Model for LLM Provider Rendering)</li>
-                       <li><strong>05-SEP-2025:</strong> Conversation Mode (Google Cloud Credentials required)</li>
+                       <li><strong>02-May-2026:</strong> Knowledge Sync Scheduling — Set exactly when knowledge repositories sync using a datetime anchor in Platform Jobs; the schedule auto-advances after each run. Repository cards include a Manage button that opens the matching sync job directly.</li>
+                       <li><strong>02-May-2026:</strong> Portable Source URIs — Knowledge repositories now work across environments without reconfiguration; set a Source Root in Platform Jobs to tell the platform where documents live on each server.</li>
+                       <li><strong>02-May-2026:</strong> Continuous Knowledge Sync (CDC) — Repositories stay current automatically. Only changed documents are re-processed; deleted content is removed. Sync results show exactly which files changed.</li>
+                       <li><strong>02-May-2026:</strong> Security Architecture — Formal coverage of authentication (JWT, OAuth, SAML, OIDC), RBAC, secrets management, audit logging, threat model, and compliance mapping (EU AI Act, GDPR, SOX, HIPAA).</li>
+                       <li><strong>02-May-2026:</strong> JIT Provisioning &amp; Group Sync — User roles update automatically at every SSO login based on the user's current IdP group membership; no manual tier changes needed after org changes.</li>
+                       <li><strong>02-May-2026:</strong> SAML 2.0 Enterprise SSO — Connect to corporate identity providers via SAML 2.0; supports multiple IdP configurations, SP metadata, and both IdP- and SP-initiated login flows.</li>
+                       <li><strong>01-May-2026:</strong> Task Scheduler — Schedule any agent query to run automatically on a cron or interval; manage schedules through conversation or the split-panel UI, with results delivered by email or webhook.</li>
+                       <li><strong>28-Apr-2026:</strong> Parallel Query Execution — Multi-step queries run faster: independent plan phases and date-range iterations now execute in parallel instead of sequentially.</li>
+                       <li><strong>10-Apr-2026:</strong> Genie Coordinator Pass-Through — Single-expert queries skip the synthesis step, cutting coordinator token cost and response time in half.</li>
+                       <li><strong>04-Apr-2026:</strong> OpenRouter Support — Access 100+ models (Llama, Mistral, Gemma, and more) via a single API key.</li>
                     </ul>
                 </div>
             </div>

@@ -253,6 +253,22 @@ async def sync_knowledge_collection(
     duration = round(time.monotonic() - start, 2)
     results["duration_seconds"] = duration
 
+    # Advance next_sync_at by one interval (rolls the schedule anchor forward)
+    stored_next = collection.get("next_sync_at")
+    if stored_next:
+        import datetime as _dt_mod
+        _secs = {"hourly": 3600, "6h": 21600, "daily": 86400, "weekly": 604800}.get(
+            collection.get("sync_interval") or "daily", 86400)
+        try:
+            _next_dt = _dt_mod.datetime.fromisoformat(stored_next.replace("Z", "+00:00"))
+            if _next_dt.tzinfo is None:
+                _next_dt = _next_dt.replace(tzinfo=_dt_mod.timezone.utc)
+            _new_next = (_next_dt + _dt_mod.timedelta(seconds=_secs)).isoformat()
+            db.update_collection(collection_id, {"next_sync_at": _new_next})
+            logger.info(f"[CDC SYNC] next_sync_at advanced to {_new_next}")
+        except Exception as _adv_err:
+            logger.warning(f"[CDC SYNC] Could not advance next_sync_at: {_adv_err}")
+
     logger.info(
         f"[CDC SYNC] collection={collection_id} done — "
         f"checked={results['checked']} updated={results['updated']} "

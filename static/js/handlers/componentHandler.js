@@ -14,6 +14,7 @@ let _componentSettings = {};
 let _cachedComponents = [];
 let _selectedComponentId = null;
 let _initialized = false;
+let _pendingJobsTabCollection = null;
 
 // ─── DOM IDs (top-level view) ───────────────────────────────────────────────
 const GRID_ID = 'components-grid-top';
@@ -50,6 +51,39 @@ export async function loadComponentsView() {
  */
 export async function loadComponents() {
     await _loadComponents();
+}
+
+/**
+ * Navigate directly to the Task Scheduler → Jobs → Platform Jobs for the
+ * given collection. Called from knowledge repository card "Manage" buttons.
+ *
+ * Does a bare-DOM view switch (no dynamic import / no competing _loadComponents)
+ * so there is only one _onCardClick in flight. The _pendingJobsTabCollection flag
+ * is consumed inside _onCardClick after _renderDetailPanel completes.
+ */
+export async function openSchedulerToCollection(collectionId) {
+    // 1. Switch to components-view via bare DOM (avoids triggering a second _loadComponents)
+    document.querySelectorAll('.app-view').forEach(v => {
+        v.classList.toggle('active', v.id === 'components-view');
+    });
+    document.querySelectorAll('.view-switch-button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === 'components-view');
+    });
+
+    // 2. Pre-select scheduler so _loadComponents auto-select picks the right card,
+    //    and set the flag so _onCardClick activates Jobs tab after render.
+    _selectedComponentId = 'scheduler';
+    _pendingJobsTabCollection = collectionId;
+
+    // 3. Load components grid (if not already loaded) then open scheduler detail
+    if (_cachedComponents.length === 0) {
+        // _loadComponents sees _selectedComponentId='scheduler' and calls
+        // _onCardClick('scheduler') internally, which consumes the flag.
+        await _loadComponents();
+    } else {
+        // Grid already rendered; go straight to scheduler detail.
+        await _onCardClick('scheduler');
+    }
 }
 
 /**
@@ -203,6 +237,19 @@ async function _onCardClick(componentId) {
 
         const data = await resp.json();
         _renderDetailPanel(data.component);
+
+        // Deep-link: activate Jobs tab after render if requested for this scheduler render
+        if (_pendingJobsTabCollection !== null && data.component.component_id === 'scheduler') {
+            const collId = _pendingJobsTabCollection;
+            _pendingJobsTabCollection = null;
+            requestAnimationFrame(() => {
+                const jobsTab = document.getElementById('comp-tab-jobs');
+                if (jobsTab) {
+                    jobsTab.click();
+                    window.jobsHandler?.openToCollection(collId);
+                }
+            });
+        }
 
     } catch (err) {
         console.error('[ComponentHandler] Detail fetch error:', err);
