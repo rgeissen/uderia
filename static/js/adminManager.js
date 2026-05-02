@@ -480,6 +480,9 @@ const AdminManager = {
             if (typeof window.loadPlatformConnectorAdminPanel === 'function') {
                 window.loadPlatformConnectorAdminPanel();
             }
+            if (typeof window._buildComponentAdminSidebar === 'function') {
+                window._buildComponentAdminSidebar();
+            }
         }
     },
 

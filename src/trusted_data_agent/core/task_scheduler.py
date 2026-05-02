@@ -47,6 +47,10 @@ def _ensure_columns():
                 conn.execute("ALTER TABLE scheduled_tasks ADD COLUMN session_id TEXT")
                 conn.commit()
                 logger.info("Task Scheduler: migrated scheduled_tasks — added session_id column.")
+            if "job_type" not in cols:
+                conn.execute("ALTER TABLE scheduled_tasks ADD COLUMN job_type TEXT NOT NULL DEFAULT 'user'")
+                conn.commit()
+                logger.info("Task Scheduler: migrated scheduled_tasks — added job_type column.")
     except Exception as e:
         logger.warning(f"Task Scheduler schema migration warning: {e}")
 
@@ -88,6 +92,36 @@ def is_scheduler_globally_enabled() -> bool:
     except Exception:
         pass
     return True  # default open
+
+
+def is_profile_scheduler_enabled() -> bool:
+    """Return True if user-created profile jobs are globally enabled."""
+    try:
+        from trusted_data_agent.components.settings import is_profile_scheduler_enabled as _flag
+        return _flag()
+    except Exception:
+        return True
+
+
+def is_platform_scheduler_enabled() -> bool:
+    """Return True if platform maintenance jobs are globally enabled."""
+    try:
+        from trusted_data_agent.components.settings import is_platform_scheduler_enabled as _flag
+        return _flag()
+    except Exception:
+        return True
+
+
+def _get_platform_job_ids() -> list[str]:
+    """Return IDs of all platform jobs (job_type='platform')."""
+    try:
+        with _get_conn() as conn:
+            rows = conn.execute(
+                "SELECT id FROM scheduled_tasks WHERE job_type = 'platform'"
+            ).fetchall()
+        return [r["id"] for r in rows]
+    except Exception:
+        return []
 
 
 def is_scheduler_enabled_for_profile(profile_id: str, user_uuid: str) -> bool:
@@ -300,19 +334,83 @@ async def start_scheduler():
     _scheduler.start()
     logger.info("Task Scheduler started.")
 
-    # Register all currently enabled tasks
+    user_count = await _load_user_jobs()
+    platform_count = await _load_platform_jobs()
+    logger.info(f"Task Scheduler: registered {user_count} user job(s) and {platform_count} platform job(s).")
+
+
+async def _load_user_jobs() -> int:
+    """Register all enabled user-created (profile) jobs. Returns count registered."""
+    if not is_profile_scheduler_enabled():
+        logger.info("Task Scheduler: profile jobs are disabled — skipping user job registration.")
+        return 0
     with _get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM scheduled_tasks WHERE enabled = 1"
+            "SELECT * FROM scheduled_tasks WHERE enabled = 1 AND (job_type = 'user' OR job_type IS NULL)"
         ).fetchall()
     tasks = [dict(r) for r in rows]
     for task in tasks:
         try:
             _register_job(task)
         except Exception as e:
-            logger.error(f"Failed to register scheduled task '{task['id']}': {e}")
+            logger.error(f"Failed to register user task '{task['id']}': {e}")
+    return len(tasks)
 
-    logger.info(f"Task Scheduler: registered {len(tasks)} task(s).")
+
+async def _load_platform_jobs() -> int:
+    """Register all enabled platform maintenance jobs. Returns count registered."""
+    if not is_platform_scheduler_enabled():
+        logger.info("Task Scheduler: platform jobs are disabled — skipping platform job registration.")
+        return 0
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM scheduled_tasks WHERE enabled = 1 AND job_type = 'platform'"
+        ).fetchall()
+    tasks = [dict(r) for r in rows]
+    for task in tasks:
+        try:
+            _register_job(task)
+        except Exception as e:
+            logger.error(f"Failed to register platform task '{task['id']}': {e}")
+    return len(tasks)
+
+
+async def enable_profile_scheduler() -> None:
+    """Enable user-created profile jobs and register all enabled ones."""
+    from trusted_data_agent.components.settings import save_component_settings
+    save_component_settings({"profile_scheduler_enabled": True}, "system")
+    await _load_user_jobs()
+    logger.info("Profile scheduler enabled.")
+
+
+async def disable_profile_scheduler() -> None:
+    """Disable user-created profile jobs and unregister them from APScheduler."""
+    from trusted_data_agent.components.settings import save_component_settings
+    save_component_settings({"profile_scheduler_enabled": False}, "system")
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id FROM scheduled_tasks WHERE job_type = 'user' OR job_type IS NULL"
+        ).fetchall()
+    for row in rows:
+        _unregister_job(row["id"])
+    logger.info("Profile scheduler disabled — all user jobs unregistered.")
+
+
+async def enable_platform_scheduler() -> None:
+    """Enable platform maintenance jobs and register them."""
+    from trusted_data_agent.components.settings import save_component_settings
+    save_component_settings({"platform_scheduler_enabled": True}, "system")
+    await _load_platform_jobs()
+    logger.info("Platform scheduler enabled.")
+
+
+async def disable_platform_scheduler() -> None:
+    """Disable platform maintenance jobs and unregister them."""
+    from trusted_data_agent.components.settings import save_component_settings
+    save_component_settings({"platform_scheduler_enabled": False}, "system")
+    for task_id in _get_platform_job_ids():
+        _unregister_job(task_id)
+    logger.info("Platform scheduler disabled — all platform jobs unregistered.")
 
 
 async def stop_scheduler():
@@ -395,7 +493,60 @@ def _parse_interval(s: str) -> int:
 def _fire_task(task_id: str):
     """Synchronous wrapper called by APScheduler — schedules the async execution."""
     loop = asyncio.get_event_loop()
-    loop.create_task(_execute_task_async(task_id))
+    # Branch: platform jobs use a lightweight maintenance path; user jobs use execute_query()
+    try:
+        with _get_conn() as conn:
+            row = conn.execute(
+                "SELECT job_type FROM scheduled_tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+        job_type = row["job_type"] if row else "user"
+    except Exception:
+        job_type = "user"
+
+    if job_type == "platform":
+        loop.create_task(_execute_platform_job_async(task_id))
+    else:
+        loop.create_task(_execute_task_async(task_id))
+
+
+async def _execute_platform_job_async(task_id: str):
+    """Execute a platform maintenance job by calling the appropriate maintenance function."""
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM scheduled_tasks WHERE id = ? AND enabled = 1 AND job_type = 'platform'",
+            (task_id,)
+        ).fetchone()
+    if not row:
+        return
+    task = dict(row)
+
+    run_id = _record_run_start(task_id)
+    try:
+        from pathlib import Path as _Path
+        import sys as _sys
+        _maint_dir = str(_Path(__file__).resolve().parents[3] / "maintenance")
+        if _maint_dir not in _sys.path:
+            _sys.path.insert(0, _maint_dir)
+        from consumption_periodic_jobs import ConsumptionPeriodicJobs
+        db_path = str(_DB_PATH)
+        jobs = ConsumptionPeriodicJobs(db_path)
+
+        name = task.get("name", "")
+        if "hourly" in name.lower():
+            result = jobs.run_hourly_reset()
+        elif "daily" in name.lower():
+            result = jobs.run_daily_reset()
+        elif "monthly" in name.lower():
+            result = jobs.run_monthly_rollover()
+        else:
+            result = {"status": "unknown", "job": name}
+
+        summary = f"Platform job '{name}' completed: {result}"[:500]
+        _record_run_end(run_id, "success", result_summary=summary)
+        logger.info(summary)
+    except Exception as e:
+        logger.error(f"Platform job '{task_id}' failed: {e}", exc_info=True)
+        _record_run_end(run_id, "error", result_summary=str(e)[:500])
 
 
 async def _emit_notification(user_uuid: str, notification: dict):
@@ -691,6 +842,84 @@ async def _deliver_result(task: dict, result: str, session_id: str):
 
     except Exception as e:
         logger.warning(f"Failed to deliver result for task '{task_name}' via {channel}: {e}")
+
+
+# ── Platform job admin helpers ────────────────────────────────────────────────
+
+def list_platform_jobs() -> list[dict]:
+    """Return all platform jobs with last/next run info (admin view)."""
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM scheduled_tasks WHERE job_type = 'platform' ORDER BY name"
+        ).fetchall()
+    result = []
+    for row in rows:
+        task = dict(row)
+        task["_next_run"] = _get_next_run_time(task["id"])
+        result.append(task)
+    return result
+
+
+def update_platform_job(task_id: str, updates: dict) -> Optional[dict]:
+    """Enable/disable a single platform job. Only 'enabled' key is allowed."""
+    allowed = {"enabled"}
+    fields = {k: v for k, v in updates.items() if k in allowed}
+    if not fields:
+        return None
+    fields["updated_at"] = _now()
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [task_id]
+    with _get_conn() as conn:
+        conn.execute(
+            f"UPDATE scheduled_tasks SET {set_clause} WHERE id = ? AND job_type = 'platform'",
+            values,
+        )
+        conn.commit()
+    # Sync APScheduler registration
+    if _scheduler and _scheduler.running:
+        if fields.get("enabled") == 0:
+            _unregister_job(task_id)
+        elif fields.get("enabled") == 1 and is_platform_scheduler_enabled():
+            with _get_conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM scheduled_tasks WHERE id = ?", (task_id,)
+                ).fetchone()
+            if row:
+                _register_job(dict(row))
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM scheduled_tasks WHERE id = ?", (task_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def list_platform_job_runs(task_id: str, limit: int = 20) -> list[dict]:
+    """Return recent runs for a platform job (no ownership check — admin only)."""
+    with _get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM scheduled_task_runs WHERE task_id = ? ORDER BY started_at DESC LIMIT ?",
+            (task_id, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+async def run_platform_job_now(task_id: str) -> None:
+    """Admin-triggered immediate execution of a platform maintenance job."""
+    import asyncio
+    asyncio.create_task(_execute_platform_job_async(task_id))
+
+
+def _get_next_run_time(task_id: str) -> Optional[str]:
+    """Return the next scheduled run time for a job as ISO string, or None."""
+    if not _scheduler:
+        return None
+    try:
+        job = _scheduler.get_job(task_id)
+        if job and job.next_run_time:
+            return job.next_run_time.isoformat()
+    except Exception:
+        pass
+    return None
 
 
 # ── Manual trigger ────────────────────────────────────────────────────────────

@@ -13197,12 +13197,13 @@ async def list_components():
 
         components = []
         for comp in manager.get_all_components():
-            if not is_component_available(comp.component_id):
-                continue
-            # If user components disabled, hide non-builtin
+            # If user components disabled, hide non-builtin entirely
             if not settings.get("user_components_enabled", True) and comp.source != "builtin":
                 continue
-            components.append(comp.to_api_dict())
+            d = comp.to_api_dict()
+            # Effective access = global disabled list + per-user override for the requesting user
+            d["globally_disabled"] = not is_component_available(comp.component_id, user_uuid)
+            components.append(d)
 
         return jsonify({
             "components": components,
@@ -13273,13 +13274,11 @@ async def get_component_renderer(component_id):
     """
     Serve a component's JavaScript renderer file.
     Used by the frontend ComponentRendererRegistry to dynamically load renderers.
+    Note: no governance check here — the renderer is a display asset needed for
+    existing conversation history. New invocations are gated at tool-execution level.
     """
     try:
         from trusted_data_agent.components.manager import get_component_manager
-        from trusted_data_agent.components.settings import is_component_available
-
-        if not is_component_available(component_id):
-            return jsonify({"error": "Component not available"}), 403
 
         manager = get_component_manager()
         comp = manager.get_component(component_id)

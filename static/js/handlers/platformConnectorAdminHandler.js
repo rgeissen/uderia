@@ -348,26 +348,39 @@ function _renderAdminDetailPanel(server) {
                 </div>
 
                 <div>
-                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Permitted Tools
-                        <span class="normal-case font-normal text-gray-600 ml-1">(all checked = no restriction)</span>
-                    </p>
-                    <div class="flex flex-wrap gap-2">
+                    <div class="flex items-center justify-between mb-2.5">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider" style="color:var(--text-muted)">Permitted Tools</p>
+                        <span class="text-[11px]" style="color:var(--text-muted)">
+                            ${permitted === null
+                                ? '<span style="color:#10b981">✓ All tools allowed</span>'
+                                : `<span>${allTools.filter(t => permitted.has(t)).length} / ${allTools.length} active</span>`
+                            }
+                        </span>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
                         ${allTools.length === 0
-                            ? '<span class="text-xs text-gray-500">No tool list available</span>'
+                            ? '<span class="text-xs" style="color:var(--text-muted)">No tool list available for this connector.</span>'
                             : allTools.map(t => {
                                 const on = permitted === null || permitted.has(t);
-                                return `<label class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-all ring-1
-                                                ${on ? 'bg-indigo-500/10 text-indigo-300 ring-indigo-500/30' : 'bg-gray-700/60 text-gray-500 ring-white/5'}"
-                                               title="${on ? 'Click to restrict' : 'Click to allow'}">
-                                            <input type="checkbox" ${on ? 'checked' : ''} class="sr-only"
-                                                   onchange="togglePlatformConnectorAvailableTool('${server.id}', '${t}', this.checked)">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 ${on ? 'text-indigo-400' : 'text-gray-600'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                                                ${on
-                                                    ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>'
-                                                    : '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>'}
-                                            </svg>
-                                            ${_paEsc(t)}
-                                        </label>`;
+                                return `<button type="button"
+                                               class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer select-none transition-all duration-150"
+                                               style="${on
+                                                   ? 'background:rgba(129,140,248,0.12);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3)'
+                                                   : 'background:rgba(255,255,255,0.03);color:var(--text-muted);border:1px solid var(--border-primary)'}"
+                                               title="${on ? 'Click to restrict this tool' : 'Click to allow this tool'}"
+                                               onclick="togglePlatformConnectorAvailableTool('${server.id}', '${t}', ${!on})">
+                                            <span class="inline-flex items-center justify-center w-4 h-4 rounded flex-shrink-0"
+                                                  style="${on
+                                                      ? 'background:rgba(129,140,248,0.25);color:#818cf8'
+                                                      : 'background:rgba(255,255,255,0.05);color:var(--text-muted)'}">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                                                    ${on
+                                                        ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>'
+                                                        : '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>'}
+                                                </svg>
+                                            </span>
+                                            <span class="font-mono leading-none">${_paEsc(t)}</span>
+                                        </button>`;
                               }).join('')
                         }
                     </div>
@@ -383,10 +396,12 @@ function _renderAdminDetailPanel(server) {
             `}
 
             <!-- Footer actions -->
-            <div class="border-t border-white/5 px-5 py-3 flex items-center justify-between">
+            <div class="border-t px-5 py-3 flex items-center justify-between" style="border-color:var(--border-primary)">
                 <button onclick="openPlatformConnectorCredentials('${server.id}')"
-                        class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all hover:bg-indigo-500/10"
-                        style="border:1px solid rgba(129,140,248,0.25);color:#818cf8">
+                        class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all"
+                        style="border:1px solid var(--border-primary);color:var(--text-primary)"
+                        onmouseenter="this.style.background='var(--hover-bg-strong)'"
+                        onmouseleave="this.style.background=''"
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
                     </svg>
@@ -1245,7 +1260,102 @@ async function deleteRegistrySource(sourceId) {
 
 // ── Platform Components admin sub-tab switcher ────────────────────────────────
 
+// ── Component admin metadata ──────────────────────────────────────────────────
+// Static metadata for builtin components (icons, accent colors, descriptions)
+const _COMP_META = {
+    canvas: {
+        displayName: 'Canvas Workspace',
+        toolName: 'TDA_Canvas',
+        accent: '#3b82f6',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>`,
+        iconLg: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>`,
+        description: 'Interactive code and document workspace rendered inline in chat.',
+    },
+    chart: {
+        displayName: 'Data Visualization',
+        toolName: 'TDA_Charting',
+        accent: '#F15F22',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>`,
+        iconLg: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>`,
+        description: 'G2Plot data visualizations (18 chart types) rendered inline in chat.',
+    },
+    knowledge_graph: {
+        displayName: 'Knowledge Graph',
+        toolName: 'TDA_KnowledgeGraph',
+        accent: '#10b981',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path stroke-linecap="round" d="M12 7v5M12 12l-5 5M12 12l5 5"/></svg>`,
+        iconLg: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path stroke-linecap="round" d="M12 7v5M12 12l-5 5M12 12l5 5"/></svg>`,
+        description: 'D3.js force-directed knowledge graph for entity relationships.',
+    },
+    context_window: {
+        displayName: 'Context Window Manager',
+        toolName: null,
+        accent: '#64748b',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h7"/></svg>`,
+        iconLg: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h7"/></svg>`,
+        description: 'Budget orchestration infrastructure for LLM context windows. Always active.',
+    },
+    scheduler: {
+        displayName: 'Task Scheduler',
+        toolName: 'TDA_Scheduler',
+        accent: '#a855f7',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`,
+        iconLg: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`,
+        description: 'Autonomous scheduling engine — Profile Jobs and Platform Jobs independently controlled.',
+    },
+};
+
+// Track which component panels have been initialized to avoid re-fetching
+const _compPanelInitialized = new Set();
+
+async function _buildComponentAdminSidebar() {
+    const nav = document.getElementById('components-admin-dynamic-nav');
+    if (!nav) return;
+
+    let components = [];
+    try {
+        const r = await fetch('/api/v1/components', { headers: _pconnHeaders(false) });
+        if (r.ok) {
+            const d = await r.json();
+            components = (d.components || []).sort((a, b) => a.display_name.localeCompare(b.display_name));
+        }
+    } catch (e) {
+        nav.innerHTML = `<p class="px-2 py-1 text-[11px]" style="color:#ef4444">Failed to load components</p>`;
+        return;
+    }
+
+    // Fetch current settings to know which are disabled
+    let disabledList = [];
+    try {
+        const sr = await fetch('/api/v1/admin/component-settings', { headers: _pconnHeaders(false) });
+        if (sr.ok) {
+            const sd = await sr.json();
+            disabledList = (sd.settings && sd.settings.disabled_components) || [];
+        }
+    } catch (_) {}
+
+    nav.innerHTML = components.map(comp => {
+        const meta = _COMP_META[comp.component_id] || { accent: '#64748b', icon: '' };
+        const tabId = comp.component_id === 'scheduler' ? 'task-scheduler' : comp.component_id;
+        const isSystem = comp.component_type === 'system';
+        const isDisabled = disabledList.includes(comp.component_id);
+        const dotColor = isSystem ? '#64748b' : (isDisabled ? '#6b7280' : meta.accent);
+        const dotTitle = isSystem ? 'System' : (isDisabled ? 'Disabled' : 'Active');
+        return `<button type="button" data-platform-tab="${tabId}" class="platform-comp-subtab ind-tab ind-tab--sidebar w-full"
+                        style="--tab-color:${meta.accent.replace('#','').match(/../g).map(x=>parseInt(x,16)).join(',')}"
+                        onclick="window.switchPlatformComponentsAdminTab('${tabId}')">
+                    <span style="color:${meta.accent}">${meta.icon}</span>
+                    <span class="text-sm font-medium flex-1 text-left truncate" style="color:var(--text-primary)">${_paEsc(comp.display_name)}</span>
+                    <span class="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:${dotColor}" title="${dotTitle}"></span>
+                </button>`;
+    }).join('');
+}
+
 function switchPlatformComponentsAdminTab(tabName) {
+    // Build sidebar on first use (may not be built yet if tab opened programmatically)
+    if (!document.querySelector('#components-admin-dynamic-nav button')) {
+        _buildComponentAdminSidebar();
+    }
     document.querySelectorAll('.platform-comp-subtab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.platformTab === tabName);
     });
@@ -1254,11 +1364,496 @@ function switchPlatformComponentsAdminTab(tabName) {
     });
     if ((tabName === 'mcp-servers' || tabName === 'connectors') && typeof loadPlatformConnectorAdminPanel === 'function') {
         loadPlatformConnectorAdminPanel();
-    }
-    if (tabName === 'task-scheduler') {
+    } else if (tabName === 'task-scheduler') {
         loadSchedulerAdminPanel();
+    } else if (['canvas', 'chart', 'knowledge_graph', 'context_window'].includes(tabName)) {
+        _loadGenericComponentAdminPanel(tabName);
     }
 }
+
+// ── Component accent hex → "r,g,b" helper ─────────────────────────────────────
+
+function _accentRgb(hex) {
+    const h = hex.replace('#', '');
+    return `${parseInt(h.substring(0,2),16)},${parseInt(h.substring(2,4),16)},${parseInt(h.substring(4,6),16)}`;
+}
+
+const _IFOC_LABELS = {
+    tool_enabled: { label: 'Optimize',   color: '#F15F22' },
+    llm_only:     { label: 'Ideate',     color: '#4ade80' },
+    rag_focused:  { label: 'Focus',      color: '#3b82f6' },
+    genie:        { label: 'Coordinate', color: '#9333ea' },
+};
+
+// ── Generic component admin panel (canvas / chart / knowledge_graph / context_window) ──
+
+async function _loadGenericComponentAdminPanel(componentId) {
+    const container = document.getElementById(`comp-admin-${componentId}-container`);
+    if (!container || _compPanelInitialized.has(componentId)) return;
+
+    const meta = _COMP_META[componentId] || { accent: '#64748b', iconLg: '' };
+    const accent = meta.accent;
+    const rgb = _accentRgb(accent);
+
+    container.innerHTML = `
+        <div class="flex items-center gap-2 py-6 justify-center" style="color:var(--text-muted)">
+            <svg class="animate-spin h-4 w-4" style="color:${accent}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Loading…
+        </div>`;
+
+    let comp = null;
+    let disabledList = [];
+    try {
+        const [cr, sr] = await Promise.all([
+            fetch(`/api/v1/components/${componentId}`, { headers: _pconnHeaders(false) }),
+            fetch('/api/v1/admin/component-settings', { headers: _pconnHeaders(false) }),
+        ]);
+        if (cr.ok) comp = await cr.json();
+        if (sr.ok) {
+            const sd = await sr.json();
+            disabledList = (sd.settings && sd.settings.disabled_components) || [];
+        }
+    } catch (e) { /* fall through */ }
+
+    if (!comp) {
+        // Component may be globally disabled (API returns 403) — use static metadata as fallback
+        comp = {
+            display_name: meta.displayName || componentId,
+            component_type: componentId === 'context_window' ? 'system' : 'action',
+            tool_name: meta.toolName || null,
+        };
+    }
+
+    const isSystem = comp.component_type === 'system';
+    const isEnabled = isSystem ? true : !disabledList.includes(componentId);
+    const statusDotColor = isSystem ? '#64748b' : (isEnabled ? '#10b981' : '#6b7280');
+    const statusLabel    = isSystem ? 'System'  : (isEnabled ? 'Active'  : 'Disabled');
+
+    container.innerHTML = `
+    <div class="space-y-4">
+        <!-- Header -->
+        <div class="glass-panel rounded-xl p-5 flex items-start gap-4">
+            <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                 style="background:rgba(${rgb},0.12);border:1px solid rgba(${rgb},0.25);color:${accent}">
+                ${meta.iconLg}
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-3 flex-wrap">
+                    <span class="font-semibold text-base" style="color:var(--text-primary)">${_paEsc(comp.display_name || componentId)}</span>
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
+                          style="background:rgba(${isSystem ? '100,116,139' : (isEnabled ? '16,185,129' : '107,114,128')},0.1);color:${statusDotColor};border:1px solid rgba(${isSystem ? '100,116,139' : (isEnabled ? '16,185,129' : '107,114,128')},0.2)">
+                        <span class="w-1.5 h-1.5 rounded-full inline-block" style="background:${statusDotColor}"></span>
+                        ${statusLabel}
+                    </span>
+                </div>
+                <p class="text-xs mt-0.5" style="color:var(--text-muted)">${_paEsc(meta.description)}</p>
+                <p class="text-xs mt-1.5 flex items-center gap-3 flex-wrap" style="color:var(--text-muted)">
+                    ${comp.tool_name ? `<span>Tool: <span class="font-mono" style="color:${accent}">${_paEsc(comp.tool_name)}</span></span>` : ''}
+                    <span>Type: <span style="color:var(--text-primary)">${_paEsc(comp.component_type || 'action')}</span></span>
+                    <span>Builtin</span>
+                </p>
+            </div>
+            ${!isSystem ? `
+            <div class="flex-shrink-0 flex items-center gap-2 pt-1">
+                <span class="text-xs" style="color:${isEnabled ? '#10b981' : 'var(--text-muted)'}">${isEnabled ? 'Enabled' : 'Disabled'}</span>
+                <label class="ind-toggle ind-toggle--primary">
+                    <input type="checkbox" id="comp-global-toggle-${componentId}" ${isEnabled ? 'checked' : ''}
+                           onchange="window._toggleCompGlobal('${componentId}', this.checked)">
+                    <span class="ind-track"></span>
+                </label>
+            </div>` : ''}
+        </div>
+
+        <!-- Horizontal tab bar -->
+        <div style="border-bottom:1px solid var(--border-primary)">
+            <div style="display:flex">
+                <button type="button" class="comp-admin-tab"
+                        data-comp="${componentId}" data-tab="overview"
+                        style="padding:10px 16px;font-size:0.875rem;font-weight:500;border:none;border-bottom:2px solid ${accent};color:${accent};margin-bottom:-1px;background:none;cursor:pointer"
+                        onclick="window._switchCompTab('${componentId}','overview')">
+                    Overview
+                </button>
+                <button type="button" class="comp-admin-tab"
+                        id="comp-users-nav-btn-${componentId}"
+                        data-comp="${componentId}" data-tab="users"
+                        style="padding:10px 16px;font-size:0.875rem;font-weight:500;border:none;border-bottom:2px solid transparent;color:var(--text-muted);margin-bottom:-1px;background:none;cursor:pointer"
+                        onclick="window._switchCompTab('${componentId}','users')">
+                    Users
+                </button>
+            </div>
+        </div>
+        <div class="mt-4">
+            <div id="comp-tab-overview-${componentId}">
+                ${_renderComponentOverview(comp, disabledList, componentId, accent, rgb)}
+            </div>
+            <div id="comp-tab-users-${componentId}" class="hidden">
+                <div class="flex items-center justify-center py-6" style="color:var(--text-muted)">Loading users…</div>
+            </div>
+        </div>
+    </div>`;
+
+    _compPanelInitialized.add(componentId);
+    // Eagerly populate KPI without waiting for Users tab click
+    _refreshCompUsersTab(componentId);
+}
+
+function _renderComponentOverview(comp, disabledList, componentId, accent, rgb) {
+    const isSystem = comp.component_type === 'system';
+    const isEnabled = isSystem ? true : !disabledList.includes(componentId);
+
+    const CW_MODULES = [
+        'system_prompt', 'tool_definitions', 'conversation_history',
+        'rag_context', 'knowledge_context', 'plan_hydration',
+        'document_context', 'component_instructions', 'workflow_history',
+    ];
+    const CW_TYPES = ['Balanced', 'Knowledge-Heavy', 'Conversation-First', 'Token-Efficient'];
+
+    const rightCard = isSystem
+        ? `<div class="glass-panel rounded-xl p-4 space-y-3">
+               <p class="text-xs font-medium uppercase tracking-wider" style="color:var(--text-muted)">Module Registry</p>
+               <div class="flex flex-wrap gap-2">
+                   ${CW_MODULES.map(m => `<span class="text-xs font-mono px-2.5 py-1 rounded-md"
+                       style="background:rgba(${rgb},0.08);color:${accent};border:1px solid rgba(${rgb},0.15)">${m}</span>`).join('')}
+               </div>
+               <div class="flex items-center justify-between pt-1">
+                   <p class="text-xs font-medium uppercase tracking-wider" style="color:var(--text-muted)">Context Window Types</p>
+                   <button class="card-btn card-btn--sm card-btn--info"
+                           onclick="window.switchAdminTab && window.switchAdminTab('app-config')">
+                       Manage Types →
+                   </button>
+               </div>
+               <div class="grid grid-cols-2 gap-2">
+                   ${CW_TYPES.map(t => `
+                   <div class="flex items-center gap-2 text-xs rounded-lg p-2.5"
+                        style="background:rgba(${rgb},0.05);border:1px solid rgba(${rgb},0.1)">
+                       <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:${accent}"></span>
+                       <span style="color:var(--text-primary)">${t}</span>
+                   </div>`).join('')}
+               </div>
+           </div>`
+        : `<div class="glass-panel rounded-xl p-4 space-y-3">
+               <p class="text-xs font-medium uppercase tracking-wider" style="color:var(--text-muted)">Global Access</p>
+               <p class="text-sm" style="color:var(--text-muted)">
+                   When enabled, ${_paEsc(comp.tool_name || componentId)} is available to all profiles unless overridden per user.
+               </p>
+               <div class="flex items-center justify-between rounded-lg p-3"
+                    style="background:rgba(${rgb},0.06);border:1px solid rgba(${rgb},0.12)">
+                   <div>
+                       <p class="text-sm font-medium" style="color:var(--text-primary)">${isEnabled ? 'Enabled globally' : 'Disabled globally'}</p>
+                       <p class="text-xs" style="color:var(--text-muted)">Toggle to ${isEnabled ? 'disable' : 'enable'} for all users instantly</p>
+                   </div>
+                   <label class="ind-toggle ind-toggle--primary">
+                       <input type="checkbox" ${isEnabled ? 'checked' : ''}
+                              onchange="window._toggleCompGlobal('${componentId}', this.checked)">
+                       <span class="ind-track"></span>
+                   </label>
+               </div>
+               ${!isEnabled ? `
+               <div class="rounded-lg p-3 text-xs"
+                    style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#ef4444">
+                   Component is disabled. Users cannot access it until re-enabled.
+               </div>` : ''}
+           </div>`;
+
+    return `
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="glass-panel rounded-xl p-4 space-y-3">
+            <p class="text-xs font-medium uppercase tracking-wider" style="color:var(--text-muted)">Quick Stats</p>
+            <div class="rounded-lg p-3" style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.12)">
+                <p class="text-2xl font-semibold" style="color:#10b981" id="ov-enabled-count-${componentId}">—</p>
+                <p class="text-xs mt-0.5" style="color:var(--text-muted)">Users with access</p>
+            </div>
+            <div class="space-y-1.5 text-xs pt-2 border-t" style="color:var(--text-muted);border-color:var(--border-secondary)">
+                ${comp.tool_name ? `<div class="flex justify-between"><span>Tool</span><span class="font-mono" style="color:var(--text-primary)">${_paEsc(comp.tool_name)}</span></div>` : ''}
+                <div class="flex justify-between"><span>Type</span><span style="color:var(--text-primary)">${_paEsc(comp.component_type || 'action')}</span></div>
+                <div class="flex justify-between"><span>Origin</span><span style="color:var(--text-primary)">Builtin</span></div>
+            </div>
+        </div>
+        ${rightCard}
+    </div>`;
+}
+
+window._switchCompTab = function(componentId, tab) {
+    const accent = _COMP_META[componentId]?.accent || '#64748b';
+    document.querySelectorAll(`.comp-admin-tab[data-comp="${componentId}"]`).forEach(btn => {
+        const active = btn.dataset.tab === tab;
+        btn.style.borderBottomColor = active ? accent : 'transparent';
+        btn.style.color = active ? accent : 'var(--text-muted)';
+    });
+    ['overview', 'users'].forEach(t => {
+        const el = document.getElementById(`comp-tab-${t}-${componentId}`);
+        if (el) el.classList.toggle('hidden', t !== tab);
+    });
+    if (tab === 'users') _loadCompUsersTab(componentId);
+};
+
+async function _loadCompUsersTab(componentId) {
+    const el = document.getElementById(`comp-tab-users-${componentId}`);
+    if (!el || el.dataset.loaded === '1') return;
+    await _refreshCompUsersTab(componentId);
+    el.dataset.loaded = '1';
+}
+
+async function _refreshCompUsersTab(componentId) {
+    const el = document.getElementById(`comp-tab-users-${componentId}`);
+    if (!el) return;
+
+    const meta = _COMP_META[componentId] || { accent: '#64748b' };
+    const accent = meta.accent;
+    const rgb = _accentRgb(accent);
+
+    el.innerHTML = `<div class="flex items-center gap-2 py-4 justify-center" style="color:var(--text-muted)">
+        <svg class="animate-spin h-4 w-4" style="color:${accent}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        Loading users…</div>`;
+
+    let users = [];
+    try {
+        const r = await fetch(`/api/v1/admin/component-settings/users/${componentId}`, { headers: _pconnHeaders(false) });
+        if (r.ok) {
+            const d = await r.json();
+            users = d.users || [];
+        }
+    } catch (e) { /* silent */ }
+
+    // Check if this component is globally disabled — controls become read-only.
+    // Scheduler uses per-engine toggles; Profile Jobs toggle governs the user table.
+    const globalToggle = componentId === 'scheduler'
+        ? document.getElementById('profile-scheduler-toggle')
+        : document.getElementById(`comp-global-toggle-${componentId}`);
+    const globallyDisabled = globalToggle ? !globalToggle.checked : false;
+
+    const overrideCount  = users.filter(u => u.access_type === 'override').length;
+    const enabledCount   = users.filter(u => u.is_enabled).length;
+    const disabledCount  = users.length - enabledCount;
+
+    // Aggregate state badge
+    let stateBadge;
+    if (globallyDisabled) {
+        stateBadge = `<span class="text-xs px-2.5 py-1 rounded-full font-medium"
+            style="background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2)">
+            ● Disabled globally</span>`;
+    } else if (disabledCount === 0) {
+        stateBadge = `<span class="text-xs px-2.5 py-1 rounded-full font-medium"
+            style="background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.2)">
+            ● All enabled</span>`;
+    } else if (enabledCount === 0) {
+        stateBadge = `<span class="text-xs px-2.5 py-1 rounded-full font-medium"
+            style="background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2)">
+            ● All disabled</span>`;
+    } else {
+        stateBadge = `<span class="text-xs px-2.5 py-1 rounded-full font-medium"
+            style="background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2)">
+            ◑ Partial — ${enabledCount} of ${users.length} enabled</span>`;
+    }
+
+    // Update nav badge
+    const usersNavBtn = document.getElementById(`comp-users-nav-btn-${componentId}`);
+    if (usersNavBtn) usersNavBtn.textContent = overrideCount > 0 ? `Users  ${overrideCount}↑` : 'Users';
+
+    // Update overview KPI
+    const enabledEl = document.getElementById(`ov-enabled-count-${componentId}`);
+    if (enabledEl) enabledEl.textContent = enabledCount;
+
+    const bulkDisabledStyle = globallyDisabled ? 'opacity:0.35;pointer-events:none' : '';
+
+    el.innerHTML = `
+    <div class="space-y-3">
+        ${globallyDisabled ? `
+        <div class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+             style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);color:#ef4444">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            Component is disabled globally. Enable it in the Overview tab to manage per-user access.
+        </div>` : ''}
+        <!-- Bulk controls header -->
+        <div class="flex items-center justify-between px-0.5" style="${bulkDisabledStyle}">
+            ${stateBadge}
+            <div class="flex items-center gap-2">
+                <button type="button" class="text-xs px-2.5 py-1 rounded-lg transition-colors"
+                        style="border:1px solid rgba(16,185,129,0.3);color:#10b981"
+                        onmouseenter="this.style.background='rgba(16,185,129,0.08)'"
+                        onmouseleave="this.style.background=''"
+                        onclick="window._bulkCompUserOverride('${componentId}', true)">
+                    Enable all
+                </button>
+                <button type="button" class="text-xs px-2.5 py-1 rounded-lg transition-colors"
+                        style="border:1px solid rgba(239,68,68,0.3);color:#ef4444"
+                        onmouseenter="this.style.background='rgba(239,68,68,0.08)'"
+                        onmouseleave="this.style.background=''"
+                        onclick="window._bulkCompUserOverride('${componentId}', false)">
+                    Disable all
+                </button>
+            </div>
+        </div>
+        <!-- User table -->
+        <div class="glass-panel rounded-xl overflow-hidden" style="${globallyDisabled ? 'opacity:0.5' : ''}">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--border-primary)">
+                            <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color:var(--text-muted)">User</th>
+                            <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color:var(--text-muted)">Tier</th>
+                            <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color:var(--text-muted)">Source</th>
+                            <th class="text-center px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color:var(--text-muted)">Enabled</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${users.map((u, i) => {
+                            const initials    = (u.username || u.user_uuid || 'U').substring(0, 2).toUpperCase();
+                            const hasOverride = u.access_type === 'override';
+                            const isEnabled   = u.is_enabled;
+                            const sourceBadge = hasOverride
+                                ? `<span class="text-xs px-2 py-0.5 rounded-full"
+                                       style="background:rgba(${rgb},0.1);color:${accent};border:1px solid rgba(${rgb},0.2)">Override</span>`
+                                : `<span class="text-xs px-2 py-0.5 rounded-full"
+                                       style="background:rgba(100,116,139,0.08);color:var(--text-muted);border:1px solid var(--border-secondary)">Global</span>`;
+                            return `<tr style="${i > 0 ? 'border-top:1px solid var(--border-primary)' : ''}">
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-2.5">
+                                        <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                                             style="background:rgba(${rgb},0.15);color:${accent}">${initials}</div>
+                                        <div>
+                                            <p class="text-sm font-medium" style="color:var(--text-primary)">${_paEsc(u.username || u.user_uuid.substring(0, 8))}</p>
+                                            ${u.email ? `<p class="text-xs" style="color:var(--text-muted)">${_paEsc(u.email)}</p>` : ''}
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="text-xs px-2 py-0.5 rounded-full"
+                                          style="background:rgba(100,116,139,0.1);color:var(--text-muted);border:1px solid var(--border-secondary)">
+                                        ${_paEsc(u.tier || 'user')}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3">${sourceBadge}</td>
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center justify-center gap-2">
+                                        <label class="ind-toggle ind-toggle--sm ind-toggle--primary" style="${globallyDisabled ? 'opacity:0.4;pointer-events:none' : ''}">
+                                            <input type="checkbox" ${isEnabled ? 'checked' : ''} ${globallyDisabled ? 'disabled' : ''}
+                                                   onchange="window._setCompUserOverride('${componentId}','${u.user_uuid}',this.checked)">
+                                            <span class="ind-track"></span>
+                                        </label>
+                                        ${hasOverride
+                                            ? `<button type="button" title="Revert to global default"
+                                                       class="text-xs w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+                                                       style="color:var(--text-muted);border:1px solid var(--border-secondary);${globallyDisabled ? 'opacity:0.4;pointer-events:none' : ''}"
+                                                       onmouseenter="this.style.background='var(--hover-bg-strong)'"
+                                                       onmouseleave="this.style.background=''"
+                                                       onclick="window._removeCompUserOverride('${componentId}','${u.user_uuid}')">×</button>`
+                                            : `<span class="w-5 h-5 flex-shrink-0"></span>`
+                                        }
+                                    </div>
+                                </td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>`;
+}
+
+window._toggleCompGlobal = async function(componentId, enabled) {
+    try {
+        const r = await fetch('/api/v1/admin/component-settings', { headers: _pconnHeaders(false) });
+        const d = r.ok ? await r.json() : {};
+        let disabled = (d.settings && d.settings.disabled_components) || [];
+        if (enabled) disabled = disabled.filter(id => id !== componentId);
+        else if (!disabled.includes(componentId)) disabled.push(componentId);
+        const pr = await fetch('/api/v1/admin/component-settings', {
+            method: 'POST', headers: _pconnHeaders(),
+            body: JSON.stringify({ disabled_components: disabled }),
+        });
+        if (!pr.ok) throw new Error();
+        _pconnNotify('success', `${componentId} ${enabled ? 'enabled' : 'disabled'} globally.`);
+        _compPanelInitialized.delete(componentId);
+        await _loadGenericComponentAdminPanel(componentId);
+        _buildComponentAdminSidebar();
+    } catch (e) {
+        _pconnNotify('error', 'Failed to update component setting.');
+        const toggle = document.getElementById(`comp-global-toggle-${componentId}`);
+        if (toggle) toggle.checked = !enabled;
+    }
+};
+
+window._setCompUserOverride = async function(componentId, userUuid, isEnabled) {
+    try {
+        const r = await fetch(`/api/v1/admin/component-settings/users/${userUuid}/${componentId}`, {
+            method: 'PUT', headers: _pconnHeaders(),
+            body: JSON.stringify({ is_enabled: isEnabled, note: '' }),
+        });
+        if (!r.ok) throw new Error();
+        _pconnNotify('success', `Access ${isEnabled ? 'granted' : 'blocked'} for user.`);
+        const el = document.getElementById(`comp-tab-users-${componentId}`);
+        if (el) delete el.dataset.loaded;
+        await _refreshCompUsersTab(componentId);
+    } catch (e) {
+        _pconnNotify('error', 'Failed to update user override.');
+    }
+};
+
+window._addCompUserOverride = async function(componentId, userUuid, isEnabled) {
+    await window._setCompUserOverride(componentId, userUuid, isEnabled);
+};
+
+window._removeCompUserOverride = async function(componentId, userUuid) {
+    try {
+        const r = await fetch(`/api/v1/admin/component-settings/users/${userUuid}/${componentId}`, {
+            method: 'DELETE', headers: _pconnHeaders(false),
+        });
+        if (!r.ok) throw new Error();
+        _pconnNotify('success', 'Override removed — user reverts to global default.');
+        const el = document.getElementById(`comp-tab-users-${componentId}`);
+        if (el) delete el.dataset.loaded;
+        await _refreshCompUsersTab(componentId);
+    } catch (e) {
+        _pconnNotify('error', 'Failed to remove override.');
+    }
+};
+
+window._bulkCompUserOverride = async function(componentId, isEnabled) {
+    let users = [];
+    try {
+        const r = await fetch(`/api/v1/admin/component-settings/users/${componentId}`, { headers: _pconnHeaders(false) });
+        if (r.ok) users = (await r.json()).users || [];
+    } catch (e) { /* silent */ }
+    if (!users.length) return;
+
+    try {
+        if (isEnabled) {
+            // Enable all: remove all overrides — everyone inherits global default (enabled)
+            const overridden = users.filter(u => u.access_type === 'override');
+            await Promise.all(overridden.map(u =>
+                fetch(`/api/v1/admin/component-settings/users/${u.user_uuid}/${componentId}`, {
+                    method: 'DELETE', headers: _pconnHeaders(false),
+                })
+            ));
+        } else {
+            // Disable all: write explicit disabled override for every user
+            await Promise.all(users.map(u =>
+                fetch(`/api/v1/admin/component-settings/users/${u.user_uuid}/${componentId}`, {
+                    method: 'PUT', headers: _pconnHeaders(),
+                    body: JSON.stringify({ is_enabled: false, note: 'bulk' }),
+                })
+            ));
+        }
+        _pconnNotify('success', `All users ${isEnabled ? 'enabled' : 'disabled'}.`);
+        const el = document.getElementById(`comp-tab-users-${componentId}`);
+        if (el) delete el.dataset.loaded;
+        await _refreshCompUsersTab(componentId);
+    } catch (e) {
+        _pconnNotify('error', 'Bulk update failed.');
+    }
+};
+
+// ── Context Window info panel (system component — read-only) ──────────────────
+
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -1284,133 +1879,469 @@ function _paEsc(str) {
 // ── Scheduler admin panel ─────────────────────────────────────────────────────
 
 async function loadSchedulerAdminPanel() {
-    const container = document.getElementById('scheduler-admin-container');
-    if (!container) return;
+    const container = document.getElementById('comp-admin-scheduler-container');
+    if (!container || _compPanelInitialized.has('scheduler')) return;
 
-    container.innerHTML = `<div class="flex items-center gap-2 py-4 text-gray-400 text-sm">
-        <svg class="animate-spin h-4 w-4 text-purple-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+    container.innerHTML = `<div class="flex items-center gap-2 py-6 justify-center" style="color:var(--text-muted)">
+        <svg class="animate-spin h-4 w-4" style="color:#a855f7" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
         </svg>
-        Loading scheduler status…
+        Loading…
     </div>`;
 
-    let status = { running: false, globally_enabled: true, job_count: 0 };
+    const meta = _COMP_META.scheduler;
+    const accent = '#a855f7';
+    const rgb = '168,85,247';
+
+    let status = { running: false, job_count: 0 };
+    let profileEnabled = true;
+    let platformEnabled = true;
     let apschedulerAvailable = true;
+
     try {
-        const r = await fetch('/api/v1/scheduler/status', { headers: _pconnHeaders(false) });
-        if (r.ok) status = await r.json();
+        const [sr, cr] = await Promise.all([
+            fetch('/api/v1/scheduler/status', { headers: _pconnHeaders(false) }),
+            fetch('/api/v1/admin/component-settings', { headers: _pconnHeaders(false) }),
+        ]);
+        if (sr.ok) status = await sr.json();
         else apschedulerAvailable = false;
+        if (cr.ok) {
+            const cd = await cr.json();
+            const s = cd.settings || {};
+            profileEnabled = s.profile_scheduler_enabled !== false && s.profile_scheduler_enabled !== 'false';
+            platformEnabled = s.platform_scheduler_enabled !== false && s.platform_scheduler_enabled !== 'false';
+        }
     } catch (e) {
         apschedulerAvailable = false;
     }
 
-    const isEnabled = status.globally_enabled !== false;
+    const profileRunning = apschedulerAvailable && status.running && profileEnabled;
+    const platformRunning = apschedulerAvailable && status.running && platformEnabled;
 
     container.innerHTML = `
-        <div class="space-y-4">
-            <div class="glass-panel rounded-xl p-5 flex items-center gap-5">
-                <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                     style="background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.25)">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                </div>
-                <div class="flex-1">
-                    <div class="flex items-center gap-3 flex-wrap">
-                        <span class="text-white font-semibold">Task Scheduler</span>
-                        ${apschedulerAvailable
-                            ? (status.running
-                                ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-400/10 text-emerald-400 ring-1 ring-emerald-400/20">
-                                       <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block"></span>Running
-                                   </span>`
-                                : `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-400/10 text-gray-400 ring-1 ring-gray-400/20">Stopped</span>`)
-                            : `<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-400/10 text-amber-400 ring-1 ring-amber-400/20">APScheduler not installed</span>`
-                        }
-                    </div>
-                    <p class="text-xs text-gray-400 mt-1">
-                        ${apschedulerAvailable
-                            ? `${status.job_count} active job${status.job_count !== 1 ? 's' : ''} registered`
-                            : 'Install APScheduler to enable: <code class="font-mono bg-gray-800 px-1 rounded">pip install apscheduler>=3.10</code>'
-                        }
-                    </p>
-                </div>
-                <div class="flex-shrink-0 flex items-center gap-2">
-                    <span class="text-xs ${isEnabled ? 'text-emerald-400' : 'text-gray-500'}">${isEnabled ? 'Enabled' : 'Disabled'}</span>
-                    <label class="ind-toggle ind-toggle--primary">
-                        <input type="checkbox" id="scheduler-global-toggle" ${isEnabled ? 'checked' : ''}
-                               onchange="window._toggleSchedulerGlobal(this.checked)">
-                        <span class="ind-track"></span>
-                    </label>
-                </div>
+    <div class="space-y-4">
+        <!-- Header -->
+        <div class="glass-panel rounded-xl p-5 flex items-start gap-4">
+            <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                 style="background:rgba(${rgb},0.12);border:1px solid rgba(${rgb},0.25);color:${accent}">
+                ${meta.iconLg}
             </div>
-
-            <div class="glass-panel rounded-xl p-5 space-y-3">
-                <p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Admin controls</p>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-gray-300">
-                    <div class="flex items-start gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-purple-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        <span>Toggle above globally enables or disables the Task Scheduler component for all users.</span>
-                    </div>
-                    <div class="flex items-start gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-purple-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
-                        </svg>
-                        <span>Users enable the scheduler per-profile via Platform Components, then create tasks in the component's detail panel.</span>
-                    </div>
-                    <div class="flex items-start gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-purple-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                        </svg>
-                        <span>Task results can be delivered via <strong>email</strong> (SMTP) or <strong>webhook</strong> per task.</span>
-                    </div>
-                    <div class="flex items-start gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-purple-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                        </svg>
-                        <span>Supports <strong>cron expressions</strong> and <strong>interval scheduling</strong>. Overlap policy and per-task token budgets are user-configurable.</span>
-                    </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-3 flex-wrap">
+                    <span class="font-semibold text-base" style="color:var(--text-primary)">Task Scheduler</span>
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
+                          style="background:rgba(${apschedulerAvailable && status.running ? '16,185,129' : '107,114,128'},0.1);
+                                 color:${apschedulerAvailable && status.running ? '#10b981' : '#6b7280'};
+                                 border:1px solid rgba(${apschedulerAvailable && status.running ? '16,185,129' : '107,114,128'},0.2)">
+                        <span class="w-1.5 h-1.5 rounded-full inline-block"
+                              style="background:${apschedulerAvailable && status.running ? '#10b981' : '#6b7280'}"></span>
+                        ${apschedulerAvailable ? (status.running ? 'Running' : 'Stopped') : 'APScheduler not installed'}
+                    </span>
                 </div>
+                <p class="text-xs mt-0.5" style="color:var(--text-muted)">${meta.description}</p>
+                <p class="text-xs mt-1.5 flex items-center gap-3" style="color:var(--text-muted)">
+                    <span>Tool: <span class="font-mono" style="color:${accent}">TDA_Scheduler</span></span>
+                    <span>Type: <span style="color:var(--text-primary)">action</span></span>
+                    <span>Builtin</span>
+                </p>
             </div>
-
-            ${!apschedulerAvailable ? `
-            <div class="glass-panel rounded-xl p-4 border border-amber-400/20 bg-amber-400/5">
-                <div class="flex items-start gap-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L3.34 16.5c-.77.833.193 2.5 1.732 2.5z"/>
-                    </svg>
-                    <div>
-                        <p class="text-sm font-medium text-amber-400">APScheduler not installed</p>
-                        <p class="text-xs text-gray-400 mt-1">The Task Scheduler component requires APScheduler. Install it and restart Uderia:</p>
-                        <code class="block text-xs font-mono mt-2 px-3 py-2 rounded-lg bg-gray-900/60 text-purple-300 border border-white/5">pip install apscheduler>=3.10.0</code>
-                    </div>
-                </div>
-            </div>` : ''}
         </div>
-    `;
+
+        <!-- Horizontal tab bar -->
+        <div style="border-bottom:1px solid var(--border-primary)">
+            <div style="display:flex">
+                <button type="button" class="sched-admin-tab"
+                        data-tab="overview"
+                        style="padding:10px 16px;font-size:0.875rem;font-weight:500;border:none;border-bottom:2px solid ${accent};color:${accent};margin-bottom:-1px;background:none;cursor:pointer"
+                        onclick="window._switchSchedAdminTab('overview')">
+                    Overview
+                </button>
+                <button type="button" class="sched-admin-tab"
+                        id="sched-users-nav-btn"
+                        data-tab="users"
+                        style="padding:10px 16px;font-size:0.875rem;font-weight:500;border:none;border-bottom:2px solid transparent;color:var(--text-muted);margin-bottom:-1px;background:none;cursor:pointer"
+                        onclick="window._switchSchedAdminTab('users')">
+                    Users
+                </button>
+            </div>
+        </div>
+        <div class="mt-4">
+            <!-- Overview -->
+            <div id="sched-tab-overview">
+                <div class="space-y-4">
+                    <!-- Quick Stats + Global Access -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Quick Stats (left) -->
+                        <div class="glass-panel rounded-xl p-4 space-y-3">
+                            <p class="text-xs font-medium uppercase tracking-wider" style="color:var(--text-muted)">Quick Stats</p>
+                            <div class="rounded-lg p-3" style="background:rgba(${rgb},0.06);border:1px solid rgba(${rgb},0.12)">
+                                <div class="flex items-center justify-between mb-1">
+                                    <p class="text-xs font-medium" style="color:var(--text-primary)">Profile Jobs</p>
+                                    <span class="w-2 h-2 rounded-full flex-shrink-0"
+                                          style="background:${profileRunning ? '#10b981' : '#6b7280'}"></span>
+                                </div>
+                                <p class="text-xs" style="color:var(--text-muted)">
+                                    ${apschedulerAvailable ? `${status.job_count} task${status.job_count !== 1 ? 's' : ''} · ${profileEnabled ? 'Enabled' : 'Disabled'}` : 'APScheduler not installed'}
+                                </p>
+                            </div>
+                            <div class="rounded-lg p-3" style="background:rgba(${rgb},0.06);border:1px solid rgba(${rgb},0.12)">
+                                <div class="flex items-center justify-between mb-1">
+                                    <p class="text-xs font-medium" style="color:var(--text-primary)">Platform Jobs</p>
+                                    <span class="w-2 h-2 rounded-full flex-shrink-0"
+                                          style="background:${platformRunning ? '#10b981' : '#6b7280'}"></span>
+                                </div>
+                                <p class="text-xs" style="color:var(--text-muted)">
+                                    Maintenance tasks · ${platformEnabled ? 'Enabled' : 'Disabled'}
+                                </p>
+                            </div>
+                            <div class="space-y-1.5 text-xs pt-2 border-t" style="color:var(--text-muted);border-color:var(--border-secondary)">
+                                <div class="flex justify-between">
+                                    <span>Tool</span>
+                                    <span class="font-mono" style="color:${accent}">TDA_Scheduler</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Type</span><span style="color:var(--text-primary)">action</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Origin</span><span style="color:var(--text-primary)">Builtin</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Global Access (right) -->
+                        <div class="glass-panel rounded-xl p-4 space-y-3">
+                            <p class="text-xs font-medium uppercase tracking-wider" style="color:var(--text-muted)">Global Access</p>
+                            <p class="text-sm" style="color:var(--text-muted)">
+                                Control which scheduling engines are active. Changes take effect immediately for all users.
+                            </p>
+                            <!-- Profile Jobs toggle -->
+                            <div class="flex items-center justify-between rounded-lg p-3"
+                                 style="background:rgba(${rgb},0.06);border:1px solid rgba(${rgb},0.12)">
+                                <div>
+                                    <p class="text-sm font-medium" style="color:var(--text-primary)">${profileEnabled ? 'Profile Jobs enabled' : 'Profile Jobs disabled'}</p>
+                                    <p class="text-xs" style="color:var(--text-muted)">User-created recurring tasks</p>
+                                </div>
+                                <label class="ind-toggle ind-toggle--primary">
+                                    <input type="checkbox" id="profile-scheduler-toggle" ${profileEnabled ? 'checked' : ''}
+                                           onchange="window._toggleProfileScheduler(this.checked)">
+                                    <span class="ind-track"></span>
+                                </label>
+                            </div>
+                            <!-- Platform Jobs toggle -->
+                            <div class="flex items-center justify-between rounded-lg p-3"
+                                 style="background:rgba(${rgb},0.06);border:1px solid rgba(${rgb},0.12)">
+                                <div>
+                                    <p class="text-sm font-medium" style="color:var(--text-primary)">${platformEnabled ? 'Platform Jobs enabled' : 'Platform Jobs disabled'}</p>
+                                    <p class="text-xs" style="color:var(--text-muted)">System maintenance jobs</p>
+                                </div>
+                                <label class="ind-toggle ind-toggle--primary">
+                                    <input type="checkbox" id="platform-scheduler-toggle" ${platformEnabled ? 'checked' : ''}
+                                           onchange="window._togglePlatformScheduler(this.checked)">
+                                    <span class="ind-track"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    ${!apschedulerAvailable ? `
+                    <div class="glass-panel rounded-xl p-4" style="border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.05)">
+                        <div class="flex items-start gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0 mt-0.5" style="color:#f59e0b" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L3.34 16.5c-.77.833.193 2.5 1.732 2.5z"/>
+                            </svg>
+                            <div>
+                                <p class="text-sm font-medium" style="color:#f59e0b">APScheduler not installed</p>
+                                <p class="text-xs mt-1" style="color:var(--text-muted)">Install and restart to enable scheduled tasks:</p>
+                                <code class="block text-xs font-mono mt-2 px-3 py-2 rounded-lg" style="background:rgba(0,0,0,0.3);color:${accent};border:1px solid rgba(${rgb},0.2)">pip install apscheduler>=3.10.0</code>
+                            </div>
+                        </div>
+                    </div>` : ''}
+                    <!-- Platform job cards loaded asynchronously -->
+                    <div id="scheduler-platform-container"></div>
+                </div>
+            </div>
+            <!-- Users -->
+            <div id="sched-tab-users" class="hidden space-y-4">
+                <!-- Profile Jobs section -->
+                <div class="space-y-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                             style="background:rgba(${rgb},0.12);border:1px solid rgba(${rgb},0.2);color:${accent}">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold" style="color:var(--text-primary)">Profile Jobs</p>
+                            <p class="text-xs" style="color:var(--text-muted)">Per-user access to user-created scheduled tasks</p>
+                        </div>
+                        <span class="w-2 h-2 rounded-full flex-shrink-0"
+                              style="background:${profileRunning ? '#10b981' : '#6b7280'}"></span>
+                    </div>
+                    <div id="comp-tab-users-scheduler"></div>
+                </div>
+
+                <div style="border-top:1px solid var(--border-secondary)"></div>
+
+                <!-- Platform Jobs section -->
+                <div class="space-y-3" style="${!platformEnabled ? 'opacity:0.5' : ''}">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                             style="background:rgba(${rgb},0.12);border:1px solid rgba(${rgb},0.2);color:${accent}">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold" style="color:var(--text-primary)">Platform Jobs</p>
+                            <p class="text-xs" style="color:var(--text-muted)">System maintenance jobs</p>
+                        </div>
+                        <span class="w-2 h-2 rounded-full flex-shrink-0"
+                              style="background:${platformRunning ? '#10b981' : '#6b7280'}"></span>
+                    </div>
+                    ${!platformEnabled ? `
+                    <div class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+                         style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);color:#ef4444">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                        Platform Jobs are disabled globally. Enable them in the Overview tab.
+                    </div>` : ''}
+                    <div class="glass-panel rounded-xl p-4 text-xs" style="color:var(--text-muted)">
+                        Platform jobs run as system processes (consumption resets, maintenance tasks).
+                        They are not associated with individual users — per-user access control does not apply.
+                        Use the <strong style="color:var(--text-primary)">Overview</strong> tab to manage
+                        individual job schedules and global enable/disable.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    _compPanelInitialized.add('scheduler');
+    _renderPlatformJobsSubtab();
 }
 
-window._toggleSchedulerGlobal = async function(enabled) {
+window._switchSchedAdminTab = function(tab) {
+    const accent = '#a855f7';
+    document.querySelectorAll('.sched-admin-tab').forEach(btn => {
+        const active = btn.dataset.tab === tab;
+        btn.style.borderBottomColor = active ? accent : 'transparent';
+        btn.style.color = active ? accent : 'var(--text-muted)';
+    });
+    const ov = document.getElementById('sched-tab-overview');
+    const us = document.getElementById('sched-tab-users');
+    if (ov) ov.classList.toggle('hidden', tab !== 'overview');
+    if (us) us.classList.toggle('hidden', tab !== 'users');
+    if (tab === 'users') _loadSchedUsersTab();
+};
+
+function _loadSchedUsersTab() {
+    _loadCompUsersTab('scheduler');
+}
+
+// Platform Jobs sub-tab — fills scheduler-platform-container
+async function _renderPlatformJobsSubtab() {
+    const container = document.getElementById('scheduler-platform-container');
+    if (!container || container.dataset.loaded === '1') return;
+
+    container.innerHTML = `<div class="flex items-center gap-2 py-4 justify-center" style="color:var(--text-muted)">
+        <svg class="animate-spin h-4 w-4" style="color:#a855f7" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        Loading platform jobs…
+    </div>`;
+
+    let jobs = [];
+    let platformEnabled = true;
+    let apschedulerRunning = false;
+
     try {
-        const r = await fetch('/api/v1/admin/component-settings', { headers: _pconnHeaders(false) });
-        const d = r.ok ? await r.json() : {};
-        let disabled = (d.settings && d.settings.disabled_components) || [];
-        if (enabled) {
-            disabled = disabled.filter(id => id !== 'scheduler');
-        } else {
-            if (!disabled.includes('scheduler')) disabled.push('scheduler');
+        const r = await fetch('/api/v1/admin/scheduler/platform-jobs', { headers: _pconnHeaders(false) });
+        if (r.ok) {
+            const d = await r.json();
+            jobs = d.jobs || [];
+            platformEnabled = d.platform_scheduler_enabled !== false;
+            apschedulerRunning = !!d.apscheduler_running;
         }
-        await fetch('/api/v1/admin/component-settings', {
-            method: 'POST', headers: _pconnHeaders(),
-            body: JSON.stringify({ disabled_components: disabled }),
+    } catch (e) { /* silent */ }
+
+    const dot = document.getElementById('sched-platform-status-dot');
+    const sub = document.getElementById('sched-platform-subtitle');
+    if (dot) dot.style.background = (apschedulerRunning && platformEnabled) ? '#10b981' : '#6b7280';
+    if (sub) sub.textContent = `${jobs.length} maintenance job${jobs.length !== 1 ? 's' : ''} · ${platformEnabled ? 'Enabled' : 'Disabled'}`;
+
+    const _fmtTime = (iso) => {
+        if (!iso) return '—';
+        try {
+            const diff = Math.round((new Date() - new Date(iso)) / 1000);
+            if (diff < 0) {
+                const a = Math.abs(diff);
+                if (a < 60) return `in ${a}s`;
+                if (a < 3600) return `in ${Math.round(a/60)}m`;
+                if (a < 86400) return `in ${Math.round(a/3600)}h`;
+                return `in ${Math.round(a/86400)}d`;
+            }
+            if (diff < 60) return `${diff}s ago`;
+            if (diff < 3600) return `${Math.round(diff/60)}m ago`;
+            if (diff < 86400) return `${Math.round(diff/3600)}h ago`;
+            return `${Math.round(diff/86400)}d ago`;
+        } catch (_) { return iso; }
+    };
+
+    const _dot = (status) => {
+        const c = status === 'success' ? '#10b981' : status === 'error' ? '#ef4444' : status === 'skipped' ? '#f59e0b' : '#64748b';
+        return `<span class="w-1.5 h-1.5 rounded-full inline-block flex-shrink-0" style="background:${c}" title="${status || 'unknown'}"></span>`;
+    };
+
+    container.innerHTML = `
+    <div class="space-y-2">
+            ${jobs.length === 0 ? `
+            <div class="glass-panel rounded-xl p-6 text-center text-sm" style="color:var(--text-muted)">
+                No platform jobs found. Ensure schema migration ran successfully.
+            </div>` : jobs.map(job => `
+            <div class="glass-panel rounded-xl overflow-hidden" style="border-left:3px solid rgba(168,85,247,0.5)">
+                <div class="p-4">
+                    <div class="flex items-start gap-3">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2.5 flex-wrap">
+                                <span class="font-medium text-sm" style="color:var(--text-primary)">${_paEsc(job.name)}</span>
+                                <span class="text-xs font-mono px-1.5 py-0.5 rounded"
+                                      style="background:rgba(168,85,247,0.08);color:#a855f7;border:1px solid rgba(168,85,247,0.15)">${_paEsc(job.schedule || '—')}</span>
+                                ${job.last_status
+                                    ? `<span class="flex items-center gap-1 text-xs" style="color:${job.last_status === 'success' ? '#10b981' : '#ef4444'}">
+                                           ${_dot(job.last_status)} Last: ${_fmtTime(job.last_run_at)}
+                                       </span>`
+                                    : `<span class="text-xs" style="color:var(--text-muted)">Never run</span>`
+                                }
+                                ${job.next_run_at ? `<span class="text-xs" style="color:var(--text-muted)">Next: ${_fmtTime(job.next_run_at)}</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            <button class="card-btn card-btn--sm card-btn--info"
+                                    onclick="window._runPlatformJobNow('${job.id}')"
+                                    title="Trigger immediate execution">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                Run Now
+                            </button>
+                            <label class="ind-toggle ind-toggle--sm ind-toggle--primary">
+                                <input type="checkbox" ${job.enabled ? 'checked' : ''}
+                                       onchange="window._togglePlatformJob('${job.id}', this.checked)">
+                                <span class="ind-track"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <details class="mt-3" id="job-history-${job.id}">
+                        <summary class="text-xs cursor-pointer select-none" style="color:var(--text-muted)">View Run History</summary>
+                        <div class="mt-2 rounded-lg p-2.5 text-xs space-y-1.5"
+                             style="background:rgba(0,0,0,0.2);border:1px solid var(--border-secondary)"
+                             id="job-history-content-${job.id}">
+                            <span style="color:var(--text-muted)">Loading…</span>
+                        </div>
+                    </details>
+                </div>
+            </div>`).join('')}
+    </div>`;
+
+    jobs.forEach(job => {
+        const details = document.getElementById(`job-history-${job.id}`);
+        if (!details) return;
+        details.addEventListener('toggle', async () => {
+            if (!details.open) return;
+            const content = document.getElementById(`job-history-content-${job.id}`);
+            if (!content || content.dataset.loaded) return;
+            try {
+                const r = await fetch(`/api/v1/admin/scheduler/platform-jobs/${job.id}/runs`, { headers: _pconnHeaders(false) });
+                if (r.ok) {
+                    const d = await r.json();
+                    const runs = (d.runs || []).slice(0, 5);
+                    content.innerHTML = runs.length === 0
+                        ? `<span style="color:var(--text-muted)">No runs yet</span>`
+                        : runs.map(run => `<div class="flex items-center gap-2">
+                            ${_dot(run.status)}
+                            <span style="color:var(--text-primary)">${_fmtTime(run.started_at)}</span>
+                            <span style="color:var(--text-muted)">${run.status || '—'}</span>
+                            ${run.error_message ? `<span class="truncate" style="color:#ef4444" title="${_paEsc(run.error_message)}">— ${_paEsc(run.error_message.substring(0,60))}</span>` : ''}
+                           </div>`).join('');
+                    content.dataset.loaded = '1';
+                }
+            } catch (_) {
+                content.innerHTML = `<span style="color:#ef4444">Failed to load history</span>`;
+            }
         });
-        _pconnNotify('success', `Task Scheduler ${enabled ? 'enabled' : 'disabled'} globally.`);
+    });
+
+    container.dataset.loaded = '1';
+}
+
+function _activeSchedTab() {
+    const us = document.getElementById('sched-tab-users');
+    return (us && !us.classList.contains('hidden')) ? 'users' : 'overview';
+}
+
+window._toggleProfileScheduler = async function(enabled) {
+    const wasTab = _activeSchedTab();
+    const ep = enabled ? '/api/v1/admin/scheduler/profile-jobs/enable' : '/api/v1/admin/scheduler/profile-jobs/disable';
+    try {
+        const r = await fetch(ep, { method: 'POST', headers: _pconnHeaders(false) });
+        if (!r.ok) throw new Error();
+        _pconnNotify('success', `Profile Jobs scheduler ${enabled ? 'enabled' : 'disabled'}.`);
+        _compPanelInitialized.delete('scheduler');
+        await loadSchedulerAdminPanel();
+        if (wasTab !== 'overview') _switchSchedAdminTab(wasTab);
     } catch (e) {
-        _pconnNotify('error', 'Failed to update scheduler setting.');
-        const toggle = document.getElementById('scheduler-global-toggle');
+        _pconnNotify('error', 'Failed to update profile scheduler.');
+        const toggle = document.getElementById('profile-scheduler-toggle');
         if (toggle) toggle.checked = !enabled;
+    }
+};
+
+window._togglePlatformScheduler = async function(enabled) {
+    const wasTab = _activeSchedTab();
+    const ep = enabled ? '/api/v1/admin/scheduler/platform-jobs/enable' : '/api/v1/admin/scheduler/platform-jobs/disable';
+    try {
+        const r = await fetch(ep, { method: 'POST', headers: _pconnHeaders(false) });
+        if (!r.ok) throw new Error();
+        _pconnNotify('success', `Platform Jobs scheduler ${enabled ? 'enabled' : 'disabled'}.`);
+        _compPanelInitialized.delete('scheduler');
+        await loadSchedulerAdminPanel();
+        if (wasTab !== 'overview') _switchSchedAdminTab(wasTab);
+    } catch (e) {
+        _pconnNotify('error', 'Failed to update platform scheduler.');
+        const toggle = document.getElementById('platform-scheduler-toggle');
+        if (toggle) toggle.checked = !enabled;
+    }
+};
+
+window._togglePlatformJob = async function(taskId, enabled) {
+    try {
+        const r = await fetch(`/api/v1/admin/scheduler/platform-jobs/${taskId}`, {
+            method: 'PUT', headers: _pconnHeaders(),
+            body: JSON.stringify({ enabled: enabled ? 1 : 0 }),
+        });
+        if (!r.ok) throw new Error();
+        _pconnNotify('success', `Platform job ${enabled ? 'enabled' : 'disabled'}.`);
+    } catch (e) {
+        _pconnNotify('error', 'Failed to update platform job.');
+    }
+};
+
+window._runPlatformJobNow = async function(taskId) {
+    try {
+        const r = await fetch(`/api/v1/admin/scheduler/platform-jobs/${taskId}/run-now`, {
+            method: 'POST', headers: _pconnHeaders(false),
+        });
+        if (!r.ok) throw new Error();
+        _pconnNotify('success', 'Platform job triggered.');
+        setTimeout(() => {
+            const c = document.getElementById('scheduler-platform-container');
+            if (c) { delete c.dataset.loaded; _renderPlatformJobsSubtab(); }
+        }, 2000);
+    } catch (e) {
+        _pconnNotify('error', 'Failed to trigger platform job.');
     }
 };
 
@@ -1440,3 +2371,5 @@ window.deleteRegistrySource                   = deleteRegistrySource;
 window.selectAdminConnector                   = selectAdminConnector;
 window.setPaTypeFilter                        = setPaTypeFilter;
 window.setPaStatusFilter                      = setPaStatusFilter;
+window.loadSchedulerAdminPanel                = loadSchedulerAdminPanel;
+window._buildComponentAdminSidebar            = _buildComponentAdminSidebar;

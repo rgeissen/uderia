@@ -2780,6 +2780,180 @@ async def save_component_settings_endpoint():
 
 
 # ---------------------------------------------------------------------------
+# Per-User Component Access Overrides
+# ---------------------------------------------------------------------------
+
+@admin_api_bp.route('/v1/admin/component-settings/users/<component_id>', methods=['GET'])
+@require_admin
+async def get_component_user_overrides_endpoint(component_id: str):
+    """
+    Return all users with their effective access to a component.
+    Each entry shows: user_uuid, username, email, tier, access_type (global|override),
+    is_enabled, note, updated_at, updated_by.
+    """
+    try:
+        from trusted_data_agent.components.settings import get_all_users_with_component_access
+        users = get_all_users_with_component_access(component_id)
+        return jsonify({'status': 'success', 'component_id': component_id, 'users': users}), 200
+    except Exception as e:
+        logger.error(f"Error getting component user overrides for {component_id}: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/component-settings/users/<user_uuid>/<component_id>', methods=['PUT'])
+@require_admin
+async def set_component_user_override_endpoint(user_uuid: str, component_id: str):
+    """
+    Create or update a per-user component override.
+    Body: { "is_enabled": bool, "note": str (optional) }
+    """
+    try:
+        from trusted_data_agent.components.settings import set_user_component_override
+        data = await request.get_json() or {}
+        is_enabled = bool(data.get('is_enabled', True))
+        note = str(data.get('note', ''))
+        admin_user = get_current_user_from_request()
+        admin_uuid = str(admin_user.id) if admin_user else 'system'
+        set_user_component_override(user_uuid, component_id, is_enabled, admin_uuid, note)
+        return jsonify({'status': 'success', 'user_uuid': user_uuid, 'component_id': component_id,
+                        'is_enabled': is_enabled}), 200
+    except Exception as e:
+        logger.error(f"Error setting component user override: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/component-settings/users/<user_uuid>/<component_id>', methods=['DELETE'])
+@require_admin
+async def delete_component_user_override_endpoint(user_uuid: str, component_id: str):
+    """Remove a per-user override (user reverts to global default)."""
+    try:
+        from trusted_data_agent.components.settings import delete_user_component_override
+        delete_user_component_override(user_uuid, component_id)
+        return jsonify({'status': 'success', 'user_uuid': user_uuid, 'component_id': component_id}), 200
+    except Exception as e:
+        logger.error(f"Error deleting component user override: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Scheduler Admin: Profile Jobs + Platform Jobs
+# ---------------------------------------------------------------------------
+
+@admin_api_bp.route('/v1/admin/scheduler/profile-jobs/enable', methods=['POST'])
+@require_admin
+async def enable_profile_scheduler_endpoint():
+    """Globally enable user-created profile jobs."""
+    try:
+        from trusted_data_agent.core.task_scheduler import enable_profile_scheduler
+        await enable_profile_scheduler()
+        return jsonify({'status': 'success', 'profile_scheduler_enabled': True}), 200
+    except Exception as e:
+        logger.error(f"Error enabling profile scheduler: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/scheduler/profile-jobs/disable', methods=['POST'])
+@require_admin
+async def disable_profile_scheduler_endpoint():
+    """Globally disable user-created profile jobs."""
+    try:
+        from trusted_data_agent.core.task_scheduler import disable_profile_scheduler
+        await disable_profile_scheduler()
+        return jsonify({'status': 'success', 'profile_scheduler_enabled': False}), 200
+    except Exception as e:
+        logger.error(f"Error disabling profile scheduler: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/scheduler/platform-jobs/enable', methods=['POST'])
+@require_admin
+async def enable_platform_scheduler_endpoint():
+    """Globally enable platform maintenance jobs."""
+    try:
+        from trusted_data_agent.core.task_scheduler import enable_platform_scheduler
+        await enable_platform_scheduler()
+        return jsonify({'status': 'success', 'platform_scheduler_enabled': True}), 200
+    except Exception as e:
+        logger.error(f"Error enabling platform scheduler: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/scheduler/platform-jobs/disable', methods=['POST'])
+@require_admin
+async def disable_platform_scheduler_endpoint():
+    """Globally disable platform maintenance jobs."""
+    try:
+        from trusted_data_agent.core.task_scheduler import disable_platform_scheduler
+        await disable_platform_scheduler()
+        return jsonify({'status': 'success', 'platform_scheduler_enabled': False}), 200
+    except Exception as e:
+        logger.error(f"Error disabling platform scheduler: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/scheduler/platform-jobs', methods=['GET'])
+@require_admin
+async def list_platform_jobs_endpoint():
+    """Return all platform maintenance jobs with last/next run info."""
+    try:
+        from trusted_data_agent.core.task_scheduler import list_platform_jobs, get_scheduler
+        from trusted_data_agent.components.settings import is_platform_scheduler_enabled
+        jobs = list_platform_jobs()
+        scheduler = get_scheduler()
+        return jsonify({
+            'status': 'success',
+            'jobs': jobs,
+            'platform_scheduler_enabled': is_platform_scheduler_enabled(),
+            'apscheduler_running': bool(scheduler and scheduler.running),
+        }), 200
+    except Exception as e:
+        logger.error(f"Error listing platform jobs: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/scheduler/platform-jobs/<task_id>', methods=['PUT'])
+@require_admin
+async def update_platform_job_endpoint(task_id: str):
+    """Enable or disable a single platform maintenance job. Body: { "enabled": 0|1 }"""
+    try:
+        from trusted_data_agent.core.task_scheduler import update_platform_job
+        data = await request.get_json() or {}
+        task = update_platform_job(task_id, data)
+        if not task:
+            return jsonify({'status': 'error', 'message': 'Platform job not found'}), 404
+        return jsonify({'status': 'success', 'job': task}), 200
+    except Exception as e:
+        logger.error(f"Error updating platform job {task_id}: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/scheduler/platform-jobs/<task_id>/runs', methods=['GET'])
+@require_admin
+async def list_platform_job_runs_endpoint(task_id: str):
+    """Return run history for a platform maintenance job."""
+    try:
+        from trusted_data_agent.core.task_scheduler import list_platform_job_runs
+        runs = list_platform_job_runs(task_id)
+        return jsonify({'status': 'success', 'task_id': task_id, 'runs': runs}), 200
+    except Exception as e:
+        logger.error(f"Error listing platform job runs for {task_id}: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_api_bp.route('/v1/admin/scheduler/platform-jobs/<task_id>/run-now', methods=['POST'])
+@require_admin
+async def run_platform_job_now_endpoint(task_id: str):
+    """Trigger immediate execution of a platform maintenance job."""
+    try:
+        from trusted_data_agent.core.task_scheduler import run_platform_job_now
+        await run_platform_job_now(task_id)
+        return jsonify({'status': 'success', 'message': f'Platform job {task_id} triggered'}), 200
+    except Exception as e:
+        logger.error(f"Error triggering platform job {task_id}: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
 # Vector Store Governance Settings (per-tier backend availability)
 # ---------------------------------------------------------------------------
 

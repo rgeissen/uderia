@@ -151,6 +151,12 @@ def init_database():
         # Create scheduled tasks tables (Track B — autonomous scheduling)
         _create_scheduled_tasks_tables()
 
+        # Scheduler enhancements: platform jobs + independent scheduler gates
+        _create_scheduler_enhancements()
+
+        # Per-user component access override table
+        _create_user_component_settings_table()
+
         # Create SSO / OIDC configuration tables (Phase 1 SSO)
         _create_sso_tables()
 
@@ -1737,6 +1743,80 @@ def _create_scheduled_tasks_tables():
 
     except Exception as e:
         logger.error(f"Error creating scheduled_tasks tables: {e}", exc_info=True)
+
+
+def _create_scheduler_enhancements():
+    """
+    Apply scheduler enhancements: seed platform maintenance jobs and add independent
+    scheduler gate settings to component_settings. The job_type column migration is
+    handled by task_scheduler._ensure_columns() which runs before this.
+    Safe to call multiple times (INSERT OR IGNORE throughout).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "33_scheduler_enhancements.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            # Run only INSERT statements (safe on any install state); skip comment lines
+            for statement in sql.split(';'):
+                stmt = statement.strip()
+                if stmt and not stmt.startswith('--'):
+                    try:
+                        cursor.execute(stmt)
+                    except Exception:
+                        pass
+            conn.commit()
+            logger.debug("Applied schema: 33_scheduler_enhancements.sql")
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error applying scheduler enhancements: {e}", exc_info=True)
+
+
+def _create_user_component_settings_table():
+    """
+    Create user_component_settings table for per-user component access overrides.
+    Admin can explicitly grant or block individual users from using specific components.
+    Safe to call multiple times (CREATE TABLE IF NOT EXISTS).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "34_user_component_settings.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 34_user_component_settings.sql")
+        else:
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS user_component_settings (
+                    id          INTEGER PRIMARY KEY,
+                    user_uuid   TEXT NOT NULL,
+                    component_id TEXT NOT NULL,
+                    is_enabled  INTEGER NOT NULL DEFAULT 1,
+                    note        TEXT,
+                    updated_at  TEXT DEFAULT (datetime('now')),
+                    updated_by  TEXT,
+                    UNIQUE(user_uuid, component_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_ucs_user_uuid
+                    ON user_component_settings(user_uuid);
+                CREATE INDEX IF NOT EXISTS idx_ucs_component_id
+                    ON user_component_settings(component_id);
+            """)
+            logger.info("Created user_component_settings table (inline fallback)")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error creating user_component_settings table: {e}", exc_info=True)
 
 
 def _create_sso_tables():

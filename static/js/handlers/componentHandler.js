@@ -159,25 +159,39 @@ function _renderComponentCard(comp) {
         service: 'bg-purple-500/20 text-purple-300 comp-lt-purple',
     };
 
+    const isDisabled = !!comp.globally_disabled;
     const sourceBadge = sourceClasses[comp.source] || sourceClasses.builtin;
     const typeBadge = typeClasses[comp.component_type] || typeClasses.action;
-    const toolName = comp.tool_name ? `<span class="text-xs font-mono text-cyan-300 comp-lt-text-cyan">${comp.tool_name}</span>` : '';
+    const toolName = comp.tool_name ? `<span class="text-xs font-mono ${isDisabled ? 'comp-lt-text-muted' : 'text-cyan-300 comp-lt-text-cyan'}">${comp.tool_name}</span>` : '';
 
     const renderTargets = (comp.render_targets?.supports || ['inline']).map(t =>
         `<span class="text-xs px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-300 comp-lt-gray">${t}</span>`
     ).join('');
 
+    const statusFooter = isDisabled
+        ? `<div class="flex items-center gap-1 text-xs" style="color:var(--text-muted)">
+               <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                   <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+               </svg>
+               Disabled globally
+           </div>`
+        : comp.has_handler
+            ? '<div class="flex items-center gap-1 text-xs text-green-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Handler loaded</div>'
+            : '<div class="flex items-center gap-1 text-xs text-yellow-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> No handler</div>';
+
     return `
-        <div class="glass-panel rounded-lg p-4 flex flex-col gap-3 component-card transition-all duration-150"
+        <div class="glass-panel rounded-lg p-4 flex flex-col gap-3 component-card transition-all duration-150${isDisabled ? ' opacity-50' : ''}"
              data-component-type="${comp.component_type}"
              data-component-source="${comp.source}"
-             data-component-id="${comp.component_id}">
+             data-component-id="${comp.component_id}"
+             data-globally-disabled="${isDisabled}">
             <div class="flex items-start justify-between">
                 <div class="flex-1">
                     <h4 class="text-sm font-semibold" style="color:var(--text-primary)">${comp.display_name}</h4>
                     <p class="text-xs mt-0.5" style="color:var(--text-muted)">${comp.description || ''}</p>
                 </div>
                 <div class="flex items-center gap-1.5 ml-2">
+                    ${isDisabled ? `<span class="text-xs px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400 comp-lt-gray">inactive</span>` : ''}
                     <span class="text-xs px-1.5 py-0.5 rounded ${sourceBadge}">${comp.source}</span>
                     <span class="text-xs px-1.5 py-0.5 rounded ${typeBadge}">${comp.component_type}</span>
                 </div>
@@ -191,10 +205,7 @@ function _renderComponentCard(comp) {
                     ${renderTargets}
                 </div>
             </div>
-            ${comp.has_handler
-                ? '<div class="flex items-center gap-1 text-xs text-green-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Handler loaded</div>'
-                : '<div class="flex items-center gap-1 text-xs text-yellow-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> No handler</div>'
-            }
+            ${statusFooter}
         </div>
     `;
 }
@@ -1199,7 +1210,8 @@ function _filterComponentCards(dimension, filter) {
             visible = card.dataset.componentType === filter;
         }
         if (dimension === 'status' && filter !== 'all') {
-            visible = filter === 'active';
+            const isDisabled = card.dataset.globallyDisabled === 'true';
+            visible = filter === 'active' ? !isDisabled : isDisabled;
         }
 
         card.style.display = visible ? '' : 'none';
