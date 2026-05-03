@@ -4,15 +4,15 @@
  * It initializes the application by setting up event listeners and loading initial data.
  */
 
-import { initializeEventListeners } from './eventHandlers.js?v=3.4';
+import { initializeEventListeners } from './eventHandlers.js?v=4.0';
 import { finalizeConfiguration } from './handlers/configManagement.js';
 import { initializeConfigurationUI } from './handlers/configurationHandler.js';
 import * as API from './api.js';
 import * as DOM from './domElements.js';
 import { state } from './state.js';
 import { setupPanelToggle } from './utils.js';
-import * as UI from './ui.js?v=1.5';
-import { handleViewSwitch } from './ui.js?v=1.5';
+import * as UI from './ui.js?v=1.6';
+import { handleViewSwitch } from './ui.js?v=1.6';
 import { initializeVoiceRecognition } from './voice.js';
 import { subscribeToNotifications } from './notifications.js?v=3.7';
 import { initializeMarketplace, unsubscribeFromCollection } from './handlers/marketplaceHandler.js';
@@ -28,6 +28,8 @@ import { initializeUploadUI, initializeUploadCapabilities } from './handlers/cha
 import { loadKnowledgeGraphsPanel } from './handlers/knowledgeGraphPanelHandler.js';
 import { loadContextPanel } from './handlers/contextPanelHandler.js';
 import { initSkillsPanelEvents } from './handlers/skillsPanelHandler.js';
+import { initComponentsPanelEvents } from './handlers/componentsPanelHandler.js';
+import { initResourcePanel } from './handlers/resourcePanelHandler.js';
 
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
@@ -526,10 +528,13 @@ async function initializeRAGAutoCompletion() {
             // Update Extensions panel (user-level, refresh on profile switch for freshness)
             import('./handlers/extensionsPanelHandler.js').then(mod => mod.loadExtensionsPanel());
 
+            // Update Components panel to reflect the active profile's componentConfig
+            import('./handlers/componentsPanelHandler.js').then(mod => mod.loadComponentsPanel());
+
             // Refresh #skill autocomplete for the new profile's enabled skills
             loadActivatedSkills();
 
-            let tools, prompts;
+            let tools, prompts, connectors = {};
 
             if (profileId) {
                 // Fetch profile-specific resources
@@ -560,6 +565,7 @@ async function initializeRAGAutoCompletion() {
                 });
                 tools = data.tools || {};
                 prompts = data.prompts || {};
+                connectors = data.connectors || {};
 
                 // Handle Genie profiles: show coordinator info in resource panel
                 if (data.profile_type === 'genie') {
@@ -612,13 +618,15 @@ async function initializeRAGAutoCompletion() {
                 updateKeyObservationsButtonVisibility();
             } else {
                 // Restore default resources
-                const [toolsResponse, promptsResponse] = await Promise.all([
+                const [toolsResponse, promptsResponse, connectorsResponse] = await Promise.all([
                     fetch('/tools', { headers: { 'Authorization': `Bearer ${authToken}` } }),
-                    fetch('/prompts', { headers: { 'Authorization': `Bearer ${authToken}` } })
+                    fetch('/prompts', { headers: { 'Authorization': `Bearer ${authToken}` } }),
+                    fetch('/connectors', { headers: { 'Authorization': `Bearer ${authToken}` } })
                 ]);
 
                 const toolsData = toolsResponse.ok ? await toolsResponse.json() : {};
                 const promptsData = promptsResponse.ok ? await promptsResponse.json() : {};
+                connectors = connectorsResponse.ok ? await connectorsResponse.json() : {};
 
                 // Check if response includes profile metadata (for rag_focused/genie/llm_only profiles)
                 // The backend returns { tools: {}, profile_type: '...', ... } for special profiles
@@ -666,11 +674,13 @@ async function initializeRAGAutoCompletion() {
             // Update the resource panel with new data
             state.resourceData.tools = tools;
             state.resourceData.prompts = prompts;
+            state.resourceData.connectors = connectors;
 
             // Trigger re-render of resource panels (using existing state data, not fetching)
             if (window.capabilitiesModule) {
                 window.capabilitiesModule.renderResourcePanel('tools');
                 window.capabilitiesModule.renderResourcePanel('prompts');
+                window.capabilitiesModule.renderResourcePanel('connectors');
             }
 
             // Hide Resources tab - profile resources endpoint doesn't serve MCP resources,
@@ -2315,6 +2325,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeVoiceRecognition();
     initializeUploadUI();
     initSkillsPanelEvents();
+    initComponentsPanelEvents();
+    initResourcePanel();
 
     // Initialize industrial hierarchy path highlighting for session tree
     initializePathHighlighting();
@@ -2323,7 +2335,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     syncWrapperStates();
 
     // Import and wire repository tabs
-    const { wireRepositoryTabs } = await import('./eventHandlers.js?v=3.4');
+    const { wireRepositoryTabs } = await import('./eventHandlers.js?v=4.0');
     wireRepositoryTabs();
     
     // Initialize utility sessions filter for sidebar
@@ -2714,6 +2726,62 @@ console.log('[main.js] window.initializePanels is now available:', typeof window
 // WELCOME SCREEN MANAGEMENT
 // ============================================================================
 
+async function _buildWelcomeConfigHTML(d) {
+    const ifocMap = {
+        'tool_enabled':  { label: '@OPTIMIZE',   color: '#F15F22', border: 'rgba(241,95,34,0.35)',  bg: 'rgba(241,95,34,0.08)' },
+        'llm_only':      { label: '@IDEATE',      color: '#4ade80', border: 'rgba(74,222,128,0.3)',  bg: 'rgba(74,222,128,0.07)' },
+        'rag_focused':   { label: '@FOCUS',       color: '#3b82f6', border: 'rgba(59,130,246,0.3)',  bg: 'rgba(59,130,246,0.07)' },
+        'genie':         { label: '@COORDINATE',  color: '#9333ea', border: 'rgba(147,51,234,0.3)',  bg: 'rgba(147,51,234,0.07)' },
+    };
+    // Reuse the same provider icons already defined in configurationHandler
+    let providerIconsMap = {};
+    try {
+        const { providerIcons } = await import('/static/js/handlers/configurationHandler.js');
+        providerIconsMap = providerIcons || {};
+    } catch(e) { /* fall through — no icons */ }
+
+    const ifoc = ifocMap[d.profileType] || ifocMap['tool_enabled'];
+    const S = 'display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:9999px;font-size:11px;white-space:nowrap;';
+    const pill  = (t, c, b, bg) => `<span style="${S}border:1px solid ${b};background:${bg};color:${c};font-weight:600;">${t}</span>`;
+    const chip  = (t, icon='') => `<span style="${S}border:1px solid var(--border-secondary);background:var(--bg-overlay);color:var(--text-muted);">${icon}${t}</span>`;
+    const code  = (t) => `<code style="padding:2px 7px;border-radius:4px;background:var(--bg-overlay);color:var(--text-muted);font-size:10px;font-family:monospace;white-space:nowrap;border:1px solid var(--border-secondary);">${t}</code>`;
+    const dot   = `<span style="color:var(--border-primary);font-size:13px;line-height:1;">·</span>`;
+    const dbSvg = `<svg xmlns="http://www.w3.org/2000/svg" style="width:10px;height:10px;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4.03 3-9 3S3 13.66 3 12"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/></svg>`;
+
+    // Build provider chip: real icon (scaled to 12px) + colored name
+    const providerChip = (name) => {
+        const key = (name || '').toLowerCase();
+        const info = providerIconsMap[key];
+        if (info) {
+            // Scale the existing SVG down by replacing class h-4 w-4 with inline size
+            const smallIcon = info.icon.replace(/class="h-4 w-4[^"]*"/, 'style="width:12px;height:12px;flex-shrink:0;vertical-align:-2px;"');
+            return `<span style="${S}border:1px solid var(--border-secondary);background:var(--bg-overlay);color:${info.color};">${smallIcon}${name}</span>`;
+        }
+        return chip(name);
+    };
+
+    // Strip parentheticals and trim profile name
+    const cleanName = d.profileName ? d.profileName.replace(/\s*\(.*?\)\s*/g, '').trim() : null;
+
+    const parts = [];
+    parts.push(pill(ifoc.label, ifoc.color, ifoc.border, ifoc.bg));
+    if (cleanName && cleanName.toLowerCase() !== ifoc.label.toLowerCase()) parts.push(chip(cleanName));
+    if (d.mcpName) parts.push(chip(d.mcpName, dbSvg));
+    if (d.provider || d.model) {
+        parts.push(dot);
+        if (d.provider) parts.push(providerChip(d.provider));
+        if (d.model)    parts.push(code(d.model));
+    }
+
+    return `
+        <div style="position:relative;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border-secondary);border-radius:10px;padding:14px 20px 12px;margin-top:8px;">
+            <span style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);padding:0 10px;background:var(--bg-primary);font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap;">Default Profile</span>
+            <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;">
+                ${parts.join('')}
+            </div>
+        </div>`;
+}
+
 /**
  * Show the welcome screen for unconfigured applications
  */
@@ -2754,7 +2822,7 @@ async function showWelcomeScreen() {
     // For tool_enabled: MCP server + LLM required
     // For llm_only/rag_focused: LLM only required
     let hasSavedConfig = false;
-    let configDetails = '';
+    let configDetails = null; // { profileName, profileType, mcpName, provider, model }
 
     try {
         const token = localStorage.getItem('tda_auth_token');
@@ -2783,27 +2851,22 @@ async function showWelcomeScreen() {
                         const mcpName = activeServer.name || 'Unknown Server';
 
                         if (activeLLM) {
-                            const llmProvider = activeLLM.provider || 'Unknown Provider';
-                            const llmModel = activeLLM.model || 'Unknown Model';
-                            configDetails = `${mcpName} • ${llmProvider} / ${llmModel}`;
+                            configDetails = { profileName: defaultProfile?.name, profileType, mcpName, provider: activeLLM.provider || 'Unknown', model: activeLLM.model || '' };
                             hasSavedConfig = true;
                         } else {
-                            configDetails = `${mcpName} • LLM not configured`;
+                            configDetails = { profileName: defaultProfile?.name, profileType, mcpName, provider: null, model: null };
                             hasSavedConfig = false;
                         }
                     }
                 }
             }
         } else {
-            // Conversation Focused or RAG Focused: Only LLM required
+            // Ideate / Focus / Coordinate: Only LLM required
             if (activeLLM) {
-                const llmProvider = activeLLM.provider || 'Unknown Provider';
-                const llmModel = activeLLM.model || 'Unknown Model';
-                const profileName = defaultProfile?.name || 'Conversation';
-                configDetails = `${profileName} • ${llmProvider} / ${llmModel}`;
+                configDetails = { profileName: defaultProfile?.name, profileType, mcpName: null, provider: activeLLM.provider || 'Unknown', model: activeLLM.model || '' };
                 hasSavedConfig = true;
             } else {
-                configDetails = 'LLM not configured';
+                configDetails = { profileName: defaultProfile?.name, profileType, mcpName: null, provider: null, model: null };
                 hasSavedConfig = false;
             }
         }
@@ -2837,14 +2900,14 @@ async function showWelcomeScreen() {
     
     // Update button text based on whether user has a valid default profile
     if (welcomeBtnText) {
-        const buttonText = (hasSavedConfig && isDefaultProfileValid) ? 'Start Conversation' : 'Configure Application';
+        const buttonText = (hasSavedConfig && isDefaultProfileValid) ? 'Start Reasoning' : 'Configure Application';
         welcomeBtnText.textContent = buttonText;
     }
-    
-    // Update subtext with configuration details or default message
+
+    // Update subtext with styled configuration badges or fallback message
     if (welcomeSubtext) {
         if (hasSavedConfig && isDefaultProfileValid && configDetails) {
-            welcomeSubtext.textContent = configDetails;
+            welcomeSubtext.innerHTML = await _buildWelcomeConfigHTML(configDetails);
         } else if (hasSavedConfig && !isDefaultProfileValid) {
             welcomeSubtext.textContent = "Default profile needs validation. Please check your credentials.";
         } else {
@@ -2899,7 +2962,7 @@ async function showWelcomeScreen() {
                         welcomeCogwheel.classList.remove('animate-spin');
                     }
                     if (welcomeBtnText) {
-                        welcomeBtnText.textContent = (hasSavedConfig && isDefaultProfileValid) ? 'Start Conversation' : 'Configure Application';
+                        welcomeBtnText.textContent = (hasSavedConfig && isDefaultProfileValid) ? 'Start Reasoning' : 'Configure Application';
                     }
                     welcomeBtn.disabled = false;    
                 }

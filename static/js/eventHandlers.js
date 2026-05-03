@@ -7,8 +7,8 @@
 import * as DOM from './domElements.js';
 import { state, setCanvasSplitMode } from './state.js';
 import * as API from './api.js';
-import * as UI from './ui.js?v=1.5';
-import { handleViewSwitch, toggleSideNav } from './ui.js?v=1.5';
+import * as UI from './ui.js?v=1.6';
+import { handleViewSwitch, toggleSideNav } from './ui.js?v=1.6';
 import * as Utils from './utils.js';
 import { copyToClipboard, copyTableToClipboard, classifyConfirmation } from './utils.js';
 import { renameSession, deleteSession } from './api.js'; // Import the rename/delete API functions
@@ -20,15 +20,16 @@ import {
     renameActiveSession
 } from './handlers/sessionManagement.js?v=3.6';
 import { handleGenieEvent } from './handlers/genieHandler.js?v=3.4';
-import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.0';
+import { handleConversationAgentEvent } from './handlers/conversationAgentHandler.js?v=1.1';
 import { getPendingAttachments, clearPendingAttachments, renderAttachmentChips, isUploadInProgress } from './handlers/chatDocumentUpload.js';
 import { renderComponent, hasRenderer } from './componentRenderers.js';
 import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowManager.js';
 import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
 import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
 import { loadContextPanel, renderContextWindowSnapshot } from './handlers/contextPanelHandler.js';
-import { loadSkillsPanel } from './handlers/skillsPanelHandler.js';
-import { loadExtensionsPanel } from './handlers/extensionsPanelHandler.js';
+import { loadSkillsPanel, highlightSkill } from './handlers/skillsPanelHandler.js?v=1.1';
+import { loadExtensionsPanel, highlightExtension } from './handlers/extensionsPanelHandler.js?v=1.1';
+import { highlightComponent } from './handlers/componentsPanelHandler.js?v=1.2';
 import { openContextAnalyticsModal } from './handlers/contextAnalyticsModal.js';
 
 // ─── KG Live Animation Bridge (lazy-loaded) ────────────────────────────
@@ -1110,6 +1111,17 @@ async function processStream(responseBody, originSessionId) {
                                     eventData.type === 'conversation_tool_completed') {
                                     _tryKGAnimate(eventData.type, payload);
                                 }
+
+                                // Resource Panel: highlight the tool being invoked (llm_only with MCP tools)
+                                if (eventData.type === 'conversation_tool_invoked' && payload.tool_name) {
+                                    const n = payload.tool_name;
+                                    if (n.startsWith('generate_')) {
+                                        UI.highlightResource(n, 'charts');
+                                    } else {
+                                        UI.highlightResource(n, 'tools');
+                                    }
+                                    window.resourcePanelHandler?.onSSEEvent('tool_call', { type: 'tool_call', payload: { tool_name: n } });
+                                }
                             }
                         } else if (eventData.type === 'llm_execution' ||
                                    eventData.type === 'llm_execution_complete' ||
@@ -1168,6 +1180,9 @@ async function processStream(responseBody, originSessionId) {
                                 state.currentTurnNumber = payload.turn_id;
                             }
 
+                            // Pulse strip lifecycle
+                            window.resourcePanelHandler?.onSSEEvent(eventData.type, eventData);
+
                             console.log(`[${eventData.type}] Received for ${profile_type} profile:`, payload);
 
                             // Generate harmonized title
@@ -1186,6 +1201,9 @@ async function processStream(responseBody, originSessionId) {
 
                             // KG Live Animation: end animations on execution complete/error/cancelled
                             if (isFinal) _tryKGAnimateEnd();
+
+                            // Pulse strip: collapse on final lifecycle events
+                            if (isFinal) window.resourcePanelHandler?.onSSEEvent('conversation_agent_complete', eventData);
                         } else if (eventData.type === 'skills_applied') {
                             // Skill pre-processing transparency — emerald green
                             const skillsPayload = eventData.payload || {};
@@ -1194,6 +1212,9 @@ async function processStream(responseBody, originSessionId) {
                                 details: skillsPayload,
                                 type: 'skills_applied'
                             }, false, 'skills');
+                            // Focus the first applied skill in the Skills panel
+                            const appliedSkills = (skillsPayload.skills || []);
+                            if (appliedSkills.length > 0) highlightSkill(appliedSkills[0].name);
                         } else if (eventData.type === 'extension_start') {
                             const extPayload = eventData.payload || {};
                             UI.updateStatusWindow({
@@ -1201,6 +1222,7 @@ async function processStream(responseBody, originSessionId) {
                                 details: 'Processing...',
                                 type: 'extension_running'
                             }, false, 'extension');
+                            if (extPayload.name) highlightExtension(extPayload.name);
                         } else if (eventData.type === 'extension_complete') {
                             const extPayload = eventData.payload || {};
                             UI.updateStatusWindow({
@@ -1208,6 +1230,7 @@ async function processStream(responseBody, originSessionId) {
                                 details: extPayload,
                                 type: 'extension_complete'
                             }, false, 'extension');
+                            if (extPayload.name) highlightExtension(extPayload.name);
                         } else if (eventData.type === 'context_window_snapshot') {
                             // Context Window Manager snapshot — render budget visualization
                             const snapshotPayload = eventData.payload || {};
@@ -1314,8 +1337,14 @@ async function processStream(responseBody, originSessionId) {
                     } else if (eventName === 'tool_result' || eventName === 'tool_error' || eventName === 'tool_intent') {
                         UI.updateStatusWindow(eventData);
                         if (eventData.tool_name) {
-                            const toolType = eventData.tool_name.startsWith('generate_') ? 'charts' : 'tools';
-                            UI.highlightResource(eventData.tool_name, toolType);
+                            const n = eventData.tool_name;
+                            if (n.startsWith('generate_')) {
+                                UI.highlightResource(n, 'charts');
+                            } else {
+                                UI.highlightResource(n, 'tools');
+                            }
+                            const evtType = eventName === 'tool_result' ? 'tool_result' : eventName === 'tool_error' ? 'tool_result' : 'tool_call';
+                            window.resourcePanelHandler?.onSSEEvent(evtType, { type: evtType, payload: { tool_name: n, is_error: eventName === 'tool_error' } });
                         }
                     // --- Extension Results (combined event, own SSE type) ---
                     } else if (eventName === 'extension_results') {
@@ -1446,6 +1475,11 @@ async function processStream(responseBody, originSessionId) {
                             eventName === 'genie_component_invoked' || eventName === 'genie_component_completed') {
                             _tryKGAnimate(eventName, eventData);
                         }
+
+                        // Resource Panel: highlight component tool invoked by genie coordinator (TDA_Charting etc.)
+                        if (eventName === 'genie_component_invoked' && eventData.tool_name) {
+                            UI.highlightResource(eventData.tool_name, 'tools');
+                        }
                         // KG Live Animation: end animations on genie coordination complete
                         if (eventName === 'genie_coordination_complete') _tryKGAnimateEnd();
                     } else if (eventName === 'cancelled') {
@@ -1566,6 +1600,19 @@ async function processStream(responseBody, originSessionId) {
                         }, true, 'context_window');
                     } else {
                         UI.updateStatusWindow(eventData);
+
+                        // Resource Panel highlighting: most tool events arrive as SSE 'message' type
+                        // (no named event), so we handle them here by checking eventData.type.
+                        // tool_intent always carries eventData.details.tool_name (= the action dict).
+                        if (eventData.type === 'tool_intent' && eventData.details?.tool_name) {
+                            const n = eventData.details.tool_name;
+                            if (n.startsWith('generate_')) {
+                                UI.highlightResource(n, 'charts');
+                            } else {
+                                UI.highlightResource(n, 'tools');
+                            }
+                            window.resourcePanelHandler?.onSSEEvent('tool_call', { type: 'tool_call', payload: { tool_name: n } });
+                        }
 
                         // KG Live Animation: dispatch tool_enabled events (phase_start, plan_generated, kg_enrichment)
                         if (eventData.type) {
@@ -3104,7 +3151,7 @@ export async function handleLoadResources(type) {
 
         Object.keys(data).forEach(category => {
             const categoryTab = document.createElement('button');
-            categoryTab.className = 'category-tab px-4 py-2 rounded-md font-semibold text-sm transition-colors hover:bg-[#D9501A]';
+            categoryTab.className = 'category-tab';
             categoryTab.textContent = category;
             categoryTab.dataset.category = category;
             categoryTab.dataset.type = type;
@@ -3177,6 +3224,11 @@ function handleResourceTabClick(e) {
         // Lazy-load Extensions panel on first click (or refresh on subsequent)
         if (type === 'extensions') {
             loadExtensionsPanel();
+        }
+
+        // Lazy-load Components panel on first click (or refresh on subsequent)
+        if (type === 'components') {
+            import('./handlers/componentsPanelHandler.js?v=1.2').then(mod => mod.loadComponentsPanel());
         }
     }
 }
@@ -3498,18 +3550,16 @@ function getSystemPromptSummaryHTML() {
                 <p class="text-xs text-gray-400 mb-3">Latest enhancements and updates to the Uderia Platform.</p>
                 <div class="whats-new-container">
                     <ul class="list-disc list-inside text-xs text-gray-300 space-y-1">
-                       <li><strong>10-Apr-2026:</strong> Genie Coordinator Pass-Through — Skips coordinator synthesis for single-expert queries with no prior context, cutting coordinator token cost in half.</li>
-                       <li><strong>06-Nov-2025:</strong> UI Real-Time Monitoring of Rest Requests</li>
-                       <li><strong>31-Oct-2025:</strong> Fully configurable Context Management (Turn & Session)</li>
-                       <li><strong>28-Oct-2025:</strong> Turn Replay & Turn Reload Plan</li>
-                       <li><strong>24-Oct-2025:</strong> Stop Button Added - Ability to immediately Stop Workflows</li>
-                       <li><strong>23-Oct-2025:</strong> Robust Multi-Tool Phase Handling</li>
-                       <li><strong>11-Oct-2025:</strong> Friendly.AI Integration</li>
-                       <li><strong>10-Oct-2025:</strong> Context Aware Rendering of the Collateral Report</li>
-                       <li><strong>19-SEP-2025:</strong> Microsoft Azure Integration</li>
-                       <li><strong>18-SEP-2025:</strong> REST Interface for Engine Configuration, Execution & Monitoring </li>
-                       <li><strong>12-SEP-2025:</strong> Significant Formatting Upgrade (Canonical Baseline Model for LLM Provider Rendering)</li>
-                       <li><strong>05-SEP-2025:</strong> Conversation Mode (Google Cloud Credentials required)</li>
+                       <li><strong>02-May-2026:</strong> Knowledge Sync Scheduling — Set exactly when knowledge repositories sync using a datetime anchor in Platform Jobs; the schedule auto-advances after each run. Repository cards include a Manage button that opens the matching sync job directly.</li>
+                       <li><strong>02-May-2026:</strong> Portable Source URIs — Knowledge repositories now work across environments without reconfiguration; set a Source Root in Platform Jobs to tell the platform where documents live on each server.</li>
+                       <li><strong>02-May-2026:</strong> Continuous Knowledge Sync (CDC) — Repositories stay current automatically. Only changed documents are re-processed; deleted content is removed. Sync results show exactly which files changed.</li>
+                       <li><strong>02-May-2026:</strong> Security Architecture — Formal coverage of authentication (JWT, OAuth, SAML, OIDC), RBAC, secrets management, audit logging, threat model, and compliance mapping (EU AI Act, GDPR, SOX, HIPAA).</li>
+                       <li><strong>02-May-2026:</strong> JIT Provisioning &amp; Group Sync — User roles update automatically at every SSO login based on the user's current IdP group membership; no manual tier changes needed after org changes.</li>
+                       <li><strong>02-May-2026:</strong> SAML 2.0 Enterprise SSO — Connect to corporate identity providers via SAML 2.0; supports multiple IdP configurations, SP metadata, and both IdP- and SP-initiated login flows.</li>
+                       <li><strong>01-May-2026:</strong> Task Scheduler — Schedule any agent query to run automatically on a cron or interval; manage schedules through conversation or the split-panel UI, with results delivered by email or webhook.</li>
+                       <li><strong>28-Apr-2026:</strong> Parallel Query Execution — Multi-step queries run faster: independent plan phases and date-range iterations now execute in parallel instead of sequentially.</li>
+                       <li><strong>10-Apr-2026:</strong> Genie Coordinator Pass-Through — Single-expert queries skip the synthesis step, cutting coordinator token cost and response time in half.</li>
+                       <li><strong>04-Apr-2026:</strong> OpenRouter Support — Access 100+ models (Llama, Mistral, Gemma, and more) via a single API key.</li>
                     </ul>
                 </div>
             </div>
@@ -4174,7 +4224,7 @@ export function initializeEventListeners() {
                     const newScore = newVote === 'up' ? 1 : newVote === 'down' ? -1 : 0;
                     
                     // Immediately update table row feedback badge (before server refresh)
-                    const { updateTableRowFeedback } = await import('./ui.js?v=1.5');
+                    const { updateTableRowFeedback } = await import('./ui.js?v=1.6');
                     updateTableRowFeedback(caseId, newScore);
                     console.log('[CaseFeedback] Updated table row feedback immediately for', caseId);
                     
@@ -4197,7 +4247,7 @@ export function initializeEventListeners() {
                     // Update the case details panel to show updated feedback score
                     // (Don't refresh entire table - we already updated the row immediately above)
                     console.log('[CaseFeedback] Refreshing case details panel for case', caseId);
-                    const { selectCaseRow } = await import('./ui.js?v=1.5');
+                    const { selectCaseRow } = await import('./ui.js?v=1.6');
                     await selectCaseRow(caseId);
                 } else if (sessionId && !isNaN(turnId)) {
                     // Session-based feedback
@@ -4277,5 +4327,28 @@ window.EventHandlers = {
     getLlmOnlyTitle,
     getRagFocusedTitle,
     getGenieTitle,
-    getLifecycleTitle
+    getLifecycleTitle,
+
+    // Called by external components (e.g. scheduler renderer) to submit a query in the current session
+    triggerChatQuery: async (prompt) => {
+        if (!prompt || !state.currentSessionId) {
+            console.warn('[triggerChatQuery] Cannot submit — no prompt or no active session');
+            return false;
+        }
+        const inputEl = DOM.userInput;
+        if (!inputEl) return false;
+        inputEl.value = prompt;
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        const syntheticEvent = { preventDefault: () => {}, type: 'submit' };
+        await handleChatSubmit(syntheticEvent, 'component');
+        return true;
+    },
 };
+
+// Refresh sessions list when a background scheduler task fires
+window.addEventListener('scheduler-background-run', async () => {
+    try {
+        const { refreshSessionsList } = await import('./handlers/configManagement.js');
+        await refreshSessionsList(false);
+    } catch (_) {}
+});

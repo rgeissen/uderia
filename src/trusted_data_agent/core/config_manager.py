@@ -945,8 +945,22 @@ class ConfigManager:
 
         enabled_tools = set(enabled_tools_list)
 
-        # Calculate disabled tools, but exclude TDA_ tools (they are ALWAYS enabled)
-        disabled_tools = {tool for tool in all_tools if tool not in enabled_tools and not tool.startswith('TDA_')}
+        # Platform connector tools are governed by their own chain (admin → user → profile).
+        # They bypass the primary server's profile.tools[] filter, same as TDA_* tools.
+        platform_tool_names: set = set()
+        try:
+            from trusted_data_agent.core.platform_connector_registry import get_effective_tool_names
+            platform_tool_names = get_effective_tool_names(profile_id)
+        except Exception:
+            pass
+
+        # Calculate disabled tools, excluding TDA_* tools and platform MCP server tools
+        disabled_tools = {
+            tool for tool in all_tools
+            if tool not in enabled_tools
+            and not tool.startswith('TDA_')
+            and tool not in platform_tool_names
+        }
 
         return list(disabled_tools)
     

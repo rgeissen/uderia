@@ -2724,7 +2724,57 @@ async def get_rag_collections():
             # Use persisted counts from database (fast, no backend calls)
             coll_copy["count"] = coll.get("chunk_count", 0) or 0
             coll_copy["document_count"] = coll.get("document_count", 0) or 0
-            
+
+            # CDC fields — sync aggregate and model lock status for card UI
+            if coll.get("repository_type") == "knowledge":
+                try:
+                    agg = collection_db.get_sync_aggregate(coll["id"])
+                    coll_copy["sync_doc_count"] = agg.get("sync_doc_count", 0)
+                    coll_copy["stale_doc_count"] = agg.get("stale_doc_count", 0)
+                    coll_copy["last_sync_at"] = agg.get("last_sync_at")
+                    # Prefer stored next_sync_at (user-set schedule anchor); fall back to last+interval
+                    _stored_next = coll.get("next_sync_at")
+                    _last = agg.get("last_sync_at")
+                    if _stored_next:
+                        coll_copy["next_sync_at"] = _stored_next
+                    elif _last:
+                        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                        _secs = {"hourly": 3600, "6h": 21600, "daily": 86400, "weekly": 604800}.get(
+                            coll.get("sync_interval") or "daily", 86400)
+                        try:
+                            _last_dt = _dt.fromisoformat(_last.replace("Z", "+00:00"))
+                            if _last_dt.tzinfo is None:
+                                _last_dt = _last_dt.replace(tzinfo=_tz.utc)
+                            coll_copy["next_sync_at"] = (_last_dt + _td(seconds=_secs)).isoformat()
+                        except Exception:
+                            coll_copy["next_sync_at"] = None
+                    else:
+                        coll_copy["next_sync_at"] = None
+                except Exception:
+                    coll_copy["sync_doc_count"] = 0
+                    coll_copy["stale_doc_count"] = 0
+                    coll_copy["last_sync_at"] = None
+                    coll_copy["next_sync_at"] = None
+            else:
+                coll_copy["sync_doc_count"] = 0
+                coll_copy["stale_doc_count"] = 0
+                coll_copy["last_sync_at"] = None
+                coll_copy["next_sync_at"] = None
+            coll_copy["embedding_model_locked"] = int(coll.get("embedding_model_locked") or 0)
+            coll_copy["sync_interval"] = coll.get("sync_interval") or "daily"
+            coll_copy["source_root"] = coll.get("source_root") or None
+
+            # Effective source root for UI display: collection setting → env var → auto-detect
+            if coll.get("repository_type") == "knowledge":
+                import os as _os
+                from pathlib import Path as _Path
+                _effective = (
+                    coll.get("source_root")
+                    or _os.environ.get("UDERIA_DOCS_ROOT")
+                    or str(_Path(__file__).resolve().parents[3])
+                )
+                coll_copy["effective_source_root"] = _effective
+
             enhanced_collections.append(coll_copy)
         
         # Add rating statistics in bulk (efficient single query)
@@ -7136,10 +7186,32 @@ async def get_profile_resources(profile_id: str):
                         prompt_copy['disabled'] = prompt['name'] not in enabled_prompt_names
                     profile_prompts[category].append(prompt_copy)
 
+        # Strip Platform connector categories from tools — they are served as connectors
+        mcp_profile_tools = {k: v for k, v in profile_tools.items()
+                             if k != "Platform Tools" and not k.startswith("Platform: ")}
+
+        # Build per-connector groups for the Connectors panel
+        profile_connectors = {}
+        try:
+            from trusted_data_agent.core.platform_connector_registry import get_effective_tools as _get_pct
+            conn_tools = _get_pct(profile_id)
+            for ct in conn_tools:
+                cat = ct.get("_category", "Platform Tools")
+                label = cat[len("Platform: "):] if cat.startswith("Platform: ") else cat
+                profile_connectors.setdefault(label, []).append({
+                    "name": ct["name"],
+                    "description": ct.get("description", ""),
+                    "arguments": ct.get("arguments", []),
+                    "disabled": False,
+                })
+        except Exception:
+            pass
+
         return jsonify({
             "status": "success",
-            "tools": profile_tools,
+            "tools": mcp_profile_tools,
             "prompts": profile_prompts,
+            "connectors": profile_connectors,
             "profile_type": profile.get("profile_type", "tool_enabled"),
             "profile_name": profile.get("name"),
             "profile_tag": profile.get("tag")
@@ -7442,22 +7514,55 @@ async def get_profile_classification(profile_id: str):
     from trusted_data_agent.mcp_adapter.adapter import CLIENT_SIDE_TOOLS as _CST
     system_tool_names = [t['name'] for t in _CST]
 
+    # Collect Component Tools separately so the dialog can show them in their own section
+    # with a COMP_ display prefix (distinct from MCP tools and TDA_ system tools).
+    component_tool_entries = []
     try:
-        # get_tool_definitions({}) uses the backward-compat path: componentConfig absent →
-        # all components active. This covers all installed action components dynamically.
         from trusted_data_agent.components.manager import get_component_manager
         comp_manager = get_component_manager()
         component_tool_defs = comp_manager.get_tool_definitions({})
-        system_tool_names += [t['name'] for t in (component_tool_defs or [])]
+        if component_tool_defs:
+            system_tool_names += [t['name'] for t in component_tool_defs]
+            for _ct in component_tool_defs:
+                _tname = _ct['name']
+                # Display name uses COMP_ prefix (strip TDA_ if present, add COMP_)
+                _display = 'COMP_' + _tname[4:] if _tname.startswith('TDA_') else 'COMP_' + _tname
+                component_tool_entries.append({
+                    "name": _tname,
+                    "display_name": _display,
+                    "description": _ct.get("description", ""),
+                    "always_active": True,
+                })
     except Exception:
         pass  # Component manager unavailable — safe to skip
+
+    # Collect active Platform Connector Tools for this profile
+    platform_tool_entries = []
+    try:
+        from trusted_data_agent.core.platform_connector_registry import (
+            get_effective_tools as _get_pt_cl,
+            get_server as _get_pt_srv,
+        )
+        _pt_tools = _get_pt_cl(profile_id)
+        for _pt in _pt_tools:
+            platform_tool_entries.append({
+                "name": _pt["name"],
+                "description": _pt.get("description", ""),
+                "arguments": _pt.get("arguments", []),
+                "category": _pt.get("_category", "Platform Tools"),
+                "always_active": True,
+            })
+    except Exception:
+        pass
 
     return jsonify({
         "status": "success",
         "profile_id": profile_id,
         "classification_mode": classification_mode,
         "classification_results": classification_results,
-        "system_tools": system_tool_names
+        "system_tools": system_tool_names,
+        "component_tools": component_tool_entries,
+        "platform_tools": platform_tool_entries,
     }), 200
 
 
@@ -13070,6 +13175,75 @@ async def unpublish_extension(marketplace_id: str):
 # Component Library Endpoints
 # =============================================================================
 
+@rest_api_bp.route("/v1/profiles/<profile_id>/components", methods=["GET"])
+async def get_profile_components(profile_id: str):
+    """
+    Return all components with their effective enabled/disabled state for a specific profile.
+    Merges global governance, per-user overrides, and per-profile componentConfig.
+    Used by the Resource Panel Components tab.
+    """
+    try:
+        user_uuid = _get_user_uuid_from_request()
+        if not user_uuid:
+            return jsonify({"error": "Authentication required"}), 401
+
+        from trusted_data_agent.components.manager import get_component_manager
+        from trusted_data_agent.components.settings import (
+            get_component_settings,
+            is_component_available,
+        )
+        from trusted_data_agent.core.config_manager import get_config_manager
+
+        config_manager = get_config_manager()
+        profile = config_manager.get_profile(profile_id, user_uuid)
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
+
+        profile_type = profile.get("profile_type", "tool_enabled")
+        component_config = profile.get("componentConfig") or {}
+
+        settings = get_component_settings()
+        manager = get_component_manager()
+
+        components = []
+        for comp in manager.get_all_components():
+            if not settings.get("user_components_enabled", True) and comp.source != "builtin":
+                continue
+
+            d = comp.to_api_dict()
+
+            globally_disabled = not is_component_available(comp.component_id, user_uuid)
+
+            prof_cfg = component_config.get(comp.component_id, {})
+            # user_disabled = user explicitly set enabled:false in componentConfig
+            user_disabled = prof_cfg.get("enabled") is False
+
+            enabled_for = comp.profile_defaults.get("enabled_for", [])
+            is_default_on = profile_type in enabled_for
+
+            if globally_disabled:
+                profile_enabled = False
+            elif "enabled" in prof_cfg:
+                profile_enabled = bool(prof_cfg["enabled"])
+            else:
+                profile_enabled = is_default_on
+
+            intensity = prof_cfg.get("intensity") or comp.profile_defaults.get("default_intensity")
+
+            d["globally_disabled"] = globally_disabled
+            d["profile_enabled"] = profile_enabled
+            d["user_disabled"] = user_disabled
+            d["is_default_on"] = is_default_on
+            d["intensity"] = intensity
+            components.append(d)
+
+        return jsonify({"components": components}), 200
+
+    except Exception as e:
+        app_logger.error(f"Failed to get profile components for {profile_id}: {e}", exc_info=True)
+        return jsonify({"error": "Failed to get profile components."}), 500
+
+
 @rest_api_bp.route("/v1/components", methods=["GET"])
 async def list_components():
     """
@@ -13092,12 +13266,13 @@ async def list_components():
 
         components = []
         for comp in manager.get_all_components():
-            if not is_component_available(comp.component_id):
-                continue
-            # If user components disabled, hide non-builtin
+            # If user components disabled, hide non-builtin entirely
             if not settings.get("user_components_enabled", True) and comp.source != "builtin":
                 continue
-            components.append(comp.to_api_dict())
+            d = comp.to_api_dict()
+            # Effective access = global disabled list + per-user override for the requesting user
+            d["globally_disabled"] = not is_component_available(comp.component_id, user_uuid)
+            components.append(d)
 
         return jsonify({
             "components": components,
@@ -13168,13 +13343,11 @@ async def get_component_renderer(component_id):
     """
     Serve a component's JavaScript renderer file.
     Used by the frontend ComponentRendererRegistry to dynamically load renderers.
+    Note: no governance check here — the renderer is a display asset needed for
+    existing conversation history. New invocations are gated at tool-execution level.
     """
     try:
         from trusted_data_agent.components.manager import get_component_manager
-        from trusted_data_agent.components.settings import is_component_available
-
-        if not is_component_available(component_id):
-            return jsonify({"error": "Component not available"}), 403
 
         manager = get_component_manager()
         comp = manager.get_component(component_id)
@@ -15592,3 +15765,360 @@ async def kg_assignments_activate(current_user):
     except Exception as e:
         app_logger.error(f"KG assignment activation failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# =============================================================================
+# Platform Connector Registry
+# Admin-governed capability connectors (browser, files, shell, web, google, …).
+# Strictly separate from user-configured data source servers.
+# =============================================================================
+
+@rest_api_bp.route("/v1/connector-registry/sources", methods=["GET"])
+@require_auth
+async def list_connector_registry_sources(current_user):
+    """List all configured connector registry sources (Uderia built-in, official, enterprise private)."""
+    try:
+        from trusted_data_agent.core.platform_connector_registry import list_registry_sources
+        return jsonify({"sources": list_registry_sources()}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to list connector registry sources: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/connector-registry/sources", methods=["POST"])
+@require_admin
+async def add_connector_registry_source():
+    """Add an enterprise private registry source. Admin only."""
+    try:
+        data = await request.get_json()
+        name = (data or {}).get("name", "").strip()
+        url = (data or {}).get("url", "").strip()
+        if not name or not url:
+            return jsonify({"error": "name and url are required"}), 400
+        from trusted_data_agent.core.platform_connector_registry import add_registry_source
+        source = add_registry_source(name, url)
+        return jsonify({"source": source}), 201
+    except Exception as e:
+        app_logger.error(f"Failed to add connector registry source: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/connector-registry/sources/<source_id>", methods=["DELETE"])
+@require_admin
+async def delete_connector_registry_source(source_id):
+    """Delete a non-builtin registry source. Admin only."""
+    try:
+        from trusted_data_agent.core.platform_connector_registry import delete_registry_source
+        ok = delete_registry_source(source_id)
+        if not ok:
+            return jsonify({"error": "Source not found or is a built-in source"}), 404
+        return jsonify({"status": "deleted"}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to delete connector registry source: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/connector-registry/servers", methods=["GET"])
+@require_auth
+async def browse_connector_registry_servers(current_user):
+    """Browse connectors from a registry source."""
+    try:
+        source_id = request.args.get("source", "builtin")
+        search = request.args.get("search", "")
+        page = int(request.args.get("page", 1))
+        cursor = request.args.get("cursor", "")
+        from trusted_data_agent.core.platform_connector_registry import list_registry_servers
+        result = await list_registry_servers(source_id, search, page, cursor=cursor)
+        return jsonify(result), 200
+    except Exception as e:
+        app_logger.error(f"Failed to browse connector registry: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/connector-registry/servers/install", methods=["POST"])
+@require_admin
+async def install_connector_from_registry():
+    """Register (install/connect) a connector from a registry source. Admin only."""
+    try:
+        data = await request.get_json() or {}
+        source_id = data.get("source_id", "builtin")
+        server_id = data.get("server_id", "").strip()
+        server_data = data.get("server_data", {})
+        if not server_id:
+            return jsonify({"error": "server_id is required"}), 400
+        from trusted_data_agent.core.platform_connector_registry import install_server
+        server = install_server(source_id, server_id, server_data)
+        return jsonify({"server": server}), 201
+    except Exception as e:
+        app_logger.error(f"Failed to install connector: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/platform-connectors", methods=["GET"])
+@require_auth
+async def list_platform_connectors(current_user):
+    """List all installed platform connectors with governance settings."""
+    try:
+        from trusted_data_agent.core.platform_connector_registry import list_installed_servers
+        return jsonify({"servers": list_installed_servers()}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to list platform connectors: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/platform-connectors/<server_id>", methods=["GET"])
+@require_auth
+async def get_platform_connector(current_user, server_id):
+    """Get a single platform connector."""
+    try:
+        from trusted_data_agent.core.platform_connector_registry import get_server
+        server = get_server(server_id)
+        if not server:
+            return jsonify({"error": "Connector not found"}), 404
+        return jsonify({"server": server}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get platform connector {server_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/platform-connectors/<server_id>", methods=["PUT"])
+@require_admin
+async def update_platform_connector(server_id):
+    """Update governance settings for a platform connector. Admin only."""
+    try:
+        data = await request.get_json() or {}
+        from trusted_data_agent.core.platform_connector_registry import (
+            update_server_governance, update_server_credentials, get_server
+        )
+        if not get_server(server_id):
+            return jsonify({"error": "Connector not found"}), 404
+
+        # Credentials are updated separately and never returned
+        credentials = data.pop("credentials", None)
+        if credentials:
+            update_server_credentials(server_id, credentials)
+
+        server = update_server_governance(server_id, data)
+        return jsonify({"server": server}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to update platform connector {server_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/platform-connectors/<server_id>", methods=["DELETE"])
+@require_admin
+async def delete_platform_connector(server_id):
+    """Remove a platform connector and all profile settings. Admin only."""
+    try:
+        from trusted_data_agent.core.platform_connector_registry import delete_server, get_server
+        if not get_server(server_id):
+            return jsonify({"error": "Connector not found"}), 404
+        delete_server(server_id)
+        return jsonify({"status": "deleted"}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to delete platform connector {server_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/platform-connectors/<server_id>/tools", methods=["GET"])
+@require_auth
+async def get_platform_connector_tools(current_user, server_id):
+    """Get tool schemas for a platform connector (from manifest; live discovery coming later)."""
+    try:
+        from trusted_data_agent.core.platform_connector_registry import (
+            get_server, invalidate_tool_cache, _get_cached_tool_schemas
+        )
+        if not get_server(server_id):
+            return jsonify({"error": "Connector not found"}), 404
+        if request.args.get("refresh") == "true":
+            invalidate_tool_cache(server_id)
+        tools = _get_cached_tool_schemas(server_id)
+        return jsonify({"tools": tools, "server_id": server_id}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get tools for platform connector {server_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/profiles/<profile_id>/connector-settings", methods=["GET"])
+@require_auth
+async def get_profile_connector_settings(current_user, profile_id):
+    """Get the user's platform connector opt-in state for a profile."""
+    try:
+        from trusted_data_agent.core.platform_connector_registry import get_profile_server_settings
+        settings = get_profile_server_settings(profile_id)
+        return jsonify({"settings": settings, "profile_id": profile_id}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get profile connector settings: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/profiles/<profile_id>/connector-settings/<server_id>", methods=["PUT"])
+@require_auth
+async def update_profile_connector_setting(current_user, profile_id, server_id):
+    """Update a profile's opt-in state and tool selection for a platform connector."""
+    try:
+        data = await request.get_json() or {}
+        opted_in = data.get("opted_in")   # None | 1 | 0
+        user_tools = data.get("user_tools")  # list of tool names | None
+        from trusted_data_agent.core.platform_connector_registry import (
+            update_profile_server_setting, get_server
+        )
+        server = get_server(server_id)
+        if not server:
+            return jsonify({"error": "Connector not found"}), 404
+        # Enforce governance: if user cannot opt out, ignore opt-out requests
+        if server.get("auto_opt_in") and not server.get("user_can_opt_out") and opted_in == 0:
+            return jsonify({"error": "This connector cannot be disabled by users"}), 403
+        # Enforce governance: if user cannot configure tools, ignore tool selection
+        if not server.get("user_can_configure_tools"):
+            user_tools = None
+        update_profile_server_setting(profile_id, server_id, opted_in, user_tools)
+        return jsonify({"status": "updated", "profile_id": profile_id, "server_id": server_id}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to update profile platform MCP setting: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Scheduled Tasks (Track B) ─────────────────────────────────────────────────
+
+@rest_api_bp.route("/v1/scheduled-tasks", methods=["GET"])
+@require_auth
+async def list_scheduled_tasks(current_user):
+    """List scheduled tasks for the current user. Optional ?profile_id= filter."""
+    try:
+        from trusted_data_agent.core.task_scheduler import list_tasks
+        user_uuid = current_user.id
+        profile_id = request.args.get("profile_id")
+        tasks = list_tasks(user_uuid, profile_id=profile_id)
+        return jsonify({"tasks": tasks}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to list scheduled tasks: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks", methods=["POST"])
+@require_auth
+async def create_scheduled_task(current_user):
+    """Create a new scheduled task."""
+    try:
+        from trusted_data_agent.core.task_scheduler import create_task, is_scheduler_globally_enabled
+        if not is_scheduler_globally_enabled():
+            return jsonify({"error": "Task Scheduler component is disabled by admin"}), 403
+
+        data = await request.get_json() or {}
+        required = ["name", "prompt", "schedule", "profile_id"]
+        missing = [f for f in required if not data.get(f)]
+        if missing:
+            return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+
+        task = create_task(
+            user_uuid=current_user.id,
+            profile_id=data["profile_id"],
+            name=data["name"],
+            prompt=data["prompt"],
+            schedule=data["schedule"],
+            output_channel=data.get("output_channel"),
+            output_config=data.get("output_config"),
+            max_tokens_per_run=data.get("max_tokens_per_run"),
+            overlap_policy=data.get("overlap_policy", "skip"),
+        )
+        return jsonify({"task": task}), 201
+    except Exception as e:
+        app_logger.error(f"Failed to create scheduled task: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks/<task_id>", methods=["GET"])
+@require_auth
+async def get_scheduled_task(current_user, task_id):
+    """Get a scheduled task."""
+    try:
+        from trusted_data_agent.core.task_scheduler import get_task
+        task = get_task(task_id, current_user.id)
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+        return jsonify({"task": task}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get scheduled task: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks/<task_id>", methods=["PUT"])
+@require_auth
+async def update_scheduled_task(current_user, task_id):
+    """Update a scheduled task (name, prompt, schedule, enabled, output channel, etc.)."""
+    try:
+        from trusted_data_agent.core.task_scheduler import update_task
+        data = await request.get_json() or {}
+        task = update_task(task_id, current_user.id, data)
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+        return jsonify({"task": task}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to update scheduled task: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks/<task_id>", methods=["DELETE"])
+@require_auth
+async def delete_scheduled_task(current_user, task_id):
+    """Delete a scheduled task and deregister it from the scheduler."""
+    try:
+        from trusted_data_agent.core.task_scheduler import delete_task
+        ok = delete_task(task_id, current_user.id)
+        if not ok:
+            return jsonify({"error": "Task not found"}), 404
+        return jsonify({"status": "deleted"}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to delete scheduled task: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks/<task_id>/runs", methods=["GET"])
+@require_auth
+async def get_scheduled_task_runs(current_user, task_id):
+    """Get run history for a scheduled task."""
+    try:
+        from trusted_data_agent.core.task_scheduler import list_runs
+        limit = min(int(request.args.get("limit", 20)), 100)
+        runs = list_runs(task_id, current_user.id, limit=limit)
+        return jsonify({"runs": runs}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get scheduled task runs: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduled-tasks/<task_id>/run-now", methods=["POST"])
+@require_auth
+async def run_scheduled_task_now(current_user, task_id):
+    """Manually trigger a scheduled task to run immediately."""
+    try:
+        from trusted_data_agent.core.task_scheduler import run_task_now, get_task
+        task = get_task(task_id, current_user.id)
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+        await run_task_now(task_id, current_user.id)
+        return jsonify({"status": "triggered", "task_id": task_id}), 200
+    except Exception as e:
+        app_logger.error(f"Failed to trigger scheduled task: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@rest_api_bp.route("/v1/scheduler/status", methods=["GET"])
+@require_auth
+async def get_scheduler_status(current_user):
+    """Return scheduler health: running, job count, global enable state."""
+    try:
+        from trusted_data_agent.core.task_scheduler import (
+            get_scheduler, is_scheduler_globally_enabled
+        )
+        sched = get_scheduler()
+        jobs = sched.get_jobs() if sched and sched.running else []
+        return jsonify({
+            "running": bool(sched and sched.running),
+            "globally_enabled": is_scheduler_globally_enabled(),
+            "job_count": len(jobs),
+        }), 200
+    except Exception as e:
+        app_logger.error(f"Failed to get scheduler status: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500

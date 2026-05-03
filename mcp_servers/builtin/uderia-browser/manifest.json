@@ -1,0 +1,85 @@
+{
+  "id": "uderia-browser",
+  "name": "uderia-browser",
+  "display_name": "Uderia Browser",
+  "description": "Headless browser automation via Playwright. Provides navigate, click, fill_form, screenshot, scrape, and extract_data tools.",
+  "version": "1.0.0",
+  "transport": "stdio",
+  "install_type": "builtin",
+  "entry_point": "mcp_servers/builtin/uderia-browser/server.py",
+  "tools": ["navigate", "click", "fill_form", "screenshot", "scrape", "extract_data"],
+  "tool_schemas": [
+    {
+      "name": "navigate",
+      "description": "Navigate the headless browser to a URL and return the page title and status.",
+      "arguments": [
+        {"name": "url", "type": "string", "description": "The URL to navigate to.", "required": true}
+      ]
+    },
+    {
+      "name": "click",
+      "description": "Click an element on the current page identified by a CSS selector.",
+      "arguments": [
+        {"name": "selector", "type": "string", "description": "CSS selector of the element to click.", "required": true}
+      ]
+    },
+    {
+      "name": "fill_form",
+      "description": "Fill a form field on the current page with a value.",
+      "arguments": [
+        {"name": "selector", "type": "string", "description": "CSS selector of the input field.", "required": true},
+        {"name": "value", "type": "string", "description": "Value to type into the field.", "required": true}
+      ]
+    },
+    {
+      "name": "screenshot",
+      "description": "Take a screenshot of the current browser page and return it as a base64-encoded PNG.",
+      "arguments": [
+        {"name": "full_page", "type": "boolean", "description": "Capture the full scrollable page instead of just the viewport (default: false).", "required": false}
+      ]
+    },
+    {
+      "name": "scrape",
+      "description": "Navigate to a URL and return the full page text content.",
+      "arguments": [
+        {"name": "url", "type": "string", "description": "The URL to navigate to and scrape.", "required": true}
+      ]
+    },
+    {
+      "name": "extract_data",
+      "description": "Extract text content from elements matching a CSS selector on the current page.",
+      "arguments": [
+        {"name": "selector", "type": "string", "description": "CSS selector to extract content from.", "required": true}
+      ]
+    }
+  ],
+  "credential_schema": {},
+  "config_schema": {
+    "ALLOWED_DOMAINS": {
+      "label": "Allowed domains",
+      "description": "Comma-separated domain allowlist (e.g. example.com,docs.company.com). Leave empty to allow all.",
+      "type": "string",
+      "default": ""
+    },
+    "HEADLESS": {
+      "label": "Headless mode",
+      "description": "Run browser in headless mode (recommended for server deployments).",
+      "type": "boolean",
+      "default": true
+    },
+    "PAGE_TIMEOUT_SECONDS": {
+      "label": "Page timeout (seconds)",
+      "description": "Maximum time to wait for page load.",
+      "type": "integer",
+      "default": 30,
+      "min": 5,
+      "max": 120
+    }
+  },
+  "dependencies": ["playwright>=1.40.0"],
+  "setup_command": "playwright install chromium",
+  "requires_docker": false,
+  "requires_user_auth": false,
+  "security_acknowledgment_required": false,
+  "tags": ["browser", "automation", "scraping"]
+}

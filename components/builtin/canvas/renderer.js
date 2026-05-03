@@ -2334,6 +2334,19 @@ async function autoPopOutCanvas(spec) {
         }, 350);
     }
 
+    // Mutual exclusion: close scheduler split panel if open
+    const schedPanel = document.getElementById('scheduler-split-panel');
+    if (schedPanel && schedPanel.classList.contains('sched-split--open')) {
+        schedPanel.classList.remove('sched-split--open');
+        setTimeout(() => {
+            if (!schedPanel.classList.contains('sched-split--open')) {
+                schedPanel.style.display = 'none';
+                const sc = document.getElementById('scheduler-split-content');
+                if (sc) sc.innerHTML = '';
+            }
+        }, 350);
+    }
+
     // Clear previous content
     contentArea.innerHTML = '';
 
@@ -3666,6 +3679,32 @@ async function popOutCanvas(state) {
 
     // Update title
     if (titleEl) titleEl.textContent = state.title || 'Canvas';
+
+    // Mutual exclusion: close KG split panel if open
+    const kgPanelPop = document.getElementById('kg-split-panel');
+    if (kgPanelPop && kgPanelPop.classList.contains('kg-split--open')) {
+        kgPanelPop.classList.remove('kg-split--open');
+        setTimeout(() => {
+            if (!kgPanelPop.classList.contains('kg-split--open')) {
+                kgPanelPop.style.display = 'none';
+                const kc = document.getElementById('kg-split-content');
+                if (kc) kc.innerHTML = '';
+            }
+        }, 350);
+    }
+
+    // Mutual exclusion: close scheduler split panel if open
+    const schedPanelPop = document.getElementById('scheduler-split-panel');
+    if (schedPanelPop && schedPanelPop.classList.contains('sched-split--open')) {
+        schedPanelPop.classList.remove('sched-split--open');
+        setTimeout(() => {
+            if (!schedPanelPop.classList.contains('sched-split--open')) {
+                schedPanelPop.style.display = 'none';
+                const sc = document.getElementById('scheduler-split-content');
+                if (sc) sc.innerHTML = '';
+            }
+        }, 350);
+    }
 
     // Clear previous content
     contentArea.innerHTML = '';

@@ -7,6 +7,7 @@ import { state } from '../state.js';
 import { populateMcpServerDropdown } from './rag/utils.js';
 import { openCollectionInspection, loadRagCollections } from '../ui.js?v=1.5';
 import { groupByAgentPack, createPackContainerCard, attachPackContainerHandlers, updatePackContainerDocCounts } from './agentPackGrouping.js';
+import { openSchedulerToCollection } from './componentHandler.js';
 
 /**
  * Initialize Knowledge repository handlers
@@ -1048,7 +1049,24 @@ async function handleKnowledgeRepositorySubmit(e) {
                                                 progressText.textContent = `${file.name}: ${data.message}`;
                                             }
                                         } else if (data.type === 'complete') {
-                                            console.log(`Successfully uploaded ${file.name}:`, data.chunks_stored, 'chunks');
+                                            if (data.status === 'unchanged') {
+                                                console.log(`[Knowledge] '${file.name}' content unchanged — skipped re-embedding`);
+                                                if (progressText) progressText.textContent = `${file.name}: unchanged, skipped`;
+                                            } else {
+                                                console.log(`Successfully uploaded ${file.name}:`, data.chunks_stored, 'chunks');
+                                            }
+                                        } else if (data.type === 'model_mismatch') {
+                                            console.warn(`[Knowledge] Model mismatch for ${file.name}:`, data.message);
+                                            // Surface as non-blocking toast warning
+                                            if (typeof window.showNotification === 'function') {
+                                                window.showNotification(
+                                                    `Embedding model mismatch: collection uses '${data.collection_embedding_model}', upload uses '${data.upload_embedding_model}'. Use Re-index to unify.`,
+                                                    'warning'
+                                                );
+                                            } else if (progressText) {
+                                                progressText.style.color = 'var(--text-muted)';
+                                                progressText.textContent = `⚠ Model mismatch — use Re-index after upload completes`;
+                                            }
                                         } else if (data.type === 'error') {
                                             console.warn(`Failed to upload ${file.name}:`, data.message);
                                         }
@@ -1341,6 +1359,81 @@ function attachKnowledgeRepositoryCardHandlers(container, repositories) {
 
             console.log('[Knowledge] Export button clicked for:', repoName);
             await exportKnowledgeRepository(parseInt(repoId), repoName);
+        });
+    });
+
+    // Sync Now button handlers
+    container.querySelectorAll('.sync-now-knowledge-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const repoId = btn.dataset.repoId;
+            btn.disabled = true;
+            const origText = btn.innerHTML;
+            btn.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Syncing…`;
+            try {
+                const token = localStorage.getItem('tda_auth_token');
+                const resp = await fetch(`/api/v1/knowledge/repositories/${repoId}/sync`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                const result = await resp.json();
+                if (resp.ok) {
+                    showAppBanner(`Sync complete — checked: ${result.checked}, updated: ${result.updated}, unchanged: ${result.unchanged}`, 'success');
+                    await loadKnowledgeRepositories();
+                } else {
+                    showAppBanner(result.error || 'Sync failed', 'error');
+                }
+            } catch (err) {
+                console.error('[Knowledge] Sync failed:', err);
+                showAppBanner('Sync request failed', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+        });
+    });
+
+    // Re-index button handlers
+    container.querySelectorAll('.reindex-knowledge-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const repoId = btn.dataset.repoId;
+            btn.disabled = true;
+            const origText = btn.innerHTML;
+            btn.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Reindexing…`;
+            try {
+                const token = localStorage.getItem('tda_auth_token');
+                const resp = await fetch(`/api/v1/knowledge/repositories/${repoId}/reindex`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+                const result = await resp.json();
+                if (resp.ok) {
+                    showAppBanner(`Re-index complete — reindexed: ${result.reindexed}, skipped: ${result.skipped}`, 'success');
+                    await loadKnowledgeRepositories();
+                } else {
+                    showAppBanner(result.error || 'Re-index failed', 'error');
+                }
+            } catch (err) {
+                console.error('[Knowledge] Reindex failed:', err);
+                showAppBanner('Re-index request failed', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+        });
+    });
+
+    // "Manage" button — deep-link to Platform Jobs for this collection
+    container.querySelectorAll('.manage-sync-job-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const repoId = btn.dataset.repoId;
+            await openSchedulerToCollection(repoId);
         });
     });
 
@@ -1717,21 +1810,44 @@ function createKnowledgeRepositoryCard(repo) {
     const repoId = repo.id || repo.collection_id;
     const displayName = repo.name || repo.collection_name;
     console.log('[Knowledge] Creating card for repo:', displayName, 'with ID:', repoId);
-    
+
     const statusClass = repo.enabled ? 'bg-green-500' : 'bg-gray-500';
     const docCount = repo.document_count || 0;
     const chunkCount = repo.count || repo.chunk_count || 0;
     const isManaged = repo.is_subscribed && !repo.is_owned;
     const managedBy = (repo.agent_packs || []).map(p => p.name).join(', ') || 'external source';
+
+    // CDC: sync status indicator
+    const syncDocCount = repo.sync_doc_count || 0;
+    const staleDocCount = repo.stale_doc_count || 0;
+    const hasSyncDocs = syncDocCount > 0;
+    const syncDotColor = !hasSyncDocs ? 'bg-gray-600'
+        : staleDocCount > 0 ? 'bg-amber-500'
+        : 'bg-emerald-400';
+    const syncDotTitle = !hasSyncDocs ? 'No auto-sync configured'
+        : staleDocCount > 0 ? `${staleDocCount} of ${syncDocCount} sync documents are stale`
+        : `All ${syncDocCount} sync documents are up to date`;
+
+    // CDC: model mismatch — show banner when collection has docs but model is not locked
+    const modelLocked = !!repo.embedding_model_locked;
+    const showModelMismatchBanner = !modelLocked && docCount > 0;
     
     return `
         <div class="glass-panel p-4 rounded-lg hover:bg-white/5 transition-all" data-repo-id="${repoId}">
+            ${showModelMismatchBanner ? `
+            <div class="flex items-center gap-2 mb-3 px-2 py-1.5 rounded" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25)">
+                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:#fbbf24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                </svg>
+                <span class="text-xs" style="color:#fbbf24">Embedding model not locked — run <strong>Re-index</strong> to verify all chunks use the same model.</span>
+            </div>` : ''}
             <div class="flex items-start gap-3 mb-3">
                 <div class="p-2 bg-green-500/20 rounded-lg relative">
                     <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
                     <div class="${statusClass} w-2 h-2 rounded-full absolute top-1 right-1"></div>
+                    ${hasSyncDocs ? `<div class="${syncDotColor} w-2 h-2 rounded-full absolute bottom-1 right-1" title="${syncDotTitle}"></div>` : ''}
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1">
@@ -1775,7 +1891,18 @@ function createKnowledgeRepositoryCard(repo) {
 
             <p class="text-xs text-gray-400 mb-2">
                 <span class="text-gray-500">Embedding Model:</span> ${repo.embedding_model || 'all-MiniLM-L6-v2'}
+                ${modelLocked ? `<span class="ml-1" style="color:#4ade80;opacity:0.7" title="Embedding model locked — all chunks use the same model">&#10003;</span>` : ''}
             </p>
+
+            ${hasSyncDocs ? `
+            <p class="text-xs mb-2" style="color:var(--text-muted)">
+                <span style="color:var(--text-muted)">Auto-sync:</span>
+                ${staleDocCount > 0
+                    ? `<span style="color:#f59e0b">${staleDocCount} stale</span> / ${syncDocCount} docs`
+                    : `<span style="color:#34d399">up to date</span> (${syncDocCount} docs)`
+                }
+                · ${repo.sync_interval || 'daily'}
+            </p>` : ''}
 
             ${repo.description ? `<p class="text-xs text-gray-400 mb-3">${repo.description}</p>` : ''}
 
@@ -1829,6 +1956,32 @@ function createKnowledgeRepositoryCard(repo) {
                         Upload
                     </button>`
                 }
+                ${hasSyncDocs ? `
+                <button class="sync-now-knowledge-btn card-btn" data-repo-id="${repoId}"
+                        style="border-color:rgba(52,211,153,0.3);color:#34d399"
+                        title="Fetch and re-embed any documents whose source content has changed">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Sync Now
+                </button>
+                <button class="manage-sync-job-btn card-btn" data-repo-id="${repoId}"
+                        title="Open Platform Jobs to manage this sync configuration"
+                        style="border-color:rgba(52,211,153,0.2);color:var(--text-muted)">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                    </svg>
+                    Manage
+                </button>` : ''}
+                ${showModelMismatchBanner ? `
+                <button class="reindex-knowledge-btn card-btn" data-repo-id="${repoId}"
+                        style="border-color:rgba(251,191,36,0.3);color:#fbbf24"
+                        title="Re-embed all documents with the current embedding model to unify the index">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Re-index
+                </button>` : ''}
                 <button class="export-knowledge-repo-btn card-btn card-btn--cyan" data-repo-id="${repoId}" data-repo-name="${displayName}">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>

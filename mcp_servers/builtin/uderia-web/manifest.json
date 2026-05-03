@@ -1,0 +1,72 @@
+{
+  "id": "uderia-web",
+  "name": "uderia-web",
+  "display_name": "Uderia Web",
+  "description": "Web search and page retrieval. Provides web_search, web_fetch, and web_extract tools using Brave or Serper search APIs.",
+  "version": "1.0.0",
+  "transport": "stdio",
+  "install_type": "builtin",
+  "entry_point": "mcp_servers/builtin/uderia-web/server.py",
+  "tools": ["web_search", "web_fetch", "web_extract"],
+  "tool_schemas": [
+    {
+      "name": "web_search",
+      "description": "Search the web using Brave or Serper and return a list of results with titles, URLs, and snippets.",
+      "arguments": [
+        {"name": "query", "type": "string", "description": "The search query to submit.", "required": true},
+        {"name": "num_results", "type": "integer", "description": "Number of results to return (default: configured MAX_RESULTS).", "required": false}
+      ]
+    },
+    {
+      "name": "web_fetch",
+      "description": "Fetch the raw HTML or text content of a URL.",
+      "arguments": [
+        {"name": "url", "type": "string", "description": "The URL to fetch.", "required": true},
+        {"name": "as_text", "type": "boolean", "description": "Return as plain text instead of raw HTML (default: true).", "required": false}
+      ]
+    },
+    {
+      "name": "web_extract",
+      "description": "Fetch a URL and extract the main body text, stripping navigation, ads, and boilerplate.",
+      "arguments": [
+        {"name": "url", "type": "string", "description": "The URL to extract content from.", "required": true}
+      ]
+    }
+  ],
+  "credential_schema": {
+    "BRAVE_API_KEY": {
+      "label": "Brave Search API Key",
+      "description": "API key from search.brave.com/app/keys. Used for web_search.",
+      "required_if": "SERPER_API_KEY is not set",
+      "sensitive": true
+    },
+    "SERPER_API_KEY": {
+      "label": "Serper API Key",
+      "description": "API key from serper.dev. Alternative to Brave Search.",
+      "required_if": "BRAVE_API_KEY is not set",
+      "sensitive": true
+    }
+  },
+  "config_schema": {
+    "MAX_RESULTS": {
+      "label": "Max search results",
+      "description": "Maximum number of results returned by web_search (1-20).",
+      "type": "integer",
+      "default": 5,
+      "min": 1,
+      "max": 20
+    },
+    "FETCH_TIMEOUT_SECONDS": {
+      "label": "Fetch timeout (seconds)",
+      "description": "Timeout for web_fetch and web_extract HTTP requests.",
+      "type": "integer",
+      "default": 15,
+      "min": 5,
+      "max": 60
+    }
+  },
+  "requires_docker": false,
+  "requires_user_auth": false,
+  "security_acknowledgment_required": false,
+  "tags": ["web", "search", "browsing"]
+}

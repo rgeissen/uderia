@@ -2,913 +2,980 @@
 
 ## Executive Summary
 
-Uderia implements two complementary cryptographic security systems that together provide end-to-end trust guarantees no other agentic AI platform offers:
+Uderia implements a **multi-layer enterprise security architecture** spanning authentication, authorization, secrets management, cryptographic data protection, audit logging, and enterprise identity federation. The platform is designed from the ground up for zero-trust deployments where data sovereignty and accountability are non-negotiable.
 
-1. **License-Based Prompt Encryption** — Protects the intellectual property embedded in system prompts through a multi-layered encryption architecture with tier-based access control. Ensures that the strategic reasoning instructions powering the platform remain protected during distribution, at rest in the database, and at runtime.
+Five complementary security systems work together to provide end-to-end trust guarantees:
 
-2. **Execution Provenance Chain (EPC)** — Creates an immutable, cryptographically signed audit trail from user query through every LLM decision, tool call, and response. Enables offline verification that no step was injected, tampered with, or replayed. Covers all five execution paths across the platform.
+| System | What it protects |
+|---|---|
+| **License-Based Prompt Encryption** | Intellectual property in system prompts — at distribution, at rest, at runtime |
+| **Execution Provenance Chain (EPC)** | Integrity of every LLM decision, tool call, and response |
+| **Authentication & Identity Federation** | User identity via passwords, OAuth, OIDC, SAML 2.0 SSO |
+| **Secrets & Credential Management** | LLM API keys, SSO secrets, connector credentials |
+| **Access Control & Consumption Governance** | Who can do what, and how much |
 
-Together, these systems establish a **zero-trust execution model**: the prompts that drive the AI are cryptographically protected, and every action the AI takes is cryptographically recorded. This positions Uderia for enterprise compliance requirements including SOX audit trails, GDPR accountability, and EU AI Act transparency mandates.
+Together these establish a **zero-trust execution model**: the intelligence that drives the AI is cryptographically protected, and every action the AI takes is cryptographically recorded. This positions Uderia for enterprise compliance requirements including SOX audit trails, GDPR accountability, EU AI Act transparency mandates, and ISO 27001 information security management.
 
 ---
 
-## Part I: License-Based Prompt Encryption
+## Table of Contents
 
-### 1.1 Problem Statement
+1. [Key Inventory](#1-key-inventory)
+2. [Authentication Systems](#2-authentication-systems)
+   - [JWT Session Tokens](#21-jwt-session-tokens)
+   - [Long-Lived Access Tokens](#22-long-lived-access-tokens)
+   - [Password Authentication](#23-password-authentication)
+   - [OAuth 2.0 Social Login](#24-oauth-20-social-login)
+   - [OIDC Enterprise SSO](#25-oidc-enterprise-sso-phase-1)
+   - [SAML 2.0 Enterprise SSO](#26-saml-20-enterprise-sso-phase-2)
+   - [Email Verification](#27-email-verification)
+3. [Authorization & Access Control](#3-authorization--access-control)
+   - [User Tiers](#31-user-tiers)
+   - [Decorator Enforcement](#32-decorator-enforcement)
+   - [Pane Visibility Controls](#33-pane-visibility-controls)
+   - [Consumption Profiles & Rate Limiting](#34-consumption-profiles--rate-limiting)
+4. [Secrets & Credential Management](#4-secrets--credential-management)
+   - [Per-User LLM Credential Encryption](#41-per-user-llm-credential-encryption)
+   - [Platform Connector Credentials](#42-platform-connector-credentials)
+   - [SSO Client Secret Encryption](#43-sso-client-secret-encryption)
+   - [REDACTED Sentinel Pattern](#44-redacted-sentinel-pattern)
+5. [License-Based Prompt Encryption](#5-license-based-prompt-encryption)
+6. [Execution Provenance Chain (EPC)](#6-execution-provenance-chain-epc)
+7. [Audit Logging](#7-audit-logging)
+   - [JWT & Access Token Audit Trail](#71-jwt--access-token-audit-trail)
+   - [Failed Login & Account Lockout](#72-failed-login--account-lockout)
+   - [SSO Group Sync Audit Log](#73-sso-group-sync-audit-log)
+   - [General Audit Log](#74-general-audit-log)
+8. [Network Security](#8-network-security)
+9. [Platform Connector Security](#9-platform-connector-security)
+10. [Threat Model](#10-threat-model)
+11. [Enterprise Compliance](#11-enterprise-compliance)
+12. [Performance Impact](#12-performance-impact)
 
-System prompts are the core intellectual property of the Uderia platform. They encode strategic planning logic, tactical tool selection heuristics, error recovery strategies, and domain-specific reasoning patterns refined over months of engineering. Without protection:
+---
 
-- Competitors could extract and replicate the platform's reasoning capabilities
-- Unauthorized users could view or modify strategic execution logic
-- Database exports or backups could leak proprietary prompt content
-- Different license tiers could not enforce differentiated access
+## 1. Key Inventory
 
-### 1.2 Architecture Overview
+All cryptographic keys reside in `/tda_keys/` with restricted filesystem permissions.
 
-The system uses a **two-layer encryption model** with asymmetric license signing:
+| File | Algorithm | Purpose | Auto-Generated | Rotation |
+|---|---|---|:-:|---|
+| `public_key.pem` | RSA-4096 | License signature verification + bootstrap key derivation | No (shipped) | Requires re-issuing all licenses |
+| `license.key` | RSA-PSS signed JSON | License validation + per-tier database key derivation | No (issued) | New license file |
+| `jwt_secret.key` | HMAC-SHA256 (256-bit) | JWT session token signing | Yes (first use) | `maintenance/regenerate_jwt_secret.py` |
+| `provenance_key.pem` | Ed25519 (private PKCS8) | EPC chain step signing | Yes (first use) | `maintenance/rotate_provenance_key.py` |
+| `provenance_key.pub` | Ed25519 (public) | EPC chain offline verification | Yes (generated with private) | Rotated together |
+
+**Environment variables that override file-based keys:**
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `TDA_JWT_SECRET_KEY` | Override `jwt_secret.key` | File-based key |
+| `TDA_ENCRYPTION_KEY` | Master key for per-user credential encryption | Dev default (change in production!) |
+| `TDA_JWT_EXPIRY_HOURS` | JWT token lifetime | `24` |
+| `TDA_MAX_LOGIN_ATTEMPTS` | Failed login lockout threshold | `5` |
+| `TDA_LOCKOUT_DURATION_MINUTES` | Account lock duration | `15` |
+| `TDA_PROGRESSIVE_DELAY_BASE_SECONDS` | Progressive delay base per failed attempt | `2` |
+| `TDA_PROGRESSIVE_DELAY_MAX_SECONDS` | Cap on progressive delay | `30` |
+| `TDA_PASSWORD_MIN_LENGTH` | Minimum password length | `8` |
+
+---
+
+## 2. Authentication Systems
+
+### 2.1 JWT Session Tokens
+
+JWT tokens authenticate browser sessions via the `Authorization: Bearer <token>` header.
+
+**Cryptographic algorithm:** HS256 (HMAC-SHA256)
+
+**Token structure:**
+```json
+{
+  "user_id": "uuid",
+  "username": "string",
+  "exp": "unix timestamp",
+  "iat": "unix timestamp",
+  "jti": "secrets.token_urlsafe(32)"
+}
+```
+
+**Lifecycle and storage:**
+- Default expiry: 24 hours (`TDA_JWT_EXPIRY_HOURS`)
+- Token hash (SHA-256) stored in `auth_tokens` table for revocation tracking
+- In-memory LRU cache (10,000 entries, 60-second TTL) eliminates 2 DB queries per request at steady state
+- Per-token revocation via `AuthToken.revoked` flag; cache invalidated on revoke
+- IP address and user agent recorded at issuance
+
+**Internal service tokens:** Used by the Genie coordinator for child session creation. 30-minute expiry, marked `"internal": True` in payload, not stored in the database.
+
+**Files:** `src/trusted_data_agent/auth/security.py`, `src/trusted_data_agent/auth/middleware.py`
+
+---
+
+### 2.2 Long-Lived Access Tokens
+
+API access tokens authenticate programmatic REST API clients without session management overhead.
+
+**Format:** `tda_` prefix + `secrets.token_urlsafe(24)` (~40 characters total)
+
+**Storage model:**
+- Full token displayed **once** at creation — never stored in plaintext
+- SHA-256 hash stored in `access_tokens` table
+- First 12 characters (`token_prefix`) kept for UI display ("tda_abc12...")
+
+**`access_tokens` table schema:**
+```sql
+id            UUID PRIMARY KEY
+user_id       TEXT REFERENCES users(id)
+token_prefix  VARCHAR(10) INDEXED        -- for display only
+token_hash    VARCHAR(255) UNIQUE        -- SHA-256 of full token
+name          VARCHAR(100)               -- human-readable label
+created_at    DATETIME
+expires_at    DATETIME (NULL = never)
+last_used_at  DATETIME                   -- updated on each successful auth
+use_count     INTEGER DEFAULT 0          -- incremented per auth
+last_ip_address VARCHAR(45)              -- IPv6-compatible, last request IP
+revoked       BOOLEAN DEFAULT FALSE
+revoked_at    DATETIME
+```
+
+**Files:** `src/trusted_data_agent/auth/security.py`
+
+---
+
+### 2.3 Password Authentication
+
+**Hashing:** bcrypt with 12 rounds (work factor). Per-password random salt auto-generated by bcrypt.
+
+**Verification:** Constant-time comparison via bcrypt's built-in `checkpw()`.
+
+**Strength requirements** (validated at registration and password change):
+- Minimum length: `TDA_PASSWORD_MIN_LENGTH` (default 8)
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one digit
+
+**Password reset token:**
+```sql
+id         UUID PRIMARY KEY
+user_id    TEXT REFERENCES users(id)
+token_hash VARCHAR(255) UNIQUE INDEX  -- SHA-256 of reset token
+expires_at DATETIME (1 hour from creation)
+created_at DATETIME
+used       BOOLEAN DEFAULT FALSE
+used_at    DATETIME
+```
+
+Reset tokens are single-use; `is_valid()` checks `used IS FALSE AND expires_at > now()`.
+
+**Failed login and lockout:** See [Section 7.2](#72-failed-login--account-lockout).
+
+**Files:** `src/trusted_data_agent/auth/security.py`
+
+---
+
+### 2.4 OAuth 2.0 Social Login
+
+Supported providers: **Google, GitHub, Microsoft, Discord, Okta** (extensible via `oauth_handlers.py`).
+
+**Flow:** Standard OAuth 2.0 Authorization Code. Access token exchanged for provider user info. JIT (Just-In-Time) user provisioning on first login.
+
+**`oauth_accounts` table:**
+```sql
+id                  UUID PRIMARY KEY
+user_id             TEXT REFERENCES users(id)
+provider            VARCHAR(50)         -- 'google', 'github', etc.
+provider_user_id    VARCHAR(255)        -- provider's unique ID
+provider_email      VARCHAR(255)
+provider_name       VARCHAR(255)
+provider_picture_url TEXT
+provider_metadata   JSON                -- additional profile data
+created_at          DATETIME
+updated_at          DATETIME
+last_used_at        DATETIME
+UNIQUE(provider, provider_user_id)
+```
+
+**Security properties:**
+- No OAuth tokens stored beyond the authorization code exchange
+- Email verification optional per provider
+- Duplicate email detection across authentication methods
+
+**Files:** `src/trusted_data_agent/auth/oauth_handlers.py`, `src/trusted_data_agent/api/auth_routes.py`
+
+---
+
+### 2.5 OIDC Enterprise SSO (Phase 1)
+
+Generic OIDC federation via `/.well-known/openid-configuration` discovery. Supports any standards-compliant IdP (Okta, Azure AD, Auth0, Keycloak, Google Workspace, etc.).
+
+**`sso_configurations` table:**
+```sql
+id               UUID PRIMARY KEY
+name             TEXT NOT NULL
+provider         TEXT DEFAULT 'oidc'
+issuer_url       TEXT NOT NULL          -- used for discovery doc fetch
+client_id        TEXT NOT NULL
+client_secret    TEXT                   -- Fernet-encrypted
+discovery_doc    TEXT                   -- cached JSON, TTL 3600s
+discovery_cached_at DATETIME
+scopes           TEXT DEFAULT '["openid","profile","email"]'
+email_claim      TEXT DEFAULT 'email'
+name_claim       TEXT DEFAULT 'name'
+groups_claim     TEXT                   -- e.g. 'groups'
+sub_claim        TEXT DEFAULT 'sub'
+group_tier_map   TEXT                   -- JSON: {"GroupName": "admin"}
+default_tier     TEXT DEFAULT 'user'
+enabled          INTEGER DEFAULT 1
+auto_provision_users INTEGER DEFAULT 1
+require_email_verification INTEGER DEFAULT 0
+button_label     TEXT
+icon_url         TEXT
+created_at       DATETIME
+updated_at       DATETIME
+```
+
+**`sso_sessions` table** (for back-channel logout):
+```sql
+id              UUID PRIMARY KEY
+user_uuid       TEXT REFERENCES users(id)
+sso_config_id   TEXT REFERENCES sso_configurations(id)
+id_token_hash   TEXT  -- SHA-256 of id_token for revocation lookup
+sid             TEXT  -- IdP session ID (from token claims)
+sub             TEXT  -- IdP subject
+issued_at       DATETIME
+expires_at      DATETIME
+revoked         BOOLEAN DEFAULT FALSE
+revoked_at      DATETIME
+```
+
+**Validation pipeline:**
+1. Fetch and cache discovery document (TTL: 3600 seconds)
+2. Exchange authorization code for `id_token` and `access_token` (using Fernet-decrypted `client_secret`)
+3. Validate `id_token` via `python-jose`: signature, `iss`, `aud`, `exp`, nonce
+4. Extract claims: email, name, groups
+5. Apply group-to-tier mapping (highest-privilege group wins)
+6. JIT-provision user or update existing user's tier
+
+**Back-channel logout:** IdP posts logout token → `id_token_hash` lookup → session revoked
+
+**API responses:** `client_secret` always returned as `"[REDACTED]"` — the literal secret never leaves the server.
+
+**Files:** `src/trusted_data_agent/auth/oidc_provider.py`, `src/trusted_data_agent/api/auth_routes.py`
+
+---
+
+### 2.6 SAML 2.0 Enterprise SSO (Phase 2)
+
+Full SAML 2.0 Service Provider implementation supporting enterprise IdPs (Active Directory FS, Okta, Azure AD, OneLogin, PingIdentity).
+
+#### Service Provider Role
+
+Uderia acts as the SP. It:
+- Generates signed `AuthnRequest` via HTTP-Redirect binding (raw deflate + base64 + URL encoding)
+- Exposes SP metadata XML at `GET /api/v1/auth/saml/<id>/metadata` (paste into IdP configuration)
+- Receives signed `SAMLResponse` via HTTP-POST binding at the Assertion Consumer Service (ACS)
+
+**`saml_configurations` table:**
+```sql
+id                TEXT PRIMARY KEY
+name              TEXT NOT NULL
+sp_entity_id      TEXT NOT NULL       -- SP's unique identifier
+sp_acs_url        TEXT                -- computed from base URL if null
+sp_private_key    TEXT                -- PEM, Fernet-encrypted
+sp_certificate    TEXT                -- PEM public cert
+idp_entity_id     TEXT NOT NULL       -- IdP's unique identifier
+idp_sso_url       TEXT NOT NULL       -- IdP login endpoint
+idp_slo_url       TEXT                -- IdP logout endpoint (optional)
+idp_certificate   TEXT NOT NULL       -- PEM cert for assertion signature verification
+email_attr        TEXT DEFAULT 'email'
+name_attr         TEXT DEFAULT 'displayName'
+groups_attr       TEXT                -- attribute name carrying group list
+default_tier      TEXT DEFAULT 'user'
+group_tier_map    TEXT                -- JSON: {"GroupName": "tier"}
+auto_provision_users INTEGER DEFAULT 1
+enabled           INTEGER DEFAULT 1
+button_label      TEXT
+icon_url          TEXT
+display_order     INTEGER DEFAULT 0
+created_at        DATETIME
+updated_at        DATETIME
+```
+
+#### AuthnRequest Generation
 
 ```
-DEVELOPMENT                    DISTRIBUTION                   RUNTIME
-
-Plain Text Prompts          Bootstrap Encryption          Tier-Based Database
-(*.txt files)                  (Public Key)               Encryption (License)
-      |                            |                             |
-      v                            v                             v
-default_prompts/           schema/default_prompts.dat       tda_auth.db
-  15 prompt files            86 KB encrypted JSON          (prompts table)
-      |                            |                             |
-      +-- encrypt_default_prompts.py ---> [bootstrap encrypted] -+
-      |                                                          |
-      +-- update_prompt.py (for existing installations) ---------+
+1. Build SAML 2.0 AuthnRequest XML
+2. UTF-8 encode
+3. Deflate with raw DEFLATE (zlib, stripping 2-byte header and 4-byte checksum)
+4. Base64 encode
+5. URL encode
+6. Append as SAMLRequest= query parameter to idp_sso_url
+7. Add RelayState= (random UUID, stored in in-memory map for relay-to-destination)
 ```
 
-### 1.3 Cryptographic Primitives
+#### Assertion Validation Pipeline
 
-| Layer | Algorithm | Key Derivation | Key Size | Salt | Iterations |
-|-------|-----------|---------------|----------|------|------------|
-| **License Signing** | RSA-PSS (4096-bit) | N/A | 4096 bits | MGF1(SHA-256) | N/A |
-| **Bootstrap Encryption** | Fernet (AES-128-CBC + HMAC-SHA256) | PBKDF2-SHA256 | 256 bits | `uderia_bootstrap_prompts_v1` | 100,000 |
-| **Database Encryption** | Fernet (AES-128-CBC + HMAC-SHA256) | PBKDF2-SHA256 | 256 bits | `uderia_tier_prompts_v1` | 100,000 |
+On ACS POST (`POST /api/v1/auth/saml/<id>/acs`):
 
-**Fernet Token Format:**
+1. **Decode** SAMLResponse from base64
+2. **Parse** XML with `lxml.etree`
+3. **Verify XML digital signature** using `signxml.XMLVerifier` and the configured IdP certificate (PEM)
+   - Rejects any assertion not signed by the expected IdP
+   - Signature covers the Assertion element
+4. **Validate assertion fields:**
+   - `Issuer` matches `idp_entity_id`
+   - `Recipient` matches ACS URL
+   - `NotOnOrAfter` has not passed (clock tolerance: none — use IdP NTP sync)
+   - `NotBefore` is in the past
+5. **Extract attributes:** email, name, groups from the configured attribute names
+6. **Resolve effective tier:** highest-privilege group mapping wins (see below)
+7. **JIT-provision** user or sync existing user's tier/groups
+8. **Issue JWT** and redirect to `/?token=<jwt>&method=saml`
+
+On validation failure, user is redirected to `/login?error=<reason>` — no sensitive details exposed.
+
+#### Group-to-Tier Resolution
+
+Groups are extracted from the SAML assertion. The effective tier is the highest-privilege tier across all groups the user belongs to:
+
+```python
+_tier_order = {'user': 0, 'developer': 1, 'admin': 2}
+tier = cfg['default_tier']  # starting point
+for group in user_groups:
+    mapped = group_tier_map.get(group)
+    if mapped and _tier_order[mapped] > _tier_order[tier]:
+        tier = mapped
+# Result: highest privilege wins
 ```
-Version (1 byte) | Timestamp (8 bytes) | IV (16 bytes) | Ciphertext | HMAC-SHA256 (32 bytes)
+
+This is **always re-evaluated on every login** — tier changes in the IdP take effect on the user's next authentication, with no manual intervention required.
+
+#### SP Private Key Security
+
+The SP's private key (used to sign AuthnRequests to IdPs that require signed requests) is stored Fernet-encrypted in the database. The API never returns the raw key — responses show `"[REDACTED]"` to confirm the key is configured without exposing its value.
+
+**Files:** `src/trusted_data_agent/auth/saml_provider.py`, `src/trusted_data_agent/api/auth_routes.py`
+
+---
+
+### 2.7 Email Verification
+
+**`email_verification_tokens` table:**
+```sql
+id                UUID PRIMARY KEY
+user_id           TEXT REFERENCES users(id)
+token_hash        VARCHAR(255) UNIQUE INDEX  -- SHA-256 of verification token
+email             VARCHAR(255) INDEXED
+verification_type TEXT  -- 'oauth', 'signup', 'email_change'
+oauth_provider    TEXT  -- 'google' etc. when type='oauth'
+expires_at        DATETIME (24 hours from creation)
+verified_at       DATETIME (NULL until verified)
+created_at        DATETIME
 ```
 
-Fernet provides authenticated encryption — the HMAC is verified before decryption, preventing padding oracle attacks and ensuring integrity.
+Tokens are single-use and time-limited. `is_valid()` checks both `verified_at IS NULL` and `expires_at > now()`.
 
-### 1.4 License System
+---
 
-#### 1.4.1 Key Pair Generation
+## 3. Authorization & Access Control
 
-A one-time RSA-4096 key pair is generated in the license repository:
+### 3.1 User Tiers
+
+Three-tier hierarchy stored as `User.profile_tier (VARCHAR(20))` and `User.is_admin (BOOLEAN)`:
+
+| Tier | `profile_tier` | `is_admin` | Capabilities |
+|---|---|:-:|---|
+| **User** | `'user'` | false | Execute queries, manage own profiles and collections, view own sessions |
+| **Developer** | `'developer'` | false | All User capabilities + create/modify profiles, configure data sources, access REST API |
+| **Admin** | `'admin'` | true | All Developer capabilities + user management, system configuration, platform connector governance, security settings, compliance reporting |
+
+Tier is re-evaluated on every SSO login. Manual tier changes by admins take effect immediately.
+
+---
+
+### 3.2 Decorator Enforcement
+
+All route protection is enforced by middleware decorators in `src/trusted_data_agent/auth/middleware.py`:
+
+**`@require_auth`:**
+- Extracts `Authorization: Bearer <token>` header
+- Tries access token format (`tda_` prefix) first, then JWT
+- Injects `current_user: User` as first positional argument
+- Returns `401 Unauthorized` if unauthenticated
+
+**`@require_admin`:**
+- Full authentication (same as `@require_auth`)
+- Additionally checks `current_user.is_admin == True`
+- Returns `403 Forbidden` if authenticated but not admin
+- **Note:** Do not stack `@require_auth` on top of `@require_admin` — both inject `current_user`, causing double injection. Use only `@require_admin` for admin routes.
+
+**`@optional_auth`:**
+- Attempts authentication; passes `current_user=None` if unauthenticated
+- Used for public endpoints that behave differently when authenticated
+
+---
+
+### 3.3 Pane Visibility Controls
+
+UI panel visibility is governed per tier by the `pane_visibility` table:
+
+```sql
+id               UUID PRIMARY KEY
+pane_id          VARCHAR(50) UNIQUE  -- 'conversation', 'executions', 'rag-maintenance',
+                                    --  'marketplace', 'credentials', 'admin'
+pane_name        VARCHAR(100)
+visible_to_user      BOOLEAN
+visible_to_developer BOOLEAN
+visible_to_admin     BOOLEAN
+description      VARCHAR(255)
+display_order    INTEGER
+created_at, updated_at DATETIME
+```
+
+This allows admins to customize which panels are visible to each tier, e.g., hiding the `admin` panel from non-admin users.
+
+---
+
+### 3.4 Consumption Profiles & Rate Limiting
+
+#### Consumption Profiles (Per-User Token Quotas)
+
+Consumption profiles govern per-user resource limits and are assigned to users by admins.
+
+**`consumption_profiles` table:**
+```sql
+id                     INTEGER PRIMARY KEY
+name                   VARCHAR(100) UNIQUE INDEX
+description            TEXT
+prompts_per_hour       INTEGER DEFAULT 100
+prompts_per_day        INTEGER DEFAULT 1000
+config_changes_per_hour INTEGER DEFAULT 10
+input_tokens_per_month  INTEGER (NULL = unlimited)
+output_tokens_per_month INTEGER (NULL = unlimited)
+is_default             BOOLEAN INDEXED
+is_active              BOOLEAN
+created_at, updated_at DATETIME
+```
+
+**Enforcement fail-closed:** If the enforcer throws an exception (e.g., DB unavailable), the request is **blocked** (not silently bypassed). Bypass attempts increment an audit counter.
+
+#### IP-Based Rate Limiting
+
+Token-bucket algorithm protecting authentication endpoints:
+
+| Endpoint class | Default limit |
+|---|---|
+| Login | 5 per minute per IP |
+| Registration | 3 per hour per IP |
+| API | 60 per minute per IP |
+| User prompts | 100 per hour per user |
+
+IP extraction priority: `X-Forwarded-For` → `X-Real-IP` → `remote_addr`
+
+Rate limits are configurable by admins at `Administration → App Config → Security & Rate Limiting`.
+
+**Files:** `src/trusted_data_agent/auth/consumption_enforcer.py`, `src/trusted_data_agent/auth/rate_limiter.py`
+
+---
+
+## 4. Secrets & Credential Management
+
+### 4.1 Per-User LLM Credential Encryption
+
+LLM provider API keys are encrypted per user using keys derived from a platform master key.
+
+**Key derivation (PBKDF2-HMAC-SHA256):**
+```python
+kdf = PBKDF2HMAC(
+    algorithm=SHA256(),
+    length=32,           # 256-bit Fernet key
+    salt=user_id.encode(),   # Per-user salt (user UUID as bytes)
+    iterations=100_000,  # NIST-recommended iteration count
+)
+key = base64.urlsafe_b64encode(kdf.derive(MASTER_ENCRYPTION_KEY.encode()))
+```
+
+**Encryption:** Fernet (AES-128-CBC + HMAC-SHA256 with timestamp). The Fernet timestamp allows detecting token age but does not enforce expiry.
+
+**Master key:** `TDA_ENCRYPTION_KEY` environment variable. Change this immediately on production installation. Key rotation utility: `rotate_encryption_key(old_key, new_key)` — decrypts all credentials with old key and re-encrypts with new.
+
+**`user_credentials` table:**
+```sql
+id                   UUID PRIMARY KEY
+user_id              TEXT REFERENCES users(id)
+provider             VARCHAR(50)   -- 'Amazon', 'Google', 'OpenAI', etc.
+credentials_encrypted TEXT          -- Fernet ciphertext
+created_at, updated_at DATETIME
+UNIQUE(user_id, provider)
+```
+
+**Files:** `src/trusted_data_agent/auth/encryption.py`
+
+---
+
+### 4.2 Platform Connector Credentials
+
+Admin-configured credentials for platform connectors (browser, web search, Google Workspace, etc.) use a shared Fernet key derived from the same master key but with a **frozen salt**.
+
+```python
+salt = b'platform_mcp_registry'  # INTENTIONALLY FROZEN
+kdf = PBKDF2HMAC(algorithm=SHA256(), length=32, salt=salt, iterations=100_000)
+key = base64.urlsafe_b64encode(kdf.derive(TDA_ENCRYPTION_KEY.encode()))
+return Fernet(key)
+```
+
+**Critical:** The salt `b'platform_mcp_registry'` is intentionally frozen even though the module was renamed. Changing it would make all existing admin credentials permanently unreadable. Do not change the salt.
+
+**Files:** `src/trusted_data_agent/core/platform_connector_registry.py`
+
+---
+
+### 4.3 SSO Client Secret Encryption
+
+Both OIDC `client_secret` and SAML `sp_private_key` are encrypted with the same `_platform_fernet()` function (frozen-salt Fernet) before storage.
+
+Encryption happens at create/update time in `oidc_provider.py` and `saml_provider.py`. The Fernet-encrypted ciphertext is stored in the database.
+
+---
+
+### 4.4 REDACTED Sentinel Pattern
+
+All API responses that would expose a sensitive field instead return the string literal `"[REDACTED]"`. This communicates to the client that the credential is configured without revealing its value.
+
+**Fields using this pattern:**
+
+| Resource | Field | Route |
+|---|---|---|
+| OIDC configuration | `client_secret` | `GET /api/v1/auth/sso/configurations`, `GET /api/v1/auth/sso/configurations/<id>` |
+| SAML configuration | `sp_private_key` | `GET /api/v1/auth/saml/configurations`, `GET /api/v1/auth/saml/configurations/<id>` |
+| Access tokens | Full token value | `POST /api/v1/auth/access-tokens` (one-time display) |
+
+**Update guard:** When a PUT request sends `"[REDACTED]"` for one of these fields, the server skips re-encryption — the existing encrypted value in the database is preserved unchanged. Only a new, non-`"[REDACTED]"` value triggers encryption and storage update.
+
+---
+
+## 5. License-Based Prompt Encryption
+
+System prompts encode strategic planning logic, tactical tool selection, error recovery strategies, and domain-specific reasoning patterns. They are protected through a **two-layer encryption model** tied to each customer's license.
+
+### 5.1 Cryptographic Primitives
+
+| Layer | Algorithm | Key Derivation | Salt | Iterations |
+|---|---|---|---|---|
+| **License Signing** | RSA-PSS (4096-bit, SHA-256, MGF1) | N/A | N/A | N/A |
+| **Bootstrap Encryption** | Fernet (AES-128-CBC + HMAC-SHA256) | PBKDF2-HMAC-SHA256 | `b'uderia_bootstrap_prompts_v1'` | 100,000 |
+| **Tier Encryption** | Fernet (AES-128-CBC + HMAC-SHA256) | PBKDF2-HMAC-SHA256 | `b'uderia_tier_prompts_v1'` | 100,000 |
+
+### 5.2 Three-Phase Lifecycle
 
 ```
-trusted-data-agent-license/
-  private_key.pem    # NEVER distributed (signs licenses)
-  public_key.pem     # Shipped with application (verifies signatures)
+DEVELOPMENT            DISTRIBUTION              RUNTIME
+plain text prompts  →  default_prompts.dat  →  tda_auth.db prompts table
+(license repo)         (RSA-4096 key)           (license + tier key)
 ```
 
-The private key signs license payloads; the public key is distributed with the application for signature verification. The RSA-4096 key size provides security beyond 2030 per NIST guidelines.
+**Phase 1 — Development:** Plain-text `.txt` prompt files are encrypted with a key derived from the RSA-4096 public key using `encrypt_default_prompts.py`. The result is `schema/default_prompts.dat` (committed to the repository).
 
-#### 1.4.2 License File Structure
+**Phase 2 — Bootstrap (first startup):** `default_prompts.dat` is decrypted using the RSA-4096 key. Each prompt is re-encrypted with a key derived from the customer's license signature + their tier, then stored in the `prompts` table of `tda_auth.db`. This binds database content to the specific license — different customers produce different ciphertext even for identical prompts.
+
+**Phase 3 — Runtime:** `PromptLoader` decrypts prompts on demand using the license-derived tier key. Results are cached in memory; the database is not re-queried on every LLM call.
+
+### 5.3 License Structure
 
 ```json
 {
   "payload": {
     "holder": "customer@company.com",
-    "issued_at": "2026-03-06T12:00:00+00:00",
-    "expires_at": "2027-03-06T12:00:00+00:00",
-    "tier": "Prompt Engineer"
+    "issued_at": "ISO 8601 timestamp",
+    "expires_at": "ISO 8601 timestamp",
+    "tier": "Standard | Prompt Engineer | Enterprise"
   },
-  "signature": "<hex-encoded RSA-PSS signature>"
+  "signature": "hex-encoded RSA-PSS signature of payload"
 }
 ```
 
-**Signature Algorithm:** RSA-PSS with SHA-256 hash, MGF1(SHA-256) mask generation, and maximum salt length. RSA-PSS is preferred over PKCS#1 v1.5 for its provable security reduction.
+Verification at startup: signature validated with `public_key.pem`, expiry checked. The application refuses to start if the license is invalid or expired.
 
-**Verification at startup:**
-1. Load `tda_keys/public_key.pem`
-2. Load `tda_keys/license.key`
-3. Verify RSA-PSS signature over `json.dumps(payload, sort_keys=True)`
-4. Check `expires_at` against current UTC time
-5. Store validated payload in `APP_STATE['license_info']`
+### 5.4 Tier-Based Access Control
 
-If verification fails, the application refuses to start.
+| Capability | Standard | Prompt Engineer | Enterprise |
+|---|:-:|:-:|:-:|
+| Runtime LLM decryption | Yes | Yes | Yes |
+| View/edit in System Prompts UI | — | Yes | Yes |
+| Profile-level prompt overrides | — | Yes | Yes |
+| User-level prompt overrides | — | — | Yes |
 
-#### 1.4.3 License Tiers
+### 5.5 Protected Prompts (15 total)
 
-| Tier | Runtime Decrypt | UI View/Edit | Create Overrides | Key Material |
-|------|:-:|:-:|:-:|---|
-| **Standard** | Yes | No | No | `signature:Standard:uderia_prompt_encryption_v1` |
-| **Prompt Engineer** | Yes | Yes | Profile-level | `signature:Prompt Engineer:uderia_prompt_encryption_v1` |
-| **Enterprise** | Yes | Yes | User + Profile | `signature:Enterprise:uderia_prompt_encryption_v1` |
+`MASTER_SYSTEM_PROMPT`, `GOOGLE_MASTER_SYSTEM_PROMPT`, `OLLAMA_MASTER_SYSTEM_PROMPT`, `WORKFLOW_META_PLANNING_PROMPT`, `WORKFLOW_TACTICAL_PROMPT`, `TASK_CLASSIFICATION_PROMPT`, `ERROR_RECOVERY_PROMPT`, `TACTICAL_SELF_CORRECTION_PROMPT` (column/table variants), `SQL_CONSOLIDATION_PROMPT`, `CONVERSATION_EXECUTION`, `CONVERSATION_WITH_TOOLS_EXECUTION`, `GENIE_COORDINATOR_PROMPT`, `RAG_FOCUSED_EXECUTION`
 
-**Key isolation:** Each unique license signature produces a different encryption key. Two customers with different licenses cannot decrypt each other's database content. The tier component ensures that even within a single license, upgrading the tier requires re-encryption.
+### 5.6 Key Properties
 
-### 1.5 Key Derivation
+- **License-specific keys** — different customers cannot decrypt each other's database
+- **RSA-PSS 4096-bit** — prevents license forgery
+- **Fernet authenticated encryption** — AES-128-CBC + HMAC-SHA256, provides both confidentiality and integrity; corruption is detectable
+- **Zero-downtime deployment** — `update_prompt.py` updates running installations with automatic cache invalidation via `POST /v1/admin/prompts/clear-cache`
 
-#### Bootstrap Key (Distribution Protection)
-
-```python
-def derive_bootstrap_key() -> bytes:
-    public_key_bytes = read("tda_keys/public_key.pem")  # Raw PEM including headers
-
-    kdf = PBKDF2HMAC(
-        algorithm=SHA256(),
-        length=32,                                    # 256-bit Fernet key
-        salt=b'uderia_bootstrap_prompts_v1',          # Fixed, deterministic
-        iterations=100_000
-    )
-    return base64.urlsafe_b64encode(kdf.derive(public_key_bytes))
-```
-
-**Properties:**
-- Deterministic — same key on every installation (all ship with the same `public_key.pem`)
-- One-way — cannot recover `public_key.pem` from derived key
-- Purpose — IP protection during distribution only; not a security boundary
-
-#### Tier Key (License-Bound Protection)
-
-```python
-def derive_tier_key(license_info: dict) -> bytes:
-    signature = license_info['signature']          # Hex-encoded RSA-PSS output
-    tier = license_info['tier']                     # "Standard" | "Prompt Engineer" | "Enterprise"
-
-    key_material = f"{signature}:{tier}:uderia_prompt_encryption_v1".encode('utf-8')
-
-    kdf = PBKDF2HMAC(
-        algorithm=SHA256(),
-        length=32,
-        salt=b'uderia_tier_prompts_v1',
-        iterations=100_000
-    )
-    return base64.urlsafe_b64encode(kdf.derive(key_material))
-```
-
-**Properties:**
-- License-specific — different customers produce different keys
-- Tier-aware — same license with different tier produces different key
-- Prevents sharing — database content is bound to the specific license that encrypted it
-- 100,000 PBKDF2 iterations resist brute-force key recovery
-
-### 1.6 Encryption Flow
-
-#### 1.6.1 Development: Creating Encrypted Distribution
-
-```
-default_prompts/WORKFLOW_META_PLANNING_PROMPT.txt
-    |
-    v  [encrypt_default_prompts.py]
-    |
-    |  1. Read plain text content
-    |  2. derive_bootstrap_key() from public_key.pem
-    |  3. Fernet(key).encrypt(content.encode('utf-8'))
-    |  4. base64.b64encode(fernet_token)
-    |
-    v
-schema/default_prompts.dat
-{
-  "WORKFLOW_META_PLANNING_PROMPT": "gAAAAABlXx2V...",
-  "MASTER_SYSTEM_PROMPT": "gAAAAABlXx2W...",
-  ... (15 prompts total)
-}
-```
-
-#### 1.6.2 Bootstrap: First Application Start
-
-```
-schema/default_prompts.dat
-    |
-    v  [database.py::_bootstrap_prompt_system()]
-    |
-    |  1. Load encrypted JSON
-    |  2. derive_bootstrap_key() -> bootstrap_key
-    |  3. For each prompt:
-    |     a. decrypt_prompt(encrypted, bootstrap_key)  -> plain text
-    |     b. derive_tier_key(license_info)             -> tier_key
-    |     c. encrypt_prompt(plain_text, tier_key)      -> tier_encrypted
-    |     d. INSERT INTO prompts (content = tier_encrypted)
-    |
-    v
-tda_auth.db (prompts table: tier-encrypted content)
-```
-
-#### 1.6.3 Runtime: Prompt Loading
-
-```
-LLM needs system prompt
-    |
-    v  [prompt_loader.py::get_prompt()]
-    |
-    |  1. Check cache (hit -> return immediately)
-    |  2. Load override hierarchy:
-    |     a. User override    (PE/Enterprise only)
-    |     b. Profile override (any tier)
-    |     c. Base prompt      (from prompts table)
-    |  3. decrypt_prompt(encrypted_content, tier_key)
-    |  4. Resolve {PARAMETERS} from global_parameters table
-    |  5. Cache decrypted result
-    |
-    v
-Decrypted prompt -> LLM provider
-```
-
-#### 1.6.4 Deployment: Updating Existing Installations
-
-```
-[update_prompt.py --app-root /path/to/uderia --all]
-    |
-    |  1. Load plain text from default_prompts/*.txt
-    |  2. Load license.key from target installation
-    |  3. derive_tier_key(license_info)
-    |  4. For each prompt:
-    |     a. Decrypt existing DB content
-    |     b. Compare with new plain text (skip if unchanged)
-    |     c. encrypt_prompt(new_content, tier_key)
-    |     d. UPDATE prompts SET content = ?, version = version + 1
-    |  5. Sync global_parameters from tda_config.json
-    |  6. Sync profile_prompt_mappings
-    |  7. POST /api/v1/admin/prompts/clear-cache (JWT-authenticated)
-    |
-    v
-Zero-downtime update (no restart required)
-```
-
-### 1.7 Prompt Inventory
-
-15 system prompts govern the platform's reasoning:
-
-| Category | Prompt | Purpose |
-|----------|--------|---------|
-| **System** | `MASTER_SYSTEM_PROMPT` | Core agent persona (OpenAI/Anthropic) |
-| **System** | `GOOGLE_MASTER_SYSTEM_PROMPT` | Variant for Google Gemini |
-| **System** | `OLLAMA_MASTER_SYSTEM_PROMPT` | Variant for local Ollama models |
-| **Planning** | `WORKFLOW_META_PLANNING_PROMPT` | Strategic multi-phase plan decomposition |
-| **Planning** | `WORKFLOW_TACTICAL_PROMPT` | Per-phase tool selection |
-| **Planning** | `TASK_CLASSIFICATION_PROMPT` | Aggregation vs synthesis classification |
-| **Error** | `ERROR_RECOVERY_PROMPT` | Multi-step plan failure recovery |
-| **Error** | `TACTICAL_SELF_CORRECTION_PROMPT` | Single tool call correction |
-| **Error** | `TACTICAL_SELF_CORRECTION_PROMPT_COLUMN_ERROR` | Column-not-found recovery |
-| **Error** | `TACTICAL_SELF_CORRECTION_PROMPT_TABLE_ERROR` | Table-not-found recovery |
-| **Optimization** | `SQL_CONSOLIDATION_PROMPT` | SQL query consolidation |
-| **Execution** | `CONVERSATION_EXECUTION` | Ideate profile (no tools) |
-| **Execution** | `CONVERSATION_WITH_TOOLS_EXECUTION` | Ideate profile with MCP tools |
-| **Execution** | `GENIE_COORDINATOR_PROMPT` | Coordinate multi-profile orchestration |
-| **Execution** | `RAG_FOCUSED_EXECUTION` | Focus profile semantic search |
-
-### 1.8 Business Value
-
-**Intellectual Property Protection:**
-- System prompts represent months of engineering effort in strategic planning, error recovery, and tool orchestration
-- Encrypted distribution prevents extraction from application packages
-- Tier-based access ensures only paying customers can view/modify prompt logic
-
-**License Enforcement:**
-- Each license produces a unique encryption key — database content is bound to the specific customer
-- Expiration dates enforce renewal cycles
-- RSA-PSS signatures prevent license forgery
-
-**Deployment Flexibility:**
-- Zero-downtime prompt updates to running installations
-- Idempotent deployment script (safe to run multiple times)
-- Automatic cache invalidation via REST API
+**Files:** `src/trusted_data_agent/agent/prompt_encryption.py`, `src/trusted_data_agent/agent/prompt_loader.py`
 
 ---
 
-## Part II: Execution Provenance Chain (EPC)
+## 6. Execution Provenance Chain (EPC)
 
-### 2.1 Problem Statement
+The EPC creates an immutable, cryptographically signed audit trail covering every LLM decision, tool call, and response. It enables offline verification that no step was injected, modified, or replayed.
 
-In agentic AI systems, the execution path from user query to final response involves multiple LLM calls, tool selections, and data transformations. Without provenance:
+### 6.1 Cryptographic Primitives
 
-- There is no proof that a specific tool was actually called (vs. fabricated by the LLM)
-- Audit trails can be retroactively modified without detection
-- Compliance officers cannot verify that the system behaved as claimed
-- Cross-session integrity (e.g., genie coordinator delegating to child profiles) is unverifiable
-- Replay attacks — injecting pre-computed responses — are undetectable
+| Operation | Algorithm | Output Size |
+|---|---|---|
+| Content hashing | SHA-256 | 64 hex characters |
+| Chain linking | SHA-256 of `{index}:{type}:{content_hash}:{prev_hash}` | 64 hex characters |
+| Step signing | Ed25519 | 64-byte signature (base64) |
+| Key fingerprint | SHA-256 of Ed25519 public key raw bytes | 64 hex characters |
 
-The EPC solves this by creating a **blockchain-like hash chain** signed with Ed25519 for every execution step, across all five profile types.
+### 6.2 Chain Structure
 
-### 2.2 Architecture Overview
-
-```
-Session Chain (links turns together via cross-turn hashes)
-  |
-  Turn 1: [query_intake] -> [strategic_plan] -> [tool_call] -> [tool_result] -> [turn_complete]
-  |            hash_0    ->      hash_1       ->    hash_2   ->     hash_3    ->     hash_4
-  |
-  Turn 2: [query_intake] -> [llm_call] -> [llm_response] -> [turn_complete]
-               hash_5    ->    hash_6   ->      hash_7     ->     hash_8
-               ^
-               previous_turn_tip = hash_4  (cross-turn link)
-```
-
-**Two levels of chaining:**
-1. **Intra-turn** — Steps within a turn are hash-chained sequentially
-2. **Cross-turn** — Each turn's first step links to the previous turn's last step via `previous_turn_tip_hash`
-
-This gives full session integrity — tampering with any step in any turn breaks the chain forward.
-
-### 2.3 Cryptographic Primitives
-
-| Component | Algorithm | Key Size | Purpose |
-|-----------|-----------|----------|---------|
-| **Content Hashing** | SHA-256 | 256 bits | Hash execution content (truncated to 4096 chars) |
-| **Chain Hashing** | SHA-256 | 256 bits | Link steps: `SHA256(index:type:content_hash:previous_hash)` |
-| **Step Signing** | Ed25519 | 256 bits | Sign each chain_hash for tamper detection |
-| **Key Fingerprint** | SHA-256 | 256 bits | Identify which key signed the chain |
-
-**Why Ed25519 over HMAC:**
-- Asymmetric — auditors verify with the public key only, never needing the private key
-- Compact — 64-byte signatures (vs. variable HMAC output)
-- Fast — ~10us per signature operation
-- Deterministic — same input always produces same signature (no randomness needed)
-
-### 2.4 Key Management
-
-#### Auto-Generation
-
-On first use, the system auto-generates an Ed25519 key pair:
-
-```
-tda_keys/
-  provenance_key.pem    # Private key (PKCS8 PEM, 0600 permissions)
-  provenance_key.pub    # Public key (SubjectPublicKeyInfo PEM)
-```
-
-This follows the same pattern as `jwt_secret.key` — auto-generated on first use, no manual setup required.
-
-#### Key Fingerprint
-
-Every provenance envelope includes the key fingerprint:
-
-```python
-fingerprint = SHA256(public_key.public_bytes_raw())  # 64-char hex
-```
-
-This allows multi-key verification — after key rotation, old chains remain verifiable by matching the stored fingerprint to the correct public key.
-
-#### Key Rotation
-
-```bash
-python maintenance/rotate_provenance_key.py
-```
-
-1. Backs up existing keys with timestamp suffix (e.g., `provenance_key.pem.20260306_143000.bak`)
-2. Generates new Ed25519 key pair
-3. Old chains remain verifiable — each chain stores the `key_fingerprint` used at signing time
-4. Application restart loads the new key
-
-#### Degraded Mode
-
-If the signing key is unavailable (permission error, missing file):
-- Chain hashes are still computed and recorded
-- Signatures are empty strings (`""`)
-- Verification reports warnings but can still validate hash integrity
-- System continues operating without blocking execution
-
-### 2.5 Chain Structure
-
-#### Step Schema
-
-Each step in the provenance chain:
+Each execution step becomes a provenance record:
 
 ```json
 {
-  "step_id": "uuid4",
+  "step_id": "uuid",
   "step_index": 0,
-  "step_type": "query_intake",
-  "timestamp": "2026-03-06T12:00:00.000000+00:00",
-  "content_hash": "sha256hex64 (of truncated content)",
-  "previous_hash": "sha256hex64 (of prior step's chain_hash, or genesis)",
-  "chain_hash": "sha256hex64 (of index:type:content_hash:previous_hash)",
-  "signature": "base64(Ed25519(chain_hash))",
-  "content_summary": "Human-readable summary (max 200 chars)"
+  "step_type": "query_intake | strategic_plan | tool_call | tool_result | ...",
+  "timestamp": "ISO 8601",
+  "content_hash": "sha256(content[:4096])",
+  "previous_hash": "chain_hash of prior step (or GENESIS_HASH for turn 1 step 0)",
+  "chain_hash": "sha256('{index}:{type}:{content_hash}:{previous_hash}')",
+  "signature": "base64(Ed25519.sign(chain_hash))",
+  "content_summary": "≤200 characters human-readable"
 }
 ```
 
-#### Chain Hash Computation
+Content is hashed but never stored — sensitive data (queries, responses, tool outputs) does not appear in provenance records.
+
+**Genesis hash:** `"0000...0000"` (64 zeros) for the first step of the first turn in a session.
+
+### 6.3 Cross-Turn Chain Linking
+
+The first step of each subsequent turn includes `"previous_turn_tip_hash"` pointing to the final step hash of the prior turn. This creates a hash chain spanning the entire session:
 
 ```
-chain_hash = SHA256("{step_index}:{step_type}:{content_hash}:{previous_hash}")
+Turn 1: [query_intake] → [strategic_plan] → [tool_call] → [complete]
+                                                                ↓ tip
+Turn 2: [query_intake] → [llm_call] → [response] → [complete]
+           ↑ previous_turn_tip = Turn 1 tip
 ```
 
-This binds the step's position, type, content, and predecessor into a single hash. Changing any field invalidates the chain_hash, and since subsequent steps reference it as `previous_hash`, tampering is detectable at any depth.
+### 6.4 Cross-Session Linking (Genie Coordinator)
 
-#### Content Hashing
+When the Genie coordinator spawns child sessions, each child session's chain tip is recorded as a `child_chain_ref` step in the parent's provenance chain. This creates a Merkle-tree-like structure linking the entire multi-session execution into a single verifiable unit.
 
-```
-content_hash = SHA256(content[:4096])
-```
+### 6.5 Step Coverage (22 Step Types)
 
-- Content is hashed, **never stored** — no sensitive data in the provenance record
-- 4096-character truncation bounds overhead for large tool results
-- Content summaries (max 200 chars) provide human-readable context without exposing full data
+| Profile Class | Steps Recorded |
+|---|---|
+| **Optimize** (`tool_enabled`) | `query_intake`, `rag_retrieval`, `strategic_plan`, `plan_rewrite`, `tactical_decision`, `tool_call`, `tool_result`, `self_correction`, `synthesis`, `complete` |
+| **Ideate** (`llm_only`) | `query_intake`, `knowledge_retrieval`, `llm_call`, `llm_response`, `complete` |
+| **Focus** (`rag_focused`) | `query_intake`, `rag_search`, `rag_results`, `synthesis`, `complete` |
+| **Ideate + MCP** (`conversation_with_tools`) | `query_intake`, `agent_tool_call`, `agent_tool_result`, `agent_llm_step`, `complete` |
+| **Coordinate** (`genie`) | `query_intake`, `child_dispatch`, `child_chain_ref`, `coordinator_synthesis`, `complete` |
 
-#### Genesis Hash
-
-The first step of the first turn uses the genesis hash:
-
-```
-GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
-```
-
-#### Provenance Envelope
-
-After a turn completes, the chain is sealed into an envelope:
+### 6.6 Provenance Metadata (Per Turn)
 
 ```json
 {
-  "provenance_chain": [ ...steps... ],
-  "provenance_meta": {
-    "chain_version": 1,
-    "key_fingerprint": "sha256hex64",
-    "profile_type": "tool_enabled",
-    "session_id": "uuid",
-    "turn_number": 1,
-    "user_uuid": "uuid",
-    "step_count": 8,
-    "chain_root_hash": "sha256hex64 (first step)",
-    "chain_tip_hash": "sha256hex64 (last step)",
-    "previous_turn_tip_hash": null,
-    "sealed": true
-  }
+  "chain_version": 1,
+  "key_fingerprint": "sha256hex of Ed25519 public key",
+  "profile_type": "tool_enabled | genie | ...",
+  "session_id": "uuid",
+  "turn_number": 1,
+  "user_uuid": "uuid",
+  "step_count": 8,
+  "chain_root_hash": "hash of first step",
+  "chain_tip_hash": "hash of last step",
+  "previous_turn_tip_hash": "cross-turn link",
+  "sealed": true
 }
 ```
 
-The envelope is merged into the turn's `workflow_history` entry via `turn_summary.update(chain.finalize())`.
+### 6.7 Three Verification Levels
 
-### 2.6 Step Type Taxonomy
+1. **Chain Integrity** (offline-capable) — verifies hash linking, SHA-256 computations, and Ed25519 signatures using only the public key. No access to session data required.
 
-#### Universal (All Profiles)
+2. **Content Verification** — recomputes content hashes from actual session data files and confirms they match provenance records. Detects content tampering after the fact.
 
-| Step Type | Content Hashed | When |
-|-----------|---------------|------|
-| `query_intake` | `user_input` | Start of every execution |
-| `profile_resolve` | `profile_id:profile_type:profile_tag` | After profile resolved |
-| `llm_response` | `response_text[:4096]` | After each LLM call |
-| `turn_complete` | `final_summary_text` | End of turn (success) |
-| `error:cancelled` | `cancellation_reason` | User cancels mid-execution |
-| `error:llm_error` | `error_message` | LLM provider failure |
-| `error:tool_error` | `error_message` | Tool execution failure |
-| `error:system_error` | `error_message` | Unexpected system error |
+3. **Session Integrity** — verifies all turns link correctly via `previous_turn_tip_hash` and Genie's cross-session `child_chain_ref` references. Detects turn injection or removal.
 
-#### Optimize (tool_enabled)
+### 6.8 REST API
 
-| Step Type | Content Hashed | When |
-|-----------|---------------|------|
-| `strategic_plan` | `json.dumps(meta_plan, sort_keys=True)` | After planner returns plan |
-| `plan_rewrite` | `pass_name:json.dumps(plan_after)` | After each rewrite pass that modifies plan |
-| `tactical_decision` | `phase_idx:tool_name:json.dumps(args)` | After tactical tool selection |
-| `tool_call` | `tool_name:json.dumps(args, sort_keys=True)` | Before MCP execution |
-| `tool_result` | `tool_name:result[:4096]` | After MCP returns |
-| `self_correction` | `attempt:error:corrected_args` | When self-correction fires |
-| `synthesis` | `synthesis_input[:4096]` | Before final answer LLM call |
-
-#### Ideate (llm_only)
-
-| Step Type | Content Hashed | When |
-|-----------|---------------|------|
-| `knowledge_retrieval` | `json.dumps({"collections": ids, "doc_count": n})` | After knowledge fetch |
-| `llm_call` | `sha256(system_prompt):sha256(user_message)` | Before LLM call |
-
-#### Focus (rag_focused)
-
-| Step Type | Content Hashed | When |
-|-----------|---------------|------|
-| `rag_search` | `json.dumps(collection_ids)` | Semantic search invoked |
-| `rag_results` | `json.dumps({"doc_ids": [...], "scores": [...]})` | Results returned |
-| `rag_synthesis` | `synthesis_prompt[:4096]` | Before synthesis LLM call |
-
-#### Ideate + MCP (conversation_with_tools)
-
-| Step Type | Content Hashed | When |
-|-----------|---------------|------|
-| `agent_tool_call` | `tool_name:json.dumps(args)` | LangChain `on_tool_start` |
-| `agent_tool_result` | `tool_name:result[:4096]` | LangChain `on_tool_end` |
-| `agent_llm_step` | `step_name:token_count` | LangChain `on_llm_end` |
-
-#### Coordinate (genie)
-
-| Step Type | Content Hashed | When |
-|-----------|---------------|------|
-| `coordinator_dispatch` | `child_profile_tag:delegated_query` | Child profile invoked |
-| `child_chain_ref` | `child_session_id:child_chain_tip_hash` | Child completes (cross-session link) |
-| `coordinator_synthesis` | `coordinator_output[:4096]` | Final synthesis |
-
-### 2.7 Cross-Session Linking (Genie)
-
-The Coordinate profile (genie) delegates work to child profiles, each running in their own session. The EPC creates a **Merkle-tree-like structure** across sessions:
-
-```
-Parent Session (genie)
-  |
-  [coordinator_dispatch] -> "Delegating to @OPTIM: Show databases"
-  |
-  +-- Child Session (@OPTIM)
-  |     [query_intake] -> [strategic_plan] -> [tool_call] -> [turn_complete]
-  |                                                               |
-  |     chain_tip_hash = abc123...                               |
-  |                                                               |
-  [child_chain_ref] -> "child_session_id:abc123..."  <-----------+
-  |
-  [coordinator_dispatch] -> "Delegating to @FOCUS: Search docs"
-  |
-  +-- Child Session (@FOCUS)
-  |     [query_intake] -> [rag_search] -> [rag_results] -> [turn_complete]
-  |     chain_tip_hash = def456...
-  |
-  [child_chain_ref] -> "child_session_id:def456..."
-  |
-  [coordinator_synthesis] -> "Combined answer from both profiles"
-  [turn_complete]
-```
-
-**Implementation:** A module-level `_provenance_chains` registry (keyed by parent session ID) allows the `SlaveSessionTool` (a Pydantic `BaseTool`) to access the parent's provenance chain for recording `coordinator_dispatch` and `child_chain_ref` steps.
-
-### 2.8 Verification
-
-Three verification levels, each building on the previous:
-
-#### Level 1: Chain Integrity (Offline-Capable)
-
-```python
-verify_chain(provenance_data, public_key_pem=None) -> {
-    "valid": bool | None,
-    "errors": [...],
-    "warnings": [...],
-    "step_count": int
-}
-```
-
-Three checks per step:
-1. **Chain linking** — `step.previous_hash` matches prior step's `chain_hash`
-2. **Hash computation** — `chain_hash == SHA256(index:type:content_hash:previous_hash)`
-3. **Signature** — `Ed25519.verify(signature, chain_hash)` using public key
-
-Plus meta consistency:
-- `chain_tip_hash` matches last step's `chain_hash`
-- `chain_root_hash` matches first step's `chain_hash`
-- `step_count` matches actual chain length
-
-**Offline-capable:** Only requires the public key PEM — no network access, no database, no running application.
-
-#### Level 2: Content Verification
-
-```python
-verify_content(provenance_data, turn_data) -> {
-    "valid": bool | None,
-    "verified": int,
-    "mismatches": [...],
-    "skipped": int
-}
-```
-
-Maps step types to actual session data and recomputes content hashes:
-- `query_intake` -> `SHA256(turn_data["user_query"])`
-- `strategic_plan` -> `SHA256(json.dumps(turn_data["raw_llm_plan"]))`
-- `turn_complete` -> `SHA256(turn_data["final_summary"])`
-
-Steps without stored content references (tool calls, errors) are skipped.
-
-#### Level 3: Session Integrity
-
-```python
-verify_session(user_uuid, session_id, public_key_pem=None) -> {
-    "valid": bool | None,
-    "turns_verified": int,
-    "turns_skipped": int,
-    "errors": [...]
-}
-```
-
-Verifies all turns in a session:
-1. Each turn's chain is independently valid (Level 1)
-2. Each turn's `previous_turn_tip_hash` matches prior turn's `chain_tip_hash`
-3. Turns without provenance data are skipped (backward compatibility)
-
-### 2.9 REST API
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
+| Method | Endpoint | Description |
+|---|---|---|
 | `GET` | `/api/v1/sessions/{id}/provenance` | Full provenance for all turns |
-| `GET` | `/api/v1/sessions/{id}/provenance/turn/{turn}` | Single turn's chain |
-| `POST` | `/api/v1/sessions/{id}/provenance/verify` | Verify integrity (L1 + L3) |
-| `GET` | `/api/v1/sessions/{id}/provenance/export` | Download JSON for offline audit |
-| `GET` | `/api/v1/provenance/public-key` | Download public key PEM |
+| `GET` | `/api/v1/sessions/{id}/provenance/turn/{n}` | Single turn provenance |
+| `POST` | `/api/v1/sessions/{id}/provenance/verify` | Verify chain integrity (returns pass/fail + details) |
+| `GET` | `/api/v1/sessions/{id}/provenance/export` | Download full JSON for offline audit |
+| `GET` | `/api/v1/provenance/public-key` | Download Ed25519 public key PEM for independent verification |
 
-All endpoints require JWT authentication. Session ownership is enforced — users can only access their own sessions.
+### 6.9 Key Properties
 
-**Offline Audit Workflow:**
-1. Download provenance export: `GET /sessions/{id}/provenance/export`
-2. Download public key: `GET /provenance/public-key`
-3. Verify independently using `verify_chain()` with the downloaded public key
-4. No network access or running application required
-
-### 2.10 Error and Cancellation Handling
-
-Execution can fail at any point. The chain handles this gracefully:
-
-**Error steps:** Before sealing, an `error:{type}` step is recorded:
-```python
-chain.add_error_step("llm_error", "Provider returned 429 rate limit")
-```
-
-**Cancellation:** When the user cancels mid-execution:
-```python
-chain.add_error_step("cancelled", "User cancelled execution")
-```
-
-**Partial turns:** The chain is always finalized in a `finally` block, even on error. Partial turns (status="error") include the provenance chain with fewer steps, ending with the error step.
-
-**Sealed chain guarantee:** Once `finalize()` is called, no more steps can be added. Attempting to add a step to a sealed chain logs a warning and returns an empty dict.
-
-### 2.11 Backward Compatibility
-
-- **Existing sessions:** `verify_chain()` returns `{"valid": None, "warnings": ["No provenance data"]}` for turns without provenance
-- **verify_session()** skips turns without `provenance_chain` field
-- **REST API** returns `{"provenance": null, "message": "No provenance data for this turn"}` for old turns
-- **Cross-turn linking:** `get_previous_turn_tip_hash()` returns `None` for sessions with no provenance — first turn uses the genesis hash
-
-### 2.12 Business Value
-
-**Enterprise Compliance:**
-- **SOX (Sarbanes-Oxley):** Immutable audit trail of every AI-driven financial decision
-- **GDPR Article 22:** Verifiable record of automated decision-making processes
-- **EU AI Act (2026):** Transparency requirements for high-risk AI systems
-- **ISO 27001:** Evidence of information security controls in AI operations
-
-**Competitive Differentiation:**
-No agentic AI platform currently offers cryptographically signed execution provenance. This is a first-of-its-kind capability that:
-- Proves execution integrity to auditors without exposing sensitive data
-- Enables offline verification with just a public key
-- Creates cross-session Merkle-tree structures for multi-agent coordination
-- Supports key rotation without invalidating historical chains
-
-**Operational Benefits:**
-- Tamper detection — any modification to session data is immediately detectable
-- Forensic analysis — trace exactly which tools were called with which arguments
-- Debugging — provenance chains provide a precise execution timeline
-- Accountability — every step is timestamped and signed
+- **Zero new dependencies** — uses the `cryptography` library already present in the project
+- **Negligible overhead** — ~100 microseconds per step (hash + sign), invisible against LLM latency
+- **Degraded mode** — if the signing key is unavailable, hashes are still recorded (unsigned); execution continues unblocked
+- **Key rotation** — `maintenance/rotate_provenance_key.py` generates new keys; existing chains remain verifiable via stored `key_fingerprint`
+- **Backward compatible** — sessions without provenance data handled gracefully
 
 ---
 
-## Part III: Combined Security Model
+## 7. Audit Logging
 
-### 3.1 End-to-End Trust Chain
+### 7.1 JWT & Access Token Audit Trail
 
-The two systems complement each other to create a complete trust model:
-
-```
-+-----------------------------------------------------------------+
-|                    PROMPT ENCRYPTION                              |
-|  Protects: What the AI is instructed to do                       |
-|  Guarantees: Only authorized prompts reach the LLM               |
-|  Verification: License signature + tier-based decryption          |
-+-----------------------------------------------------------------+
-                              |
-                              | (encrypted prompts drive execution)
-                              v
-+-----------------------------------------------------------------+
-|                 EXECUTION PROVENANCE CHAIN                        |
-|  Protects: What the AI actually did                              |
-|  Guarantees: Every action is recorded and tamper-evident          |
-|  Verification: Hash chains + Ed25519 signatures                  |
-+-----------------------------------------------------------------+
+**JWT tokens** (`auth_tokens` table):
+```sql
+id           UUID PRIMARY KEY
+user_id      TEXT REFERENCES users(id)
+token_hash   VARCHAR(255) UNIQUE  -- SHA-256 of token
+expires_at   DATETIME
+created_at   DATETIME
+ip_address   VARCHAR(45)          -- IPv6-compatible
+user_agent   VARCHAR(500)
+revoked      BOOLEAN DEFAULT FALSE
+revoked_at   DATETIME
+INDEX(user_id, revoked, expires_at)
 ```
 
-**Together they answer two critical questions:**
-1. **Were the correct instructions used?** — Prompt encryption ensures only authorized, license-validated prompts drive execution
-2. **Did the system follow those instructions faithfully?** — The EPC proves every step from query to response was actually executed as recorded
+**Access tokens** — per-use audit fields on `access_tokens` table: `last_used_at`, `use_count`, `last_ip_address` (updated on every successful authentication).
 
-### 3.2 Key Inventory
+---
 
-All cryptographic keys reside in `tda_keys/`:
+### 7.2 Failed Login & Account Lockout
 
-| File | Algorithm | Purpose | Auto-Generated | Rotation |
-|------|-----------|---------|:-:|---|
-| `public_key.pem` | RSA-4096 | License verification + bootstrap key derivation | No (shipped) | Requires new licenses |
-| `license.key` | RSA-PSS signed JSON | License validation + tier key derivation | No (issued) | New license file |
-| `jwt_secret.key` | HMAC-SHA256 | JWT session tokens | Yes | `maintenance/regenerate_jwt_secret.py` |
-| `provenance_key.pem` | Ed25519 | EPC chain signing (private) | Yes | `maintenance/rotate_provenance_key.py` |
-| `provenance_key.pub` | Ed25519 | EPC chain verification (public) | Yes | Rotated with private key |
+Fields on the `users` table:
+```sql
+failed_login_attempts  INTEGER DEFAULT 0
+locked_until           DATETIME (NULL if not locked)
+last_failed_login_at   DATETIME
+```
 
-### 3.3 Zero New Dependencies
+**Lockout thresholds** (configurable via environment variables):
+- After `TDA_MAX_LOGIN_ATTEMPTS` (default: 5) consecutive failures → account locked for `TDA_LOCKOUT_DURATION_MINUTES` (default: 15 minutes)
+- Progressive delay between attempts: `min(base * 2^(attempts-2), max_seconds)`
+  - 1st failure: no delay; 2nd: 2s; 3rd: 4s; 4th: 8s; 5th: 16s → lockout
 
-Both security systems use the `cryptography` library already present in the project:
-- **Prompt encryption:** `cryptography.fernet`, `cryptography.hazmat.primitives.kdf.pbkdf2`, RSA
-- **Provenance chain:** `cryptography.hazmat.primitives.asymmetric.ed25519`
-- **Standard library:** `hashlib` (SHA-256), `base64`, `json`, `uuid`
+On successful login: `failed_login_attempts` reset to 0, `locked_until` cleared.
 
-### 3.4 Performance Impact
+---
+
+### 7.3 SSO Group Sync Audit Log
+
+Every change to a user's tier or group membership via SSO is recorded — whether on login (automatic re-sync) or via manual admin action.
+
+**`sso_sync_events` table:**
+```sql
+id           UUID PRIMARY KEY
+user_uuid    TEXT REFERENCES users(id)
+config_id    TEXT  -- SSO provider config ID (NULL for manual syncs)
+config_type  TEXT  -- 'oidc' | 'saml'
+sync_type    TEXT  -- 'login' | 'manual'
+old_tier     TEXT  -- tier before this sync
+new_tier     TEXT  -- tier after this sync
+old_groups   TEXT  -- JSON array of groups before
+new_groups   TEXT  -- JSON array of groups after
+changed      INTEGER DEFAULT 0  -- 1 if tier or groups actually changed
+synced_at    DATETIME DEFAULT (datetime('now'))
+```
+
+This table supports:
+- Compliance reporting: who had what tier, when, and why
+- Incident investigation: which IdP group change triggered a privilege change
+- Access reviews: complete timeline of every user's group and tier changes
+
+Admin endpoint: `GET /api/v1/auth/sso/users/<id>/sync-history`
+
+---
+
+### 7.4 General Audit Log
+
+**`audit_logs` table:**
+```sql
+id          UUID PRIMARY KEY
+user_id     TEXT (nullable — pre-auth events)
+action      VARCHAR(50)  -- 'login', 'logout', 'configure', 'execute', etc.
+resource    VARCHAR(255) -- endpoint or resource path
+status      VARCHAR(20)  -- 'success' | 'failure'
+ip_address  VARCHAR(45)
+user_agent  VARCHAR(500)
+details     TEXT         -- JSON for extensibility
+timestamp   DATETIME
+INDEX(user_id, timestamp)
+INDEX(action, timestamp)
+```
+
+---
+
+## 8. Network Security
+
+### 8.1 TLS/HTTPS
+
+The platform is designed to run behind a reverse proxy (nginx, Caddy, Traefik) that handles TLS termination. Direct TLS is not built into the application server.
+
+**Production deployment requirements:**
+- TLS 1.2 minimum, TLS 1.3 recommended
+- HTTPS-only in production (redirect HTTP → HTTPS at proxy level)
+- HSTS recommended for the proxy configuration
+
+### 8.2 IP Address Handling
+
+The application trusts proxy-set headers for client IP extraction (important for rate limiting accuracy):
+
+1. `X-Forwarded-For` header — first IP in the chain (closest to client)
+2. `X-Real-IP` header — direct proxy IP
+3. `request.remote_addr` — direct connection fallback
+
+**Important:** In production, restrict which IPs can set `X-Forwarded-For` to prevent IP spoofing by configuring your reverse proxy to overwrite this header.
+
+### 8.3 Rate Limiting
+
+IP-based token-bucket rate limiting on all authentication endpoints. See [Section 3.4](#34-consumption-profiles--rate-limiting) for limits and configuration.
+
+---
+
+## 9. Platform Connector Security
+
+Platform connectors provide the AI agent with autonomous execution capabilities (browser, file system, web search, shell execution). Because these are high-privilege capabilities, they are governed by a strict three-layer architecture.
+
+### 9.1 Namespace Separation
+
+Platform connectors are **permanently separate** from user-configured MCP data source servers. They:
+- Live in a different database table (`platform_connectors`)
+- Are configured by admins, not users
+- Are displayed in a separate UI panel (Platform Components → Connectors, not Configuration → MCP Servers)
+- Never appear in the user-facing MCP server configuration panel
+
+### 9.2 Three-Layer Governance Model
+
+```
+Admin Layer    →  installs connectors, sets available_tools, opt-in policy, credentials
+     ↓
+User Layer     →  toggles connectors on/off per profile (within admin bounds)
+     ↓
+Profile Layer  →  selects active tools per connector (within admin-permitted set)
+```
+
+**Admin governance fields on `platform_connectors`:**
+```sql
+enabled                  -- admin master switch
+available_tools          -- JSON array: which tools are permitted
+auto_opt_in              -- 1 = active on all profiles by default
+user_can_opt_out         -- 1 = user can disable on their profile
+user_can_configure_tools -- 1 = user can select individual tools
+credentials              -- Fernet-encrypted admin API keys
+```
+
+### 9.3 Connector Type System
+
+| Type | Transport | Use Case |
+|---|---|---|
+| `mcp_stdio` | Subprocess stdin/stdout (MCP wire protocol) | All current connectors |
+| `mcp_http` | HTTP/SSE MCP endpoint | Remote/cloud-hosted connectors |
+| `rest` | Direct REST API | Non-MCP tools |
+| `oauth_only` | Authentication only | Google Workspace OAuth |
+
+### 9.4 Shell Connector Security (`uderia-shell`)
+
+The shell execution connector requires **two mandatory, independent security layers**:
+
+**Layer 1 — Admin governance:** Controls who can access shell tools (via connector governance settings). Only explicitly enabled profiles can invoke shell tools.
+
+**Layer 2 — Docker isolation:** Each shell tool invocation runs in a **fresh, throwaway Docker container**:
+- No host filesystem access (only explicitly admin-configured mount paths)
+- No outbound network by default (admin can allowlist specific domains)
+- Resource limits: 1 CPU, 512MB RAM, 30-second execution timeout, 100MB disk
+- Runs as non-root user inside container
+- Container destroyed immediately after invocation completes
+
+**Enable flow:** Admin must acknowledge a security disclaimer before the enable toggle appears:
+> *"uderia-shell executes commands on the Uderia server inside an isolated Docker container. Docker must be installed on the host. All executions are audit-logged. By enabling this server you accept responsibility for access governance."*
+
+**Shell execution audit log:**
+```sql
+CREATE TABLE shell_audit_log (
+    id TEXT PRIMARY KEY,
+    user_uuid TEXT NOT NULL,
+    profile_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,        -- exec_command | run_script | etc.
+    command TEXT NOT NULL,          -- full command or script content
+    exit_code INTEGER,
+    started_at TEXT,
+    completed_at TEXT,
+    truncated_output TEXT           -- first 2KB of output
+);
+```
+
+**Files:** `src/trusted_data_agent/core/platform_connector_registry.py`, `src/trusted_data_agent/connectors/registry.py`
+
+---
+
+## 10. Threat Model
+
+| Threat | Mitigation |
+|---|---|
+| **Unauthorized prompt viewing** | License-based tier encryption — different keys per customer and tier |
+| **Prompt tampering in database** | Fernet HMAC-SHA256 detects any modification |
+| **License forgery** | RSA-PSS 4096-bit signature cannot be forged without private key |
+| **Execution log tampering** | Ed25519 hash chain — any modification breaks chain verification |
+| **Step injection** | Chain linking (`previous_hash`) detects inserted steps |
+| **Step removal** | Step count + chain gap detects removed steps |
+| **Replay attack** | Timestamps + chain context prevent reuse of old provenance steps |
+| **Cross-session tampering (Genie)** | Child chain references link sessions into a Merkle tree |
+| **Brute-force login** | 5 failures → 15-minute lockout + exponential progressive delay |
+| **Token compromise** | Per-token revocation in database; cache TTL 60s limits blast radius |
+| **Credential leakage via API** | `[REDACTED]` sentinel — secrets never returned in API responses |
+| **LLM API key theft** | Per-user Fernet encryption; keys never in memory longer than needed |
+| **SSO client secret theft** | Fernet-encrypted storage; `[REDACTED]` in all API responses |
+| **SAML assertion forgery** | `signxml` verifies IdP certificate signature on every assertion |
+| **SAML replay attack** | `NotOnOrAfter` expiry check; relay state consumed once |
+| **Privilege escalation via SSO** | Group-to-tier re-evaluated on every login; all changes audit-logged |
+| **Rate limit bypass** | Token bucket enforced server-side, keyed by IP with trusted proxy headers |
+| **Shell code execution** | Two-layer isolation: admin governance + Docker container per invocation |
+| **Man-in-the-middle (LLM calls)** | Content hashes detect response substitution in provenance chain |
+| **Master key compromise** | Key rotation utility; credentials re-encrypted without downtime |
+| **Prompt key compromise** | Re-issue license; all tiers re-derive keys on next startup |
+
+---
+
+## 11. Enterprise Compliance
+
+| Regulation | Requirement | How Uderia Addresses It |
+|---|---|---|
+| **EU AI Act** | Transparency and traceability for AI systems | EPC records every LLM call, tool selection, and response with Ed25519-signed cryptographic proof |
+| **GDPR Art. 22** | Right to explanation of automated decisions | Provenance chain traces each decision from query to final answer |
+| **GDPR Art. 30** | Records of processing activities | Session-level provenance with cross-turn integrity; SSO sync event log |
+| **SOX** | Audit trails for financial reporting | Tamper-evident record of every AI-assisted operation, offline-verifiable |
+| **ISO 27001** | Information security management | Encrypted prompts, signed execution logs, key management procedures, access controls |
+| **HIPAA** | Audit controls for access to ePHI | JWT/access token audit trail; session isolation; consumption enforcement |
+| **FedRAMP (guidance)** | Cryptographic key management | Documented key rotation procedures; Ed25519 for signing; RSA-4096 for licenses |
+
+---
+
+## 12. Performance Impact
 
 | Operation | Latency | When |
-|-----------|---------|------|
-| Prompt decryption | <10ms per prompt | First load (cached thereafter) |
-| Bootstrap re-encryption | ~2-3s for 15 prompts | One-time on first start |
-| Provenance step (hash + sign) | ~100us | Per execution step |
-| Chain verification (L1) | ~1ms per step | On-demand via REST API |
+|---|---|---|
+| Prompt decryption | <10ms | First load; cached in memory thereafter |
+| Bootstrap re-encryption | 2–3 seconds | One-time on first startup |
+| Provenance step (hash + sign) | ~100 microseconds | Per execution step |
+| Chain verification Level 1 | ~1ms | On-demand via REST API |
 | License verification | ~5ms | Application startup |
+| Auth cache hit | <1ms | JWT validated within 60-second TTL |
+| Auth DB queries (cache miss) | 5–10ms | Revocation check + user load |
+| Fernet encryption/decryption | <1ms | Credential access |
+| bcrypt verify | 50–200ms | Login only (intentional — 12 rounds) |
 
-**Total overhead per query:** <1ms for provenance (typically 5-15 steps at ~100us each). Negligible compared to LLM latency (2-12 seconds).
-
-### 3.5 Threat Model
-
-| Threat | Prompt Encryption | Execution Provenance |
-|--------|:-:|:-:|
-| Unauthorized prompt viewing | Mitigated (tier-based encryption) | N/A |
-| Prompt tampering in database | Detected (Fernet HMAC) | N/A |
-| License forgery | Mitigated (RSA-PSS 4096-bit) | N/A |
-| Execution log tampering | N/A | Detected (hash chain + Ed25519) |
-| Step injection (adding fake steps) | N/A | Detected (chain linking) |
-| Step removal (hiding actions) | N/A | Detected (step_count + chain break) |
-| Replay attack (reusing old responses) | N/A | Detected (timestamps + chain context) |
-| Cross-session tampering (genie) | N/A | Detected (child_chain_ref linking) |
-| Key compromise | Re-issue license | Rotate key (old chains stay valid) |
-| Man-in-the-middle (LLM provider) | N/A | Content hashes detect response substitution |
-
-### 3.6 Compliance Mapping
-
-| Regulation | Requirement | Uderia Capability |
-|------------|------------|-------------------|
-| **EU AI Act** | Transparency of AI decision-making | EPC records every LLM call, tool selection, and response |
-| **EU AI Act** | Logging and traceability for high-risk AI | Immutable, signed provenance chains with offline verification |
-| **GDPR Art. 22** | Right to explanation of automated decisions | Provenance chain traces from query to final answer |
-| **GDPR Art. 30** | Records of processing activities | Session-level provenance with cross-turn integrity |
-| **SOX** | Internal controls over financial reporting | Tamper-evident audit trail for AI-assisted financial operations |
-| **ISO 27001** | Information security management | Encrypted prompts, signed execution logs, key management |
-| **NIST AI RMF** | AI risk management framework | Content hashing (no sensitive data stored), offline verification |
+**Total per-query overhead:** <2ms for provenance across typical 5–15 execution steps.
 
 ---
 
-## Part IV: Implementation Reference
-
-### 4.1 File Inventory
-
-#### Prompt Encryption Files
-
-| File | Repository | Purpose | Lines |
-|------|-----------|---------|-------|
-| `src/trusted_data_agent/agent/prompt_encryption.py` | uderia | Core encryption utilities | ~236 |
-| `src/trusted_data_agent/agent/prompt_loader.py` | uderia | Database-backed prompt loading | ~400 |
-| `src/trusted_data_agent/auth/database.py` | uderia | Bootstrap process | ~1800 |
-| `encrypt_default_prompts.py` | license | Generate `default_prompts.dat` | ~173 |
-| `update_prompt.py` | license | Zero-downtime deployment | ~547 |
-| `generate_keys.py` | license | RSA key pair generation | ~50 |
-| `generate_license.py` | license | License file creation | ~80 |
-| `schema/default_prompts.dat` | uderia | Encrypted distribution file | ~86KB |
-
-#### Execution Provenance Files
-
-| File | Purpose | Lines |
-|------|---------|-------|
-| `src/trusted_data_agent/core/provenance.py` | ProvenanceChain, key mgmt, verification | ~500 |
-| `src/trusted_data_agent/api/provenance_routes.py` | REST API endpoints | ~196 |
-| `maintenance/rotate_provenance_key.py` | Key rotation utility | ~79 |
-
-#### Modified Files (EPC Integration)
-
-| File | Changes |
-|------|---------|
-| `src/trusted_data_agent/agent/executor.py` | Chain init + instrumentation for all 4 non-genie profiles |
-| `src/trusted_data_agent/agent/planner.py` | `plan_rewrite` steps |
-| `src/trusted_data_agent/agent/phase_executor.py` | `tactical_decision`, `tool_call`, `tool_result`, `self_correction` |
-| `src/trusted_data_agent/agent/conversation_agent.py` | `agent_tool_call`, `agent_tool_result` |
-| `src/trusted_data_agent/agent/execution_service.py` | Genie chain init + finalization |
-| `src/trusted_data_agent/agent/genie_coordinator.py` | `coordinator_dispatch`, `child_chain_ref` |
-| `src/trusted_data_agent/main.py` | Blueprint registration |
-
-### 4.2 Testing
-
-#### Prompt Encryption
-
-```bash
-# Run encryption test suite
-cd uderia/schema
-python dev/test_prompt_encryption.py
-```
-
-#### Execution Provenance
-
-```bash
-# Verify chain creation and tamper detection
-python3 -c "
-from trusted_data_agent.core.provenance import ProvenanceChain, verify_chain
-
-# Create and seal a chain
-chain = ProvenanceChain('test-session', 1, 'test-user', 'tool_enabled')
-chain.add_step('query_intake', 'Show me all products', 'User query')
-chain.add_step('tool_call', 'base_readQuery:SELECT * FROM products', 'Calling base_readQuery')
-chain.add_step('turn_complete', 'Found 15 products', 'Turn complete')
-envelope = chain.finalize()
-
-# Verify integrity
-result = verify_chain(envelope)
-print(f'Valid: {result[\"valid\"]}')  # True
-print(f'Steps: {result[\"step_count\"]}')  # 3
-
-# Tamper test
-envelope['provenance_chain'][1]['content_hash'] = 'tampered'
-result = verify_chain(envelope)
-print(f'After tamper: {result[\"valid\"]}')  # False
-print(f'Errors: {result[\"errors\"]}')
-"
-```
-
-#### REST API Verification
-
-```bash
-# Start server
-python -m trusted_data_agent.main &
-
-# Authenticate
-JWT=$(curl -s -X POST http://localhost:5050/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin"}' | jq -r '.token')
-
-# Create session + submit query (provenance is auto-generated)
-SESSION_ID=$(curl -s -X POST http://localhost:5050/api/v1/sessions \
-  -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
-  -d '{}' | jq -r '.session_id')
-
-TASK_ID=$(curl -s -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/query \
-  -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
-  -d '{"prompt": "What is 2+2?"}' | jq -r '.task_id')
-
-sleep 10  # Wait for execution
-
-# Verify provenance
-curl -s -X POST http://localhost:5050/api/v1/sessions/$SESSION_ID/provenance/verify \
-  -H "Authorization: Bearer $JWT" | jq .
-
-# Export for offline audit
-curl -s http://localhost:5050/api/v1/sessions/$SESSION_ID/provenance/export \
-  -H "Authorization: Bearer $JWT" -o provenance_export.json
-
-# Download public key
-curl -s http://localhost:5050/api/v1/provenance/public-key \
-  -H "Authorization: Bearer $JWT" | jq .
-```
-
----
-
-## Appendix A: Cryptographic Algorithm Selection Rationale
-
-### Ed25519 for Provenance (vs. alternatives)
-
-| Criterion | Ed25519 | RSA-2048 | HMAC-SHA256 | ECDSA P-256 |
-|-----------|:-------:|:--------:|:-----------:|:-----------:|
-| Asymmetric (offline verify) | Yes | Yes | No | Yes |
-| Signature size | 64 bytes | 256 bytes | 32 bytes | 64 bytes |
-| Sign speed | ~10us | ~1ms | ~1us | ~100us |
-| Verify speed | ~30us | ~50us | ~1us | ~200us |
-| Key size | 32 bytes | 256 bytes | 32 bytes | 32 bytes |
-| Deterministic | Yes | No | Yes | No |
-| Side-channel resistant | Yes (by design) | Requires care | Yes | Requires care |
-
-**Decision:** Ed25519 provides the best balance of security, performance, and offline verification capability. HMAC would require sharing the secret key with auditors.
-
-### Fernet for Prompt Encryption (vs. alternatives)
-
-| Criterion | Fernet (AES-128-CBC) | AES-256-GCM | ChaCha20-Poly1305 |
-|-----------|:---:|:---:|:---:|
-| Authenticated encryption | Yes (HMAC) | Yes (GCM tag) | Yes (Poly1305) |
-| Python library support | `cryptography.fernet` | Manual construction | Manual construction |
-| Timestamp included | Yes | No | No |
-| Key derivation built-in | No (separate PBKDF2) | No | No |
-| Simplicity | High (one-liner API) | Medium | Medium |
-
-**Decision:** Fernet provides authenticated encryption with a simple, hard-to-misuse API. The 128-bit AES key is sufficient for IP protection (not military-grade secrets). The timestamp field enables future token expiration if needed.
-
-### RSA-4096 for License Signing (vs. alternatives)
-
-| Criterion | RSA-4096/PSS | Ed25519 | ECDSA P-384 |
-|-----------|:---:|:---:|:---:|
-| NIST approved | Yes | Yes (EdDSA) | Yes |
-| Widely understood | Yes | Growing | Yes |
-| Key derivation from signature | Good (512-byte signature = high entropy) | Poor (64-byte signature) | Moderate |
-| Library maturity | Excellent | Excellent | Excellent |
-
-**Decision:** RSA-4096 with PSS padding provides a large signature (512 bytes) that serves double duty as high-entropy input for PBKDF2 key derivation. The signature's size ensures excellent key material for the tier-specific encryption keys.
-
----
-
-## Appendix B: Glossary
-
-| Term | Definition |
-|------|-----------|
-| **Bootstrap key** | Fernet key derived from `public_key.pem` via PBKDF2; decrypts `default_prompts.dat` |
-| **Chain hash** | SHA-256 hash linking a step to its position, type, content, and predecessor |
-| **Content hash** | SHA-256 of the actual execution content (truncated to 4096 chars) |
-| **Cross-turn link** | First step of turn N references `chain_tip_hash` of turn N-1 |
-| **Degraded mode** | EPC records hashes but not signatures (signing key unavailable) |
-| **EPC** | Execution Provenance Chain — the cryptographic audit trail system |
-| **Fernet** | Symmetric authenticated encryption scheme (AES-128-CBC + HMAC-SHA256) |
-| **Genesis hash** | 64 zero characters; used as `previous_hash` for the very first step |
-| **Key fingerprint** | SHA-256 of the Ed25519 public key's raw bytes; identifies the signing key |
-| **PBKDF2** | Password-Based Key Derivation Function 2; stretches input into encryption keys |
-| **Provenance envelope** | The sealed `{provenance_chain, provenance_meta}` dict stored per turn |
-| **RSA-PSS** | Probabilistic Signature Scheme; provably secure RSA signature padding |
-| **Tier key** | Fernet key derived from license signature + tier via PBKDF2; encrypts database prompts |
-| **Turn tip** | The `chain_hash` of the last step in a turn; referenced by the next turn's first step |
+*This document covers the complete security architecture as of May 2026. For implementation details and source references, see the files listed in each section.*

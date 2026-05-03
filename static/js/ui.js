@@ -1284,6 +1284,13 @@ export function addMessage(role, content, turnId = null, isValid = true, source 
         author.appendChild(restTag);
     }
 
+    if (role === 'user' && source === 'scheduler') {
+        const schedTag = document.createElement('span');
+        schedTag.className = 'scheduled-task-tag';
+        schedTag.textContent = 'Scheduled';
+        author.appendChild(schedTag);
+    }
+
     // Add Session Primer badge for primer messages (both user and assistant)
     if (isSessionPrimer) {
         const primerTag = document.createElement('span');
@@ -2637,7 +2644,12 @@ function _renderConversationAgentStep(eventData, parentContainer, isFinal = fals
             }
             return; // Exit early - we updated existing step, no need to create new one
         } else {
-            console.warn('[LiveStatus] conversation_tool_completed did NOT find executing step for tool:', toolName, '- will create new step instead');
+            // During historical replay this is expected — completed events arrive without prior started steps
+            if (state.isViewingHistoricalTurn) {
+                console.debug('[LiveStatus] Historical replay: creating new step for tool_completed:', toolName);
+            } else {
+                console.warn('[LiveStatus] conversation_tool_completed did NOT find executing step for tool:', toolName, '- will create new step instead');
+            }
         }
     }
 
@@ -5089,80 +5101,119 @@ export function updateStatusPromptName(provider = null, model = null, isHistoric
 
 
 export function createResourceItem(resource, type) {
+    // ── Type config: left accent color + type badge styling ──
+    const TYPE_CFG = {
+        tools:     { label: 'tool',     color: '#a78bfa', bg: 'rgba(167,139,250,0.10)', border: 'rgba(167,139,250,0.2)', accentActive: '#F15F22', accentOff: '#64748b' },
+        prompts:   { label: 'prompt',   color: '#60a5fa', bg: 'rgba(96,165,250,0.10)',  border: 'rgba(96,165,250,0.2)',  accentActive: '#3b82f6', accentOff: '#64748b' },
+        resources: { label: 'resource', color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.2)', accentActive: '#34d399', accentOff: '#64748b' },
+    };
+    const cfg = TYPE_CFG[type] || TYPE_CFG.resources;
+    const accent = resource.disabled ? cfg.accentOff : cfg.accentActive;
+
     const detailsEl = document.createElement('details');
     detailsEl.id = `resource-${type}-${resource.name}`;
-    detailsEl.className = 'resource-item bg-gray-800/50 rounded-lg border border-gray-700/60';
+    detailsEl.className = 'resource-item rounded-lg';
+    detailsEl.style.cssText = [
+        `background:var(--card-bg,rgba(30,41,59,0.5))`,
+        `border:1px solid var(--border-primary,rgba(148,163,184,0.18))`,
+        `border-left:4px solid ${accent}`,
+        resource.disabled ? 'opacity:0.6' : '',
+    ].filter(Boolean).join(';');
 
     if (resource.disabled) {
-        detailsEl.classList.add('opacity-60');
-        detailsEl.title = `This ${type.slice(0, -1)} is disabled and will not be used by the agent.`;
+        detailsEl.title = `This ${type === 'tools' ? 'tool' : type === 'prompts' ? 'prompt' : 'resource'} is disabled.`;
     }
 
-    const toggleIcon = resource.disabled ?
-        `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074L3.707 2.293zM10 12a2 2 0 110-4 2 2 0 010 4z" clip-rule="evenodd" /><path d="M2 10s3.939 4 8 4 8-4 8-4-3.939-4-8-4-8 4-8 4zm13.707 4.293a1 1 0 00-1.414-1.414L12.586 14.6A8.007 8.007 0 0110 16c-4.478 0-8.268-2.943-9.542-7 .946-2.317 2.83-4.224 5.166-5.447L2.293 1.293A1 1 0 00.879 2.707l14 14a1 1 0 001.414 0z" /></svg>` :
-        `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" /></svg>`;
+    // ── Toggle icon (kept for event handler compatibility) ──
+    const toggleIcon = resource.disabled
+        ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074L3.707 2.293zM10 12a2 2 0 110-4 2 2 0 010 4z" clip-rule="evenodd" /><path d="M2 10s3.939 4 8 4 8-4 8-4-3.939-4-8-4-8 4-8 4zm13.707 4.293a1 1 0 00-1.414-1.414L12.586 14.6A8.007 8.007 0 0110 16c-4.478 0-8.268-2.943-9.542-7 .946-2.317 2.83-4.224 5.166-5.447L2.293 1.293A1 1 0 00.879 2.707l14 14a1 1 0 001.414 0z" /></svg>`
+        : `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" /></svg>`;
 
+    // ── Inline badge helper ──
+    const badge = (text, color, bg, border, mono = false) =>
+        `<span style="font-size:10px;font-weight:${mono ? '400' : '500'};font-family:${mono ? 'monospace' : 'inherit'};padding:1px 6px;border-radius:4px;white-space:nowrap;background:${bg};color:${color};border:1px solid ${border};">${text}</span>`;
+
+    // Type badge
+    const typeBadge = badge(cfg.label, cfg.color, cfg.bg, cfg.border);
+
+    // Arg count badge (tools/prompts only)
+    let argsBadge = '';
+    if (resource.arguments && resource.arguments.length > 0) {
+        const req = resource.arguments.filter(a => a.required).length;
+        const lbl = req > 0 ? `${resource.arguments.length} params, ${req} req` : `${resource.arguments.length} params`;
+        argsBadge = badge(lbl, '#34d399', 'rgba(16,185,129,0.12)', 'rgba(16,185,129,0.25)', true);
+    }
+
+    // Status badge
+    const statusBadge = resource.disabled
+        ? badge('DISABLED', '#94a3b8', 'rgba(148,163,184,0.10)', 'rgba(148,163,184,0.2)')
+        : badge('ACTIVE',   '#4ade80', 'rgba(74,222,128,0.10)',  'rgba(74,222,128,0.2)');
+
+    // ── Parameters section (theme-aware inline styles) ──
     let argsHTML = '';
     if (resource.arguments && resource.arguments.length > 0) {
-        argsHTML += `<div class="mt-4 pt-3 border-t border-gray-700/60">
-                                <h5 class="font-semibold text-sm text-white mb-2">Parameters</h5>
-                                <ul class="space-y-2 text-xs">`;
-        resource.arguments.forEach(arg => {
-            const requiredText = arg.required ? '<span class="text-rose-400 font-bold">Required</span>' : '<span class="text-gray-400">Optional</span>';
-            const typeText = arg.type && arg.type !== 'unknown' ? `<span class="font-mono text-xs text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded-md">${arg.type}</span>` : '';
-
-            argsHTML += `<li class="p-2 bg-black/20 rounded-md">
-                                    <div class="flex justify-between items-center">
-                                        <div class="flex items-center gap-x-2">
-                                            <code class="font-semibold text-teradata-orange">${arg.name}</code>
-                                            ${typeText}
-                                        </div>
-                                        ${requiredText}
-                                    </div>
-                                    <p class="text-gray-400 mt-1">${arg.description}</p>
-                                 </li>`;
-        });
-        argsHTML += `</ul></div>`;
+        const rows = resource.arguments.map(arg => {
+            const reqBadge = arg.required
+                ? `<span style="font-size:10px;font-weight:600;color:#f87171;">Required</span>`
+                : `<span style="font-size:10px;color:var(--text-muted,#94a3b8);">Optional</span>`;
+            const typeSpan = arg.type && arg.type !== 'unknown'
+                ? `<span style="font-family:monospace;font-size:10px;color:#22d3ee;background:rgba(34,211,238,0.10);border:1px solid rgba(34,211,238,0.2);padding:0 4px;border-radius:3px;">${arg.type}</span>`
+                : '';
+            return `<li style="padding:6px 8px;background:rgba(0,0,0,0.12);border-radius:6px;margin-bottom:4px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <code style="font-weight:600;color:var(--teradata-orange,#F15F22);">${arg.name}</code>${typeSpan}
+                    </div>${reqBadge}
+                </div>
+                ${arg.description ? `<p style="color:var(--text-muted,#94a3b8);font-size:11px;margin:4px 0 0;">${arg.description}</p>` : ''}
+            </li>`;
+        }).join('');
+        argsHTML = `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
+            <h5 style="font-size:11px;font-weight:600;color:var(--text-primary,#e5e7eb);margin:0 0 6px;">Parameters</h5>
+            <ul style="list-style:none;margin:0;padding:0;">${rows}</ul>
+        </div>`;
     }
+
+    // ── Body content ──
+    const borderTop = `border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));`;
+    const bodyStyle = `padding:10px 12px;font-size:12px;color:var(--text-muted,#94a3b8);`;
 
     let contentHTML = '';
     if (type === 'prompts') {
-        const runButtonDisabledAttr = ''; // Always enabled
-        const runButtonTitle = 'Run this prompt.'; // Always use this title
-
-        contentHTML = `
-            <div class="p-3 pt-2 text-sm text-gray-300 space-y-3">
-                <p>${resource.description}</p>
-                ${argsHTML}
-                <div class="flex justify-end items-center gap-x-2 pt-3 border-t border-gray-700/60">
-                    <button class="prompt-toggle-button p-1.5 text-gray-300 hover:text-white hover:bg-white/10 rounded-md transition-colors">${toggleIcon}</button>
-                    <button class="view-prompt-button px-3 py-1 bg-gray-600 text-white text-xs font-semibold rounded-md hover:bg-gray-500 transition-colors">Prompt</button>
-                    <button class="run-prompt-button px-3 py-1 bg-teradata-orange text-white text-xs font-semibold rounded-md hover:bg-teradata-orange-dark transition-colors" ${runButtonDisabledAttr} title="${runButtonTitle}">Run</button>
-                </div>
-            </div>`;
+        contentHTML = `<div style="${bodyStyle}">
+            ${resource.description ? `<p style="margin:0 0 8px;">${resource.description}</p>` : ''}
+            ${argsHTML}
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;padding-top:10px;${borderTop}">
+                <button class="prompt-toggle-button" style="padding:4px;color:var(--text-muted,#9ca3af);background:none;border:none;cursor:pointer;border-radius:6px;" title="${resource.disabled ? 'Enable' : 'Disable'} prompt">${toggleIcon}</button>
+                <button class="view-prompt-button" style="padding:3px 10px;font-size:11px;font-weight:600;border-radius:6px;background:var(--hover-bg-strong,rgba(148,163,184,0.15));color:var(--text-primary,#e5e7eb);border:none;cursor:pointer;">Prompt</button>
+                <button class="run-prompt-button" style="padding:3px 10px;font-size:11px;font-weight:600;border-radius:6px;background:#F15F22;color:#fff;border:none;cursor:pointer;" title="Run this prompt.">Run</button>
+            </div>
+        </div>`;
     } else if (type === 'tools') {
-        contentHTML = `
-            <div class="p-3 pt-2 text-sm text-gray-300 space-y-3">
-                <p>${resource.description}</p>
-                ${argsHTML}
-                <div class="flex justify-end items-center pt-3 border-t border-gray-700/60">
-                    <button class="tool-toggle-button p-1.5 text-gray-300 hover:text-white hover:bg-white/10 rounded-md transition-colors">${toggleIcon}</button>
-                </div>
-            </div>`;
-    } else { // For resources
-        contentHTML = `
-            <div class="p-3 pt-2 text-sm text-gray-300 border-t border-gray-700/60 flex justify-between items-center">
-                <p>${resource.description}</p>
-            </div>`;
+        contentHTML = `<div style="${bodyStyle}">
+            ${resource.description ? `<p style="margin:0 0 8px;">${resource.description}</p>` : ''}
+            ${argsHTML}
+            <div style="display:flex;justify-content:flex-end;margin-top:10px;padding-top:10px;${borderTop}">
+                <button class="tool-toggle-button" style="padding:4px;color:var(--text-muted,#9ca3af);background:none;border:none;cursor:pointer;border-radius:6px;" title="${resource.disabled ? 'Enable' : 'Disable'} tool">${toggleIcon}</button>
+            </div>
+        </div>`;
+    } else {
+        contentHTML = resource.description
+            ? `<div style="${bodyStyle}padding-top:8px;${borderTop}">${resource.description}</div>`
+            : '';
     }
 
     detailsEl.innerHTML = `
-        <summary class="flex justify-between items-center p-3 font-semibold text-white hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer">
-            <span>${resource.name}</span>
-            <svg class="chevron w-5 h-5 text-[#F15F22] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+        <summary style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;border-radius:8px;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;">
+                <span style="font-size:13px;font-weight:500;color:var(--text-primary,#e5e7eb);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${resource.name}</span>
+                ${typeBadge}${argsBadge}${statusBadge}
+            </div>
+            <svg class="chevron" style="width:16px;height:16px;flex-shrink:0;color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
         </summary>
-        ${contentHTML}
-    `;
+        ${contentHTML}`;
 
     return detailsEl;
 }
@@ -5176,8 +5227,9 @@ export function updatePromptsTabCounter() {
         totalCount += items.length;
         disabledCount += items.filter(item => item.disabled).length;
     });
+    const activeCount = totalCount - disabledCount;
     const disabledIndicator = disabledCount > 0 ? '*' : '';
-    tabButton.textContent = `Prompts (${totalCount})${disabledIndicator}`;
+    tabButton.textContent = `Prompts (${activeCount})${disabledIndicator}`;
 }
 
 export function updateToolsTabCounter() {
@@ -5189,8 +5241,9 @@ export function updateToolsTabCounter() {
         totalCount += items.length;
         disabledCount += items.filter(item => item.disabled).length;
     });
+    const activeCount = totalCount - disabledCount;
     const disabledIndicator = disabledCount > 0 ? '*' : '';
-    tabButton.textContent = `Tools (${totalCount})${disabledIndicator}`;
+    tabButton.textContent = `Tools (${activeCount})${disabledIndicator}`;
 }
 
 export function highlightResource(resourceName, type) {
@@ -5207,7 +5260,6 @@ export function highlightResource(resourceName, type) {
             }
         }
     }
-
 
     if (resourceCategory) {
         const resourceTab = document.querySelector(`.resource-tab[data-type="${type}"]`);
@@ -5226,8 +5278,9 @@ export function highlightResource(resourceName, type) {
                 resourceElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 350);
         }
-    } else {
+        return true;
     }
+    return false;
 }
 
 export function addSessionToList(session, isActive = false, isLastChild = false) {
@@ -6156,11 +6209,18 @@ function performViewSwitch(viewId) {
         console.error(`[UI DEBUG] View with ID '${viewId}' not found!`);
     }
     
-    // 4a. Lazy-load components when entering Components view
+    // 4a. Lazy-load components when entering Platform Components view
     if (viewId === 'components-view') {
         import('./handlers/componentHandler.js').then(({ loadComponentsView }) => {
             loadComponentsView();
         });
+        // If the MCP Servers sub-tab is active, also load it
+        const activePlatformTab = document.querySelector('.platform-component-tab.active');
+        if (activePlatformTab && activePlatformTab.dataset.tab === 'mcp-servers') {
+            if (typeof window.loadPlatformConnectorPanel === 'function') {
+                window.loadPlatformConnectorPanel();
+            }
+        }
     }
 
     // 4. Initialize dirty tracking when entering configuration view
@@ -8178,3 +8238,42 @@ export async function deleteKnowledgeRepository(collectionId, collectionName) {
         }
     );
 }
+
+/**
+ * Switch between Platform Components sub-tabs (UI Components / MCP Servers).
+ * Called by onclick handlers on the tab buttons in the components-view.
+ */
+window.switchPlatformComponentsTab = function switchPlatformComponentsTab(tabName) {
+    // Update tab button active states
+    document.querySelectorAll('.platform-component-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+
+    // Show/hide content panes
+    document.querySelectorAll('.platform-component-content').forEach(pane => {
+        pane.classList.add('hidden');
+    });
+    const target = document.getElementById(
+        tabName === 'mcp-servers' ? 'platform-content-mcp-servers' : 'platform-content-ui-components'
+    );
+    if (target) target.classList.remove('hidden');
+
+    // Show/hide header action areas
+    const uiActions = document.getElementById('platform-ui-components-actions');
+    const connectorActions = document.getElementById('platform-connector-actions');
+    if (uiActions) uiActions.classList.toggle('hidden', tabName === 'mcp-servers');
+    if (connectorActions) {
+        connectorActions.classList.toggle('hidden', tabName !== 'mcp-servers');
+        // flex is needed when not hidden
+        if (tabName === 'mcp-servers') {
+            connectorActions.classList.add('flex');
+        } else {
+            connectorActions.classList.remove('flex');
+        }
+    }
+
+    // Lazy-load connectors panel on first activation
+    if (tabName === 'mcp-servers' && typeof window.loadPlatformConnectorPanel === 'function') {
+        window.loadPlatformConnectorPanel();
+    }
+};

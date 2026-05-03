@@ -48,6 +48,8 @@ export function resetContextPanelState() {
     if (container) {
         container.innerHTML = '';
     }
+    const ctxBadge = document.getElementById('rail-badge-context');
+    if (ctxBadge) ctxBadge.textContent = '';
 }
 
 /**
@@ -550,6 +552,10 @@ export function renderContextWindowSnapshot(snapshot) {
     const budget = snapshot.budget?.available || 1;
     const pct = ((used / budget) * 100).toFixed(1);
     const typeName = snapshot.context_window_type?.name || 'Unknown';
+
+    // Update the context rail badge with utilisation percentage
+    const ctxBadge = document.getElementById('rail-badge-context');
+    if (ctxBadge) ctxBadge.textContent = `${Math.round(used / budget * 100)}%`;
 
     // Build compact bar segments
     const contribs = snapshot.contributions || [];

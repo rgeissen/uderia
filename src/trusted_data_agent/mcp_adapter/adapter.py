@@ -526,8 +526,7 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
 
     # Use server ID instead of name for session management
     server_id = get_user_mcp_server_id(user_uuid)
-    if not server_id:
-        raise Exception("MCP server ID not found in configuration.")
+    # server_id may be None for capabilities-only profiles (platform tools, no data source)
 
     # Get classification mode from profile if provided
     classification_mode = 'light'  # default
@@ -565,7 +564,7 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
 
     # === CACHING LAYER: Check schema cache ===
     import time
-    cache_key = server_id
+    cache_key = server_id or '__no_primary_server__'
     schema_cache = STATE.setdefault('mcp_tool_schema_cache', {})
     cached_schemas = schema_cache.get(cache_key)
 
@@ -585,85 +584,92 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
         else:
             app_logger.info(f"Cache expired for server {server_id} (age: {age:.1f}s > 300s TTL)")
 
+    # SimpleTool: lightweight wrapper so MCP tool dicts behave like objects
+    class SimpleTool:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
     # === Load from MCP if cache miss/expired ===
     if not cache_valid:
-        async with mcp_client.session(server_id) as temp_session:
-            app_logger.info("--- Loading and classifying MCP tools and prompts... ---")
+        if not server_id:
+            # Capabilities-only profile: no primary data source server.
+            # CLIENT_SIDE_TOOLS (TDA_*) are excluded here — injected at runtime by configuration_service.py.
+            app_logger.info("No primary MCP server — capabilities-only profile, skipping primary server load")
+            schema_cache[cache_key] = {
+                'tools': [],
+                'prompts': [],
+                'resources': [],
+                'timestamp': time.time(),
+                'tool_count': 0,
+            }
+        else:
+            async with mcp_client.session(server_id) as temp_session:
+                app_logger.info("--- Loading and classifying MCP tools and prompts... ---")
 
-            list_tools_result = await temp_session.list_tools()
-            raw_tools = list_tools_result.tools if hasattr(list_tools_result, 'tools') else []
+                list_tools_result = await temp_session.list_tools()
+                raw_tools = list_tools_result.tools if hasattr(list_tools_result, 'tools') else []
 
-            processed_tools = []
-            class SimpleTool:
-                def __init__(self, **kwargs):
-                    self.__dict__.update(kwargs)
+                processed_tools = []
+                for raw_tool in raw_tools:
+                    tool_name = raw_tool.name
+                    tool_desc = raw_tool.description or ""
+                    processed_args = []
+                    cleaned_description = tool_desc
 
-            for raw_tool in raw_tools:
-                tool_name = raw_tool.name
-                tool_desc = raw_tool.description or ""
-                processed_args = []
-                cleaned_description = tool_desc
+                    if hasattr(raw_tool, 'inputSchema') and raw_tool.inputSchema and 'properties' in raw_tool.inputSchema:
+                        cleaned_description, arg_desc_map = _get_arg_descriptions_from_string(tool_desc)
+                        schema = raw_tool.inputSchema
+                        required_args = schema.get('required', []) or []
 
-                if hasattr(raw_tool, 'inputSchema') and raw_tool.inputSchema and 'properties' in raw_tool.inputSchema:
-                    cleaned_description, arg_desc_map = _get_arg_descriptions_from_string(tool_desc)
-                    schema = raw_tool.inputSchema
-                    required_args = schema.get('required', []) or []
+                        for arg_name, arg_schema in schema['properties'].items():
+                            processed_args.append({
+                                "name": arg_name,
+                                "type": _get_type_from_schema(arg_schema),
+                                "required": arg_name in required_args,
+                                "description": arg_desc_map.get(arg_name, arg_schema.get('title', 'No description.'))
+                            })
 
-                    for arg_name, arg_schema in schema['properties'].items():
-                        processed_args.append({
-                            "name": arg_name,
-                            "type": _get_type_from_schema(arg_schema),
-                            "required": arg_name in required_args,
-                            "description": arg_desc_map.get(arg_name, arg_schema.get('title', 'No description.'))
-                        })
+                    processed_tools.append(SimpleTool(
+                        name=tool_name,
+                        description=cleaned_description,
+                        args={arg['name']: arg for arg in processed_args}
+                    ))
 
-                processed_tools.append(SimpleTool(
-                    name=tool_name,
-                    description=cleaned_description,
-                    args={arg['name']: arg for arg in processed_args}
-                ))
+                loaded_tools = processed_tools
+                app_logger.info(f"Loaded {len(loaded_tools)} tools from MCP server")
 
-            loaded_tools = processed_tools
-            app_logger.info(f"Loaded {len(loaded_tools)} tools from MCP server")
+                loaded_prompts = []
+                try:
+                    list_prompts_result = await temp_session.list_prompts()
+                    if hasattr(list_prompts_result, 'prompts'):
+                        loaded_prompts = list_prompts_result.prompts
+                        app_logger.info(f"Loaded {len(loaded_prompts)} prompts from MCP server")
+                except Exception as e:
+                    app_logger.warning(f"Could not load prompts from MCP server (this may be expected for older servers): {e}")
 
-            loaded_prompts = []
-            try:
-                list_prompts_result = await temp_session.list_prompts()
-                if hasattr(list_prompts_result, 'prompts'):
-                    loaded_prompts = list_prompts_result.prompts
-                    app_logger.info(f"Loaded {len(loaded_prompts)} prompts from MCP server")
-            except Exception as e:
-                app_logger.warning(f"Could not load prompts from MCP server (this may be expected for older servers): {e}")
-
-            # --- MODIFICATION START: Gracefully handle resource loading ---
-            loaded_resources = []
-            try:
-                # Attempt to list resources, which might not be supported by all MCP servers.
-                list_resources_result = await temp_session.list_resources()
-                if hasattr(list_resources_result, 'resources'):
-                    loaded_resources = list_resources_result.resources
-                    app_logger.info(f"Successfully loaded {len(loaded_resources)} resources from MCP server.")
-            except Exception as e:
-                # If the call fails (e.g., method not found), log a warning and continue.
-                app_logger.warning(f"Could not load resources from MCP server (this may be expected for older servers): {e}")
-                # Ensure loaded_resources remains an empty list.
                 loaded_resources = []
-            # --- MODIFICATION END ---
+                try:
+                    list_resources_result = await temp_session.list_resources()
+                    if hasattr(list_resources_result, 'resources'):
+                        loaded_resources = list_resources_result.resources
+                        app_logger.info(f"Successfully loaded {len(loaded_resources)} resources from MCP server.")
+                except Exception as e:
+                    app_logger.warning(f"Could not load resources from MCP server (this may be expected for older servers): {e}")
+                    loaded_resources = []
 
-        # --- MODIFICATION START: Iterate over the consolidated list ---
-        for tool_def in CLIENT_SIDE_TOOLS:
-            loaded_tools.append(SimpleTool(**tool_def))
-        # --- MODIFICATION END ---
+            # Add CLIENT_SIDE_TOOLS after the primary server tools (primary server path only)
+            for tool_def in CLIENT_SIDE_TOOLS:
+                loaded_tools.append(SimpleTool(**tool_def))
 
-        # === Cache the loaded schemas ===
-        schema_cache[cache_key] = {
-            'tools': loaded_tools,
-            'prompts': loaded_prompts,
-            'resources': loaded_resources,
-            'timestamp': time.time(),
-            'tool_count': len(loaded_tools)
-        }
-        app_logger.info(f"✓ Cached tool schemas for server {server_id} ({len(loaded_tools)} tools, {len(loaded_prompts)} prompts, {len(loaded_resources)} resources)")
+            # Cache the loaded schemas
+            schema_cache[cache_key] = {
+                'tools': loaded_tools,
+                'prompts': loaded_prompts,
+                'resources': loaded_resources,
+                'timestamp': time.time(),
+                'tool_count': len(loaded_tools)
+            }
+            app_logger.info(f"✓ Cached tool schemas for server {server_id} ({len(loaded_tools)} tools, {len(loaded_prompts)} prompts, {len(loaded_resources)} resources)")
 
     # === Process tools/prompts and save classification (runs for both fresh load AND cache hit) ===
     # This is outside the cache block because we need to populate STATE and save classification
@@ -900,6 +906,30 @@ async def load_and_categorize_mcp_resources(STATE: dict, user_uuid: str = None, 
         "prompt": list(prompt_args)
     }
     app_logger.info(f"Dynamically identified {len(tool_args)} tool and {len(prompt_args)} prompt arguments for context enrichment.")
+
+    # === Merge platform MCP server tools into structured_tools ===
+    # Platform tools are additive alongside the primary server tools (or are the only tools
+    # for capabilities-only profiles). They bypass the profile.tools[] filter — see config_manager.py.
+    if profile_id:
+        try:
+            from trusted_data_agent.core.platform_connector_registry import get_effective_tools as _get_platform_tools
+            platform_tools = _get_platform_tools(profile_id)
+            if platform_tools:
+                # Remove stale platform categories before re-inserting
+                for _pk in [k for k in STATE.get('structured_tools', {}) if k == "Platform Tools" or k.startswith("Platform: ")]:
+                    STATE['structured_tools'].pop(_pk, None)
+                for pt in platform_tools:
+                    _pcat = pt.get("_category", "Platform Tools")
+                    STATE['structured_tools'].setdefault(_pcat, []).append(pt)
+                    # Also register in mcp_tools so tool execution can find it
+                    STATE['mcp_tools'][pt['name']] = SimpleTool(
+                        name=pt['name'],
+                        description=pt.get('description', ''),
+                        args={a['name']: a for a in pt.get('arguments', [])}
+                    )
+                app_logger.info(f"Merged {len(platform_tools)} platform MCP tools for profile {profile_id}")
+        except Exception as _e:
+            app_logger.warning(f"Could not merge platform MCP tools: {_e}")
 
     # Save classification results to profile if profile_id provided
     if profile_id:
@@ -1914,6 +1944,22 @@ async def invoke_mcp_tool(STATE: dict, command: dict, user_uuid: str = None, ses
                         break # Found the correct synonym, move to the next canonical name
     # --- MODIFICATION END ---
 
+
+    # --- Route platform connector tools (browser, files, shell, web, google, etc.) ---
+    # These bypass the primary MCP server session and go directly to the platform connector.
+    try:
+        from trusted_data_agent.core.platform_connector_registry import (
+            get_connector_for_tool as _get_connector_for_tool,
+            invoke_connector_tool as _invoke_connector_tool,
+        )
+        platform_server_id = _get_connector_for_tool(tool_name)
+        if platform_server_id:
+            app_logger.info(f"[Platform Connector] Routing '{tool_name}' → '{platform_server_id}'")
+            result = await _invoke_connector_tool(platform_server_id, tool_name, aligned_args, user_uuid=user_uuid)
+            return result, 0, 0
+    except Exception as _pe:
+        app_logger.warning(f"Platform tool routing failed for '{tool_name}': {_pe}")
+    # --- End platform tool routing ---
 
     app_logger.debug(f"[MCP] Calling tool '{tool_name}' with args: {aligned_args}")
     try:

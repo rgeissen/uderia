@@ -476,6 +476,263 @@ class CollectionDatabase:
         return ratings_map
 
 
+    # ------------------------------------------------------------------
+    # CDC methods — change data management for knowledge repositories
+    # ------------------------------------------------------------------
+
+    def get_document_by_filename(self, collection_id: int, filename: str) -> Optional[Dict[str, Any]]:
+        """Return the knowledge_documents row for (collection_id, filename), or None."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM knowledge_documents WHERE collection_id = ? AND filename = ?",
+            (collection_id, filename)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def upsert_document_metadata(
+        self,
+        document_id: str,
+        collection_id: int,
+        filename: str,
+        content_hash: str,
+        ingest_epoch: int,
+        chunk_count: int,
+        source_uri: Optional[str] = None,
+        sync_enabled: int = 0,
+        **metadata_fields,
+    ) -> str:
+        """
+        Insert or replace a knowledge_documents row.
+        Preserves created_at on replace; always updates updated_at.
+        Returns document_id.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Determine created_at — keep existing value if this is an update
+        cursor.execute(
+            "SELECT created_at FROM knowledge_documents WHERE document_id = ?",
+            (document_id,)
+        )
+        existing = cursor.fetchone()
+        created_at = existing["created_at"] if existing else now
+
+        cursor.execute("""
+            INSERT INTO knowledge_documents (
+                document_id, collection_id, filename, document_type, title,
+                author, source, category, tags, file_size, page_count,
+                content_hash, created_at, updated_at, metadata,
+                source_uri, ingest_epoch, sync_enabled, last_checked_at, chunk_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(document_id) DO UPDATE SET
+                content_hash       = excluded.content_hash,
+                ingest_epoch       = excluded.ingest_epoch,
+                chunk_count        = excluded.chunk_count,
+                source_uri         = excluded.source_uri,
+                sync_enabled       = excluded.sync_enabled,
+                last_checked_at    = excluded.last_checked_at,
+                updated_at         = excluded.updated_at,
+                file_size          = excluded.file_size,
+                title              = excluded.title,
+                author             = excluded.author,
+                category           = excluded.category,
+                tags               = excluded.tags,
+                metadata           = excluded.metadata
+        """, (
+            document_id,
+            collection_id,
+            filename,
+            metadata_fields.get("document_type", ""),
+            metadata_fields.get("title", filename),
+            metadata_fields.get("author", ""),
+            metadata_fields.get("source", "upload"),
+            metadata_fields.get("category", ""),
+            metadata_fields.get("tags", ""),
+            metadata_fields.get("file_size", 0),
+            metadata_fields.get("page_count"),
+            content_hash,
+            created_at,
+            now,
+            json.dumps(metadata_fields.get("metadata", {})),
+            source_uri,
+            ingest_epoch,
+            sync_enabled,
+            now,   # last_checked_at — set to now on every successful write
+            chunk_count,
+        ))
+
+        conn.commit()
+        conn.close()
+        return document_id
+
+    def sync_collection_counts(self, collection_id: int) -> tuple:
+        """
+        Recount document_count and chunk_count from knowledge_documents rows
+        and write the authoritative values back to collections.
+        Returns (document_count, chunk_count).
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT COUNT(DISTINCT document_id) as doc_count,
+                   COALESCE(SUM(chunk_count), 0) as chunk_total
+            FROM knowledge_documents
+            WHERE collection_id = ?
+        """, (collection_id,))
+        row = cursor.fetchone()
+        doc_count = int(row["doc_count"]) if row else 0
+        chunk_total = int(row["chunk_total"]) if row else 0
+
+        cursor.execute("""
+            UPDATE collections
+            SET document_count = ?, chunk_count = ?
+            WHERE id = ?
+        """, (doc_count, chunk_total, collection_id))
+
+        conn.commit()
+        conn.close()
+        return (doc_count, chunk_total)
+
+    def get_sync_candidates(self, collection_id: int, older_than_seconds: int = 3600) -> List[Dict[str, Any]]:
+        """
+        Return sync-enabled documents whose last_checked_at is older than
+        older_than_seconds ago (or has never been checked).
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM knowledge_documents
+            WHERE collection_id = ?
+              AND sync_enabled = 1
+              AND source_uri IS NOT NULL
+              AND (
+                  last_checked_at IS NULL
+                  OR datetime(last_checked_at) < datetime('now', ? || ' seconds')
+              )
+            ORDER BY last_checked_at ASC NULLS FIRST
+        """, (collection_id, f"-{older_than_seconds}"))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def mark_document_checked(self, document_id: str, checked_at: Optional[str] = None) -> None:
+        """Update last_checked_at for a document (defaults to now UTC)."""
+        ts = checked_at or datetime.now(timezone.utc).isoformat()
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE knowledge_documents SET last_checked_at = ? WHERE document_id = ?",
+            (ts, document_id)
+        )
+        conn.commit()
+        conn.close()
+
+    def update_document_sync_config(
+        self,
+        document_id: str,
+        source_uri: Optional[str],
+        sync_enabled: int,
+        sync_interval: Optional[str] = None,
+    ) -> None:
+        """
+        Update source_uri and sync_enabled for a document.
+        If sync_interval is provided, also updates the parent collection's sync_interval.
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE knowledge_documents
+            SET source_uri = ?, sync_enabled = ?
+            WHERE document_id = ?
+        """, (source_uri, sync_enabled, document_id))
+
+        if sync_interval:
+            cursor.execute("""
+                UPDATE collections SET sync_interval = ?
+                WHERE id = (
+                    SELECT collection_id FROM knowledge_documents WHERE document_id = ?
+                )
+            """, (sync_interval, document_id))
+
+        conn.commit()
+        conn.close()
+
+    def get_sync_aggregate(self, collection_id: int) -> Dict[str, int]:
+        """
+        Return counts used by the repository card and list API:
+            sync_doc_count  — documents with sync_enabled = 1
+            stale_doc_count — sync-enabled docs whose last_checked_at is stale
+                              (older than 2× the collection's sync_interval, or never checked)
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Get sync_interval for stale threshold calculation
+        cursor.execute("SELECT sync_interval FROM collections WHERE id = ?", (collection_id,))
+        row = cursor.fetchone()
+        interval_str = (row["sync_interval"] if row else None) or "daily"
+
+        interval_seconds = {
+            "hourly": 3600,
+            "6h": 21600,
+            "daily": 86400,
+            "weekly": 604800,
+        }.get(interval_str, 86400)
+        stale_threshold = interval_seconds * 2  # 2× tolerance
+
+        cursor.execute("""
+            SELECT
+                SUM(CASE WHEN sync_enabled = 1 THEN 1 ELSE 0 END) as sync_doc_count,
+                SUM(CASE
+                    WHEN sync_enabled = 1 AND (
+                        last_checked_at IS NULL
+                        OR datetime(last_checked_at) < datetime('now', ? || ' seconds')
+                    ) THEN 1 ELSE 0 END
+                ) as stale_doc_count,
+                MAX(CASE WHEN sync_enabled = 1 THEN last_checked_at ELSE NULL END) as last_sync_at
+            FROM knowledge_documents
+            WHERE collection_id = ?
+        """, (f"-{stale_threshold}", collection_id))
+        agg = cursor.fetchone()
+        conn.close()
+
+        return {
+            "sync_doc_count": int(agg["sync_doc_count"] or 0),
+            "stale_doc_count": int(agg["stale_doc_count"] or 0),
+            "last_sync_at": agg["last_sync_at"],  # ISO timestamp or None
+        }
+
+    def get_subscription_count(self, collection_id: int) -> int:
+        """Return the number of active subscriptions for a collection (used by re-index strategy)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) as cnt FROM collection_subscriptions WHERE source_collection_id = ?",
+            (collection_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return int(row["cnt"]) if row else 0
+
+    def get_all_documents_in_collection(self, collection_id: int) -> list:
+        """Return all knowledge_documents rows for a collection (used by reindex)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM knowledge_documents WHERE collection_id = ? ORDER BY filename",
+            (collection_id,)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+
 # Global instance
 _collection_db = None
 

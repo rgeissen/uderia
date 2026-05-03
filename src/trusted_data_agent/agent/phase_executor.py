@@ -265,8 +265,12 @@ class GenericCorrectionStrategy(CorrectionStrategy):
 
 class CorrectionHandler:
     """Manages and executes the appropriate correction strategy."""
-    def __init__(self, executor: 'PlanExecutor'):
+    def __init__(self, executor: 'PlanExecutor', phase_state: dict = None):
         self.executor = executor
+        # phase_state is the per-phase dict from executor._get_phase_state(phase_num).
+        # When provided, correction_history is appended there instead of the shared
+        # executor.correction_history so parallel phases don't cross-contaminate.
+        self._phase_state = phase_state
         self.strategies = [
             TableNotFoundStrategy(executor),
             ColumnNotFoundStrategy(executor),
@@ -283,10 +287,12 @@ class CorrectionHandler:
             if strategy.can_handle(full_error_context):
                 app_logger.info(f"Using correction strategy: {strategy.__class__.__name__}")
                 corrected_action, events = await strategy.generate_correction(failed_action, error_result)
-                # Record the failed attempt so the tactical LLM sees the full correction history (Reflexion)
+                # Record the failed attempt so the tactical LLM sees the full correction history (Reflexion).
+                # Use per-phase state when available (parallel execution safety).
+                ch = self._phase_state['correction_history'] if self._phase_state else self.executor.correction_history
                 error_text = (error_summary or error_data_str)[:200].strip()
-                self.executor.correction_history.append({
-                    "attempt": len(self.executor.correction_history) + 1,
+                ch.append({
+                    "attempt": len(ch) + 1,
                     "tool_name": failed_action.get("tool_name", "unknown"),
                     "arguments": failed_action.get("arguments", {}),
                     "error": error_text,
@@ -307,9 +313,14 @@ class PhaseExecutor:
     def __init__(self, executor: 'PlanExecutor'):
         self.executor = executor
 
-    def _build_correction_history_section(self) -> str:
-        """Renders the accumulated correction history for the current phase into a prompt string."""
-        history = self.executor.correction_history
+    def _build_correction_history_section(self, correction_history: list = None) -> str:
+        """Renders the accumulated correction history for the current phase into a prompt string.
+
+        Pass correction_history explicitly when in parallel execution so each phase
+        only sees its own failures, not those from sibling parallel phases.
+        Falls back to executor.correction_history for backward compatibility.
+        """
+        history = correction_history if correction_history is not None else self.executor.correction_history
         if not history:
             return "None"
         lines = ["The following tool calls have ALREADY been attempted in this phase and FAILED:"]
@@ -935,12 +946,14 @@ class PhaseExecutor:
 
     async def _execute_standard_phase(self, phase: dict, is_loop_iteration: bool = False, loop_item: dict = None):
         """Executes a single, non-looping phase or a single iteration of a complex loop."""
-        # Clear correction history at the start of each phase so the tactical LLM
-        # only sees failures from the current phase, not from prior phases.
-        self.executor.correction_history = []
-
         phase_goal = phase.get("goal", "No goal defined.")
         phase_num = phase.get("phase", self.executor.current_phase_index + 1)
+
+        # Per-phase isolated state — prevents parallel phases from contaminating
+        # each other's correction_history (Reflexion) and last_action_str (loop detect).
+        _ps = self.executor._get_phase_state(phase_num)
+        _ps['correction_history'] = []   # fresh history for this phase execution
+        _ps['last_action_str'] = None    # reset loop-detection sentinel
         relevant_tools = phase.get("relevant_tools", [])
         strategic_args = self.executor._resolve_arguments(phase.get("arguments", {}), loop_item=loop_item)
         executable_prompt = phase.get("executable_prompt")
@@ -1465,7 +1478,8 @@ class PhaseExecutor:
             yield self.executor._format_sse_with_depth({"target": "llm", "state": "busy"}, "status_indicator_update")
 
             next_action, input_tokens, output_tokens = await self._get_next_tactical_action(
-                phase_goal, relevant_tools, enriched_args, strategic_args, executable_prompt
+                phase_goal, relevant_tools, enriched_args, strategic_args, executable_prompt,
+                phase_num=phase_num
             )
 
             # Emit any context distillation events from tactical planning
@@ -1505,11 +1519,11 @@ class PhaseExecutor:
             yield self.executor._format_sse_with_depth({"target": "llm", "state": "idle"}, "status_indicator_update")
 
             current_action_str = json.dumps(next_action, sort_keys=True)
-            if current_action_str == self.executor.last_action_str:
+            if current_action_str == _ps['last_action_str']:
                 app_logger.warning(f"LOOP DETECTED: Repeating action: {current_action_str}")
                 error_msg = "Exact repeat of previous action detected. You MUST choose a different tool or different arguments."
-                self.executor.correction_history.append({
-                    "attempt": len(self.executor.correction_history) + 1,
+                _ps['correction_history'].append({
+                    "attempt": len(_ps['correction_history']) + 1,
                     "tool_name": next_action.get("tool_name", "unknown") if isinstance(next_action, dict) else "unknown",
                     "arguments": next_action.get("arguments", {}) if isinstance(next_action, dict) else {},
                     "error": error_msg,
@@ -1517,9 +1531,9 @@ class PhaseExecutor:
                 })
                 self.executor.last_failed_action_info = error_msg
                 yield self.executor._format_sse_with_depth({"step": "System Error", "details": "Repetitive action detected.", "type": "error"}, "tool_result")
-                self.executor.last_action_str = None
+                _ps['last_action_str'] = None
                 continue
-            self.executor.last_action_str = current_action_str
+            _ps['last_action_str'] = current_action_str
 
             if self.executor.events_to_yield:
                 for event in self.executor.events_to_yield: yield event
@@ -1553,8 +1567,8 @@ class PhaseExecutor:
                     if not any(key in options for key in mapping_keys):
                         is_valid_chart = False
                         chart_error_msg = "Chart failed: 'mapping' argument was incorrect or missing. You MUST provide a valid mapping with the correct keys (e.g., 'angle', 'color')."
-                        self.executor.correction_history.append({
-                            "attempt": len(self.executor.correction_history) + 1,
+                        _ps['correction_history'].append({
+                            "attempt": len(_ps['correction_history']) + 1,
                             "tool_name": "TDA_Charting",
                             "arguments": next_action.get("arguments", {}),
                             "error": chart_error_msg,
@@ -1573,8 +1587,8 @@ class PhaseExecutor:
                                     if column_name in first_row and not self._is_numeric(first_row[column_name]):
                                         is_valid_chart = False
                                         chart_error_msg = f"Chart failed: non-numeric column '{column_name}' mapped to '{role}' role which requires a number. You MUST map a numeric column to this role."
-                                        self.executor.correction_history.append({
-                                            "attempt": len(self.executor.correction_history) + 1,
+                                        _ps['correction_history'].append({
+                                            "attempt": len(_ps['correction_history']) + 1,
                                             "tool_name": "TDA_Charting",
                                             "arguments": next_action.get("arguments", {}),
                                             "error": chart_error_msg,
@@ -1587,7 +1601,7 @@ class PhaseExecutor:
                         app_logger.warning(f"Silent chart failure detected. Reason: {self.executor.last_failed_action_info}")
                         continue
 
-                self.executor.last_action_str = None
+                _ps['last_action_str'] = None
                 break # Successful action, exit the while loop
             else:
                 app_logger.warning(f"Action failed. Attempt {phase_attempts}/{max_phase_attempts} for phase.")
@@ -2345,7 +2359,8 @@ class PhaseExecutor:
                     self.executor._log_system_event(event_data)
                     yield self.executor._format_sse_with_depth(event_data)
 
-                    corrected_action, correction_events = await self._attempt_tool_self_correction(action, tool_result)
+                    corrected_action, correction_events = await self._attempt_tool_self_correction(
+                        action, tool_result, phase_num=phase_num)
 
                     # --- EPC: self_correction step ---
                     try:
@@ -2509,7 +2524,7 @@ class PhaseExecutor:
         return enriched_args, events_to_yield, was_enriched
 
 
-    async def _get_next_tactical_action(self, current_phase_goal: str, relevant_tools: list[str], enriched_args: dict, strategic_args: dict, executable_prompt: str = None) -> tuple[dict | str, int, int]:
+    async def _get_next_tactical_action(self, current_phase_goal: str, relevant_tools: list[str], enriched_args: dict, strategic_args: dict, executable_prompt: str = None, phase_num: int = None) -> tuple[dict | str, int, int]:
         """Makes a tactical LLM call to decide the single next best action for the current phase."""
 
         permitted_tools_with_details = ""
@@ -2584,6 +2599,10 @@ class PhaseExecutor:
         # Store distillation events for caller to emit via SSE
         self._pending_distill_events = distill_events
 
+        # Resolve per-phase correction history (parallel execution safety).
+        _phase_ch = (self.executor._get_phase_state(phase_num)['correction_history']
+                     if phase_num is not None else self.executor.correction_history)
+
         # === ContextBuilder integration (Phase 3a) ===
         _builder = getattr(self.executor, 'context_builder', None)
         if _builder and _builder.has_assembled_context:
@@ -2592,7 +2611,7 @@ class PhaseExecutor:
                     "workflow_goal": self.executor.workflow_goal_prompt,
                     "current_phase_goal": current_phase_goal,
                     "strategic_arguments_section": strategic_arguments_section,
-                    "correction_history_section": self._build_correction_history_section(),
+                    "correction_history_section": self._build_correction_history_section(_phase_ch),
                     "loop_context_section": loop_context_section,
                     "context_enrichment_section": context_enrichment_section,
                     "permitted_prompts_with_details": permitted_prompts_with_details,
@@ -2623,7 +2642,7 @@ class PhaseExecutor:
                 "strategic_arguments_section": strategic_arguments_section,
                 "permitted_tools_with_details": permitted_tools_with_details,
                 "permitted_prompts_with_details": permitted_prompts_with_details,
-                "correction_history_section": self._build_correction_history_section(),
+                "correction_history_section": self._build_correction_history_section(_phase_ch),
                 "turn_action_history": json.dumps(distilled_turn_history, indent=2),
                 "all_collected_data": json.dumps(distilled_workflow_state, indent=2),
                 "loop_context_section": loop_context_section,
@@ -2915,10 +2934,14 @@ class PhaseExecutor:
         self.executor.current_phase_index = 0
         self.executor.turn_action_history.append({"action": "RECOVERY_REPLAN", "result": {"status": "success"}})
 
-    async def _attempt_tool_self_correction(self, failed_action: dict, error_result: dict) -> tuple[dict | None, list]:
+    async def _attempt_tool_self_correction(self, failed_action: dict, error_result: dict, phase_num: int = None) -> tuple[dict | None, list]:
         """
         Delegates the correction task to the CorrectionHandler, which uses the
         Strategy Pattern to find and execute the appropriate recovery logic.
+
+        phase_num is forwarded so CorrectionHandler appends to the per-phase
+        correction_history rather than the shared executor attribute.
         """
-        correction_handler = CorrectionHandler(self.executor)
+        phase_state = self.executor._get_phase_state(phase_num) if phase_num is not None else None
+        correction_handler = CorrectionHandler(self.executor, phase_state=phase_state)
         return await correction_handler.attempt_correction(failed_action, error_result)

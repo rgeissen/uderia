@@ -1,0 +1,11 @@
+{
+  "_comment": "Copy to pipeline_config.json — never commit credentials. This file is a reference only; build.py reads from environment variables and CLI args.",
+  "docs_root": "/path/to/uderia",
+  "output_dir": "agent_packs/uderia_expert/output",
+  "embedding_model": "all-MiniLM-L6-v2",
+  "chunk_size": 1000,
+  "chunk_overlap": 200,
+  "sync_interval": "daily",
+  "uderia_base_url": "http://localhost:5050",
+  "_credentials_note": "Set UDERIA_USERNAME and UDERIA_PASSWORD as environment variables — never store them here"
+}

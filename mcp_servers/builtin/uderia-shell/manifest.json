@@ -1,0 +1,83 @@
+{
+  "id": "uderia-shell",
+  "name": "uderia-shell",
+  "display_name": "Uderia Shell",
+  "description": "Command execution in an isolated Docker container. Every invocation runs in a fresh throwaway container — no host filesystem access, no host network. Requires Docker on the Uderia host.",
+  "version": "1.0.0",
+  "transport": "stdio",
+  "install_type": "builtin",
+  "entry_point": "mcp_servers/builtin/uderia-shell/server.py",
+  "tools": ["exec_command", "run_script", "list_processes", "kill_process"],
+  "tool_schemas": [
+    {
+      "name": "exec_command",
+      "description": "Execute a shell command inside an isolated Docker container and return stdout, stderr, and exit code.",
+      "arguments": [
+        {"name": "command", "type": "string", "description": "The shell command to execute (must be in the ALLOWED_COMMANDS allowlist).", "required": true},
+        {"name": "working_dir", "type": "string", "description": "Working directory inside the container (default: /workspace).", "required": false}
+      ]
+    },
+    {
+      "name": "run_script",
+      "description": "Run a multi-line script inside an isolated Docker container and return the output.",
+      "arguments": [
+        {"name": "script", "type": "string", "description": "The script content to execute.", "required": true},
+        {"name": "language", "type": "string", "description": "Script language — 'python', 'bash', or 'sh' (default: python).", "required": false}
+      ]
+    },
+    {
+      "name": "list_processes",
+      "description": "List currently running processes inside the active Docker container.",
+      "arguments": []
+    },
+    {
+      "name": "kill_process",
+      "description": "Stop a running Docker container by its container ID.",
+      "arguments": [
+        {"name": "container_id", "type": "string", "description": "The Docker container ID to stop.", "required": true}
+      ]
+    }
+  ],
+  "credential_schema": {},
+  "config_schema": {
+    "DOCKER_IMAGE": {
+      "label": "Docker image",
+      "description": "Container image to use for command execution.",
+      "type": "string",
+      "default": "python:3.11-slim"
+    },
+    "ALLOWED_COMMANDS": {
+      "label": "Allowed commands",
+      "description": "Comma-separated allowlist of command prefixes (e.g. python,pip,ls). Leave empty to allow any command (not recommended).",
+      "type": "string",
+      "default": "python,pip,ls,cat,grep,find,echo,date,pwd,env"
+    },
+    "MOUNT_PATHS": {
+      "label": "Mount paths",
+      "description": "Comma-separated host:container path pairs to mount into the container (e.g. /data/reports:/data). Empty = no mounts.",
+      "type": "string",
+      "default": ""
+    },
+    "EXECUTION_TIMEOUT_SECONDS": {
+      "label": "Execution timeout (seconds)",
+      "description": "Maximum execution time per command.",
+      "type": "integer",
+      "default": 30,
+      "min": 5,
+      "max": 300
+    },
+    "MEMORY_LIMIT_MB": {
+      "label": "Memory limit (MB)",
+      "description": "Container memory limit in MB.",
+      "type": "integer",
+      "default": 512,
+      "min": 64,
+      "max": 4096
+    }
+  },
+  "requires_docker": true,
+  "requires_user_auth": false,
+  "security_acknowledgment_required": true,
+  "security_acknowledgment_text": "uderia-shell executes commands on the Uderia server inside an isolated Docker container. Docker must be installed on the host. All executions are audit-logged. By enabling this server you accept responsibility for access governance.",
+  "tags": ["shell", "execution", "docker", "automation"]
+}

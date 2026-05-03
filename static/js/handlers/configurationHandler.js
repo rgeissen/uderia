@@ -2720,6 +2720,7 @@ export async function reconnectAndLoad(silent = false) {
                 await Promise.all([
                     handleLoadResources('tools'),
                     handleLoadResources('prompts'),
+                    handleLoadResources('connectors'),
                     handleLoadResources('resources')
                 ]);
             }
@@ -3532,7 +3533,7 @@ const mcpDescriptionMap = {
 };
 
 // Provider icons for card labels (with colors)
-const providerIcons = {
+export const providerIcons = {
     'google': {
         color: '#4285f4',
         icon: `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block align-text-bottom" viewBox="0 0 24 24" fill="#4285f4"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`
@@ -4615,7 +4616,9 @@ function attachProfileEventListeners() {
                         ...profile,
                         classification_results: result.classification_results,
                         classification_mode: result.classification_mode,
-                        system_tools: new Set(result.system_tools || [])
+                        system_tools: new Set(result.system_tools || []),
+                        component_tools: result.component_tools || [],
+                        platform_tools: result.platform_tools || [],
                     };
                     showClassificationModal(profileWithResults);
                 } else {
@@ -4756,14 +4759,14 @@ function showClassificationModal(profile) {
     // Build HTML for tools and prompts
     let html = '';
     
-    // Tools section
+    // MCP Server Tools section
     if (results.tools && Object.keys(results.tools).length > 0) {
         const totalTools = Object.values(results.tools).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
         html += `
             <div class="space-y-4">
                 <div class="flex items-center justify-between">
-                    <h4 class="text-base font-semibold text-white">Tools</h4>
-                    <span class="text-sm text-gray-400">${Object.keys(results.tools).length} categories • ${totalTools} total tools</span>
+                    <h4 class="text-base font-semibold" style="color: var(--text-primary);">MCP Server Tools</h4>
+                    <span class="text-sm" style="color: var(--text-muted);">${Object.keys(results.tools).length} categories • ${totalTools} total</span>
                 </div>
                 <div class="space-y-3">
         `;
@@ -4777,24 +4780,24 @@ function showClassificationModal(profile) {
             }).length;
             
             html += `
-                <div class="bg-gray-800/30 border border-gray-700/50 rounded-lg p-4">
+                <div class="rounded-lg p-4" style="background: var(--card-bg); border: 1px solid var(--border-secondary);">
                     <div class="flex items-center justify-between mb-3">
                         <h5 class="text-sm font-medium" style="color: ${categoryColor};">
                             <span class="inline-block w-2 h-2 rounded-full mr-2" style="background: ${categoryColor};"></span>
                             ${escapeHtml(category)}
                         </h5>
-                        <span class="text-xs text-gray-400">${activeCount}/${toolList.length} active</span>
+                        <span class="text-xs" style="color: var(--text-muted);">${activeCount}/${toolList.length} active</span>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
             `;
-            
+
             toolList.forEach(tool => {
                 const toolName = typeof tool === 'string' ? tool : (tool.name || 'Unknown');
                 const active = isActive(toolName, 'tool');
                 html += `
-                    <div class="text-sm font-mono px-3 py-1.5 rounded border ${active ? 'text-gray-300 bg-gray-900/30 border-gray-700/30' : 'text-gray-500 bg-gray-900/10 border-gray-700/20 opacity-50 line-through'}">
+                    <div class="text-sm font-mono px-3 py-1.5 rounded" style="${active ? 'color: var(--text-primary); background: rgba(255,255,255,0.04); border: 1px solid var(--border-secondary);' : 'color: var(--text-muted); background: transparent; border: 1px solid var(--border-secondary); opacity: 0.5; text-decoration: line-through;'}">
                         ${escapeHtml(toolName)}
-                        ${!active ? '<span class="text-xs text-red-400 ml-2">(deactivated)</span>' : ''}
+                        ${!active ? '<span class="text-xs ml-2" style="color: #f87171;">(deactivated)</span>' : ''}
                     </div>
                 `;
             });
@@ -4811,14 +4814,14 @@ function showClassificationModal(profile) {
         `;
     }
     
-    // Prompts section
+    // MCP Server Prompts section
     if (results.prompts && Object.keys(results.prompts).length > 0) {
         const totalPrompts = Object.values(results.prompts).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
         html += `
             <div class="space-y-4 border-t border-gray-700/50 pt-6">
                 <div class="flex items-center justify-between">
-                    <h4 class="text-base font-semibold text-white">Prompts</h4>
-                    <span class="text-sm text-gray-400">${Object.keys(results.prompts).length} categories • ${totalPrompts} total prompts</span>
+                    <h4 class="text-base font-semibold" style="color: var(--text-primary);">MCP Server Prompts</h4>
+                    <span class="text-sm" style="color: var(--text-muted);">${Object.keys(results.prompts).length} categories • ${totalPrompts} total</span>
                 </div>
                 <div class="space-y-3">
         `;
@@ -4832,24 +4835,24 @@ function showClassificationModal(profile) {
             }).length;
             
             html += `
-                <div class="bg-gray-800/30 border border-gray-700/50 rounded-lg p-4">
+                <div class="rounded-lg p-4" style="background: var(--card-bg); border: 1px solid var(--border-secondary);">
                     <div class="flex items-center justify-between mb-3">
                         <h5 class="text-sm font-medium" style="color: ${categoryColor};">
                             <span class="inline-block w-2 h-2 rounded-full mr-2" style="background: ${categoryColor};"></span>
                             ${escapeHtml(category)}
                         </h5>
-                        <span class="text-xs text-gray-400">${activeCount}/${promptList.length} active</span>
+                        <span class="text-xs" style="color: var(--text-muted);">${activeCount}/${promptList.length} active</span>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
             `;
-            
+
             promptList.forEach(prompt => {
                 const promptName = typeof prompt === 'string' ? prompt : (prompt.name || 'Unknown');
                 const active = isActive(promptName, 'prompt');
                 html += `
-                    <div class="text-sm font-mono px-3 py-1.5 rounded border ${active ? 'text-gray-300 bg-gray-900/30 border-gray-700/30' : 'text-gray-500 bg-gray-900/10 border-gray-700/20 opacity-50 line-through'}">
+                    <div class="text-sm font-mono px-3 py-1.5 rounded" style="${active ? 'color: var(--text-primary); background: rgba(255,255,255,0.04); border: 1px solid var(--border-secondary);' : 'color: var(--text-muted); background: transparent; border: 1px solid var(--border-secondary); opacity: 0.5; text-decoration: line-through;'}">
                         ${escapeHtml(promptName)}
-                        ${!active ? '<span class="text-xs text-red-400 ml-2">(deactivated)</span>' : ''}
+                        ${!active ? '<span class="text-xs ml-2" style="color: #f87171;">(deactivated)</span>' : ''}
                     </div>
                 `;
             });
@@ -4866,12 +4869,87 @@ function showClassificationModal(profile) {
         `;
     }
     
-    // If no tools or prompts
-    if ((!results.tools || Object.keys(results.tools).length === 0) && 
-        (!results.prompts || Object.keys(results.prompts).length === 0)) {
-        html = '<p class="text-gray-400">No tools or prompts have been classified yet.</p>';
+    // Component Tools section (always-active, shown with COMP_ display prefix)
+    const componentTools = profile.component_tools || [];
+    if (componentTools.length > 0) {
+        html += `
+            <div class="space-y-4 border-t border-gray-700/50 pt-6">
+                <div class="flex items-center justify-between">
+                    <h4 class="text-base font-semibold" style="color: var(--text-primary);">
+                        Component Tools
+                        <span class="ml-2 text-xs font-normal px-2 py-0.5 rounded" style="background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.3);">always active</span>
+                    </h4>
+                    <span class="text-sm" style="color: var(--text-muted);">${componentTools.length} tools</span>
+                </div>
+                <div class="rounded-lg p-4" style="background: var(--card-bg); border: 1px solid var(--border-secondary);">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        `;
+        componentTools.forEach(ct => {
+            const displayName = ct.display_name || ct.name;
+            const desc = ct.description || '';
+            html += `
+                <div class="text-sm font-mono px-3 py-1.5 rounded" style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); color: #c7d2fe;" title="${escapeHtml(desc)}">
+                    ${escapeHtml(displayName)}
+                </div>
+            `;
+        });
+        html += `
+                    </div>
+                </div>
+            </div>
+        `;
     }
-    
+
+    // Platform Connector Tools — render one section per connector (e.g. "Platform: Google")
+    const platformTools = profile.platform_tools || [];
+    if (platformTools.length > 0) {
+        // Group by category field
+        const ptByCategory = {};
+        platformTools.forEach(pt => {
+            const cat = pt.category || 'Platform Tools';
+            if (!ptByCategory[cat]) ptByCategory[cat] = [];
+            ptByCategory[cat].push(pt);
+        });
+        Object.entries(ptByCategory).forEach(([cat, tools]) => {
+            html += `
+                <div class="space-y-4 border-t border-gray-700/50 pt-6">
+                    <div class="flex items-center justify-between">
+                        <h4 class="text-base font-semibold" style="color: var(--text-primary);">
+                            ${escapeHtml(cat)}
+                            <span class="ml-2 text-xs font-normal px-2 py-0.5 rounded" style="background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3);">active for this profile</span>
+                        </h4>
+                        <span class="text-sm" style="color: var(--text-muted);">${tools.length} tool${tools.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="rounded-lg p-4" style="background: var(--card-bg); border: 1px solid var(--border-secondary);">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            `;
+            tools.forEach(pt => {
+                const desc = pt.description || '';
+                const argCount = (pt.arguments || []).length;
+                const argHint = argCount > 0 ? ` · ${argCount} arg${argCount !== 1 ? 's' : ''}` : '';
+                html += `
+                    <div class="text-sm font-mono px-3 py-1.5 rounded" style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); color: #6ee7b7;" title="${escapeHtml(desc)}">
+                        ${escapeHtml(pt.name)}
+                        <span class="text-xs ml-1" style="color: var(--text-muted); font-family: sans-serif;">${argHint}</span>
+                    </div>
+                `;
+            });
+            html += `
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    // If no tools, prompts, component tools, or platform tools
+    if ((!results.tools || Object.keys(results.tools).length === 0) &&
+        (!results.prompts || Object.keys(results.prompts).length === 0) &&
+        componentTools.length === 0 &&
+        platformTools.length === 0) {
+        html = '<p style="color: var(--text-muted);">No tools or prompts have been classified yet.</p>';
+    }
+
     content.innerHTML = html;
     
     // Show modal
@@ -6569,17 +6647,20 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                     const isEnabled = compSettings.enabled !== undefined ? compSettings.enabled : true;
                     const intensity = compSettings.intensity || comp.profile_defaults?.default_intensity || 'medium';
                     const hasIntensity = comp.component_type === 'action';
+                    const globallyDisabled = !!comp.globally_disabled;
 
                     return `
-                        <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-800/30 border border-gray-700/20">
+                        <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-800/30 border border-gray-700/20"
+                             style="${globallyDisabled ? 'opacity:0.45;pointer-events:none' : ''}">
                             <div class="flex items-center gap-3">
                                 <span class="text-sm text-gray-200">${comp.display_name}</span>
                                 <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-700/50 text-gray-400 uppercase tracking-wider">${comp.component_type}</span>
+                                ${globallyDisabled ? `<span class="text-[10px] px-1.5 py-0.5 rounded" style="background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.2)">Disabled globally</span>` : ''}
                             </div>
                             <div class="flex items-center gap-3">
                                 ${hasIntensity ? `
                                 <select class="comp-intensity-select text-xs bg-gray-800 border border-gray-600 rounded px-2 py-1 text-gray-300"
-                                        data-component-id="${comp.component_id}" ${!isEnabled ? 'disabled' : ''}>
+                                        data-component-id="${comp.component_id}" ${(!isEnabled || globallyDisabled) ? 'disabled' : ''}>
                                     <option value="minimal" ${intensity === 'minimal' ? 'selected' : ''}>Minimal</option>
                                     <option value="low" ${intensity === 'low' ? 'selected' : ''}>Low</option>
                                     <option value="medium" ${intensity === 'medium' ? 'selected' : ''}>Medium</option>
@@ -6587,7 +6668,8 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
                                 </select>` : ''}
                                 <label class="ind-toggle ind-toggle--sm">
                                     <input type="checkbox" class="comp-toggle"
-                                           data-component-id="${comp.component_id}" ${isEnabled ? 'checked' : ''}>
+                                           data-component-id="${comp.component_id}" ${isEnabled ? 'checked' : ''}
+                                           ${globallyDisabled ? 'disabled' : ''}>
                                     <span class="ind-track"></span>
                                 </label>
                             </div>
@@ -7193,6 +7275,11 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     // Populate Skills tab
     await _populateSkillsTab(modal, profile);
 
+    // Populate Platform Connectors section (fine-grained tool selection per profile)
+    if (profile && typeof window.loadProfileConnectorSection === 'function') {
+        await window.loadProfileConnectorSection(modal, profile.id);
+    }
+
     // Show the modal
     modal.classList.remove('hidden');
 
@@ -7288,6 +7375,10 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
             promptsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
         };
     }
+
+    // Stamp current profile ID onto save button so platform MCP tool selector can read it
+    const saveBtn = modal.querySelector('#profile-modal-save');
+    if (saveBtn) saveBtn.dataset.profileId = profileId || '';
 
     // Attach event listeners for save/cancel
     modal.querySelector('#profile-modal-cancel').onclick = () => modal.classList.add('hidden');

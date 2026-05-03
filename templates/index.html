@@ -671,7 +671,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
                     </svg>
-                    <span class="nav-link-text font-semibold">Components</span>
+                    <span class="nav-link-text font-semibold">Platform</span>
                 </a>
                 <!-- NEW: RAG Marketplace View Link -->
                 <a href="#" id="view-switch-rag-marketplace" data-view="rag-marketplace-view" class="view-switch-button flex items-center gap-x-3 px-3 py-3 text-sm text-gray-200 rounded-md hover:bg-white/10">
@@ -871,48 +871,224 @@
                             </button>
                         </div>
 
-                        <header id="tool-header" class="relative rounded-b-2xl shadow-2xl z-20 flex flex-col flex-shrink-0 border-b pt-16 collapsed" style="background: var(--sidebar-bg, rgba(36, 52, 71, 0.98)); border-color: var(--sidebar-border, rgba(148, 163, 184, 0.1));" data-requires-config="true">
-                            <!-- Capabilities Panel Content -->
-                            <nav id="resource-tabs" class="flex justify-center items-center gap-x-4 p-3 border-b border-white/10">
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white active" data-type="tools">Tools</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="prompts">Prompts</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="resources">Resources</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="knowledge-graphs">Knowledge Graphs</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="skills">Skills</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="extensions">Extensions</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="context">Context</button>
+                        <header id="tool-header" class="relative rounded-b-2xl shadow-2xl z-20 flex flex-col flex-shrink-0 border-b collapsed" style="background: var(--sidebar-bg, rgba(36, 52, 71, 0.98)); border-color: var(--sidebar-border, rgba(148, 163, 184, 0.1));" data-requires-config="true">
+                            <!-- Legacy resource-tabs: hidden, kept for JS compatibility (tab switching, counters, highlight functions) -->
+                            <nav id="resource-tabs" aria-hidden="true" style="display:none; position:absolute; pointer-events:none;">
+                                <button class="resource-tab active" data-type="tools">Tools</button>
+                                <button class="resource-tab" data-type="prompts">Prompts</button>
+                                <button class="resource-tab" data-type="connectors">Connectors</button>
+                                <button class="resource-tab" data-type="resources">Resources</button>
+                                <button class="resource-tab" data-type="knowledge-graphs">Knowledge Graphs</button>
+                                <button class="resource-tab" data-type="skills">Skills</button>
+                                <button class="resource-tab" data-type="extensions">Extensions</button>
+                                <button class="resource-tab" data-type="components">Components</button>
+                                <button class="resource-tab" data-type="context">Context</button>
                             </nav>
-                            <div id="panels-container" class="flex-1 min-h-0">
-                                <div id="tools-panel" class="resource-panel flex flex-col h-full">
-                                    <nav id="tools-categories" class="flex justify-center items-center gap-x-2 p-3 border-b border-white/10"></nav>
-                                    <div id="tools-panels-container" class="flex-1 min-h-0 overflow-y-auto p-2"></div>
-                                </div>
-                                <div id="prompts-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <nav id="prompts-categories" class="flex justify-center items-center gap-x-2 p-3 border-b border-white/10"></nav>
-                                    <div id="prompts-panels-container" class="flex-1 min-h-0 overflow-y-auto p-2"></div>
-                                </div>
-                                <div id="resources-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <nav id="resources-categories" class="flex justify-center items-center gap-x-2 p-3 border-b border-white/10"></nav>
-                                    <div id="resources-panels-container" class="flex-1 min-h-0 overflow-y-auto p-2"></div>
-                                </div>
-                                <div id="knowledge-graphs-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <div id="knowledge-graphs-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-2"></div>
-                                </div>
-                                <div id="skills-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <div id="skills-panel-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-2"></div>
-                                </div>
-                                <div id="extensions-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <div id="extensions-panel-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-2"></div>
-                                </div>
-                                <div id="context-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <div id="context-panel-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-                                        <div class="text-center text-gray-400 text-sm py-8">
-                                            <p>Context window composition for the active profile.</p>
-                                            <p class="text-xs text-gray-500 mt-1">Updated when profile changes or after each query.</p>
-                                        </div>
+
+                            <!-- ══ Resource Panel Root: Icon Rail + Drawer ══ -->
+                            <div id="resource-panel-root">
+
+                                <!-- Icon Rail — sorted alphabetically by display label -->
+                                <nav id="resource-icon-rail" class="resource-rail">
+
+                                    <button class="rail-item" data-type="components" title="Components">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-components"></span>
+                                        </span>
+                                        <span class="rail-label">Comps</span>
+                                    </button>
+
+                                    <button class="rail-item rail-item--hidden" data-type="connectors" title="Connectors">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-connectors"></span>
+                                        </span>
+                                        <span class="rail-label">Connect</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="context" title="Context">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-.98.626-1.813 1.5-2.122"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-context"></span>
+                                        </span>
+                                        <span class="rail-label">Context</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="knowledge-graphs" title="Knowledge Graphs">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-knowledge-graphs"></span>
+                                        </span>
+                                        <span class="rail-label">Graphs</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="prompts" title="MCP Prompts">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M8 9h8M8 13h5"/>
+                                                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-prompts"></span>
+                                        </span>
+                                        <span class="rail-label">MCP Prompts</span>
+                                        <span class="rail-mcp-chip">MCP</span>
+                                    </button>
+
+                                    <button class="rail-item active" data-type="tools" title="MCP Tools">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-tools"></span>
+                                        </span>
+                                        <span class="rail-label">MCP Tools</span>
+                                        <span class="rail-mcp-chip">MCP</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="extensions" title="Extensions">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-extensions"></span>
+                                        </span>
+                                        <span class="rail-label">Plugins</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="skills" title="Skills">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-skills"></span>
+                                        </span>
+                                        <span class="rail-label">Skills</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="resources" title="Resources">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-resources"></span>
+                                        </span>
+                                        <span class="rail-label">Sources</span>
+                                    </button>
+
+                                </nav>
+                                <!-- End Icon Rail -->
+
+                                <!-- Drawer -->
+                                <div id="resource-drawer">
+
+                                    <!-- Execution Pulse Strip: shown during query execution -->
+                                    <div id="execution-pulse-strip" class="pulse-strip hidden">
+                                        <div id="pulse-strip-progress"></div>
+                                        <div id="pulse-strip-body"></div>
                                     </div>
+
+                                    <!-- Panel Container -->
+                                    <div id="panels-container">
+
+                                        <div id="tools-panel" class="resource-panel flex flex-col h-full">
+                                            <div class="panel-header">
+                                                <span class="panel-title">MCP Tools</span>
+                                                <span id="tools-panel-count" class="panel-count"></span>
+                                                <button class="density-btn" data-panel="tools" title="Toggle card view">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5"/></svg>
+                                                </button>
+                                            </div>
+                                            <nav id="tools-categories" class="category-pills-row"></nav>
+                                            <div id="tools-panels-container" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="prompts-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">MCP Prompts</span>
+                                                <span id="prompts-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <nav id="prompts-categories" class="category-pills-row"></nav>
+                                            <div id="prompts-panels-container" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="connectors-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Connectors</span>
+                                                <span id="connectors-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <nav id="connectors-categories" class="category-pills-row"></nav>
+                                            <div id="connectors-panels-container" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="resources-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Resources</span>
+                                                <span id="resources-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <nav id="resources-categories" class="category-pills-row"></nav>
+                                            <div id="resources-panels-container" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="knowledge-graphs-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Knowledge Graphs</span>
+                                                <span id="kg-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <div id="knowledge-graphs-content" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="skills-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Skills</span>
+                                                <span id="skills-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <div id="skills-panel-content" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="extensions-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Extensions</span>
+                                                <span id="extensions-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <div id="extensions-panel-content" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="components-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Components</span>
+                                                <span id="components-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <div id="components-panel-content" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="context-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Context</span>
+                                            </div>
+                                            <div id="context-panel-content" class="panel-content">
+                                                <div style="text-align:center; color:var(--text-muted); font-size:13px; padding:2rem 1rem;">
+                                                    <p>Context window composition for the active profile.</p>
+                                                    <p style="font-size:11px; margin-top:0.25rem; color:var(--text-tertiary);">Updated when profile changes or after each query.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                    <!-- End Panel Container -->
                                 </div>
+                                <!-- End Drawer -->
+
                             </div>
+                            <!-- End Resource Panel Root -->
                         </header>
 
                         <div class="flex-1 flex flex-col min-h-0">
@@ -985,10 +1161,10 @@
                                                     <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                                                 </svg>
                                             </button>
-                                            <div id="welcome-config-info" class="flex items-center justify-center gap-2 flex-wrap">
-                                                <p class="text-sm text-gray-400 welcome-subtext">(Requires MCP + Google/OpenAI/Llama/Azure AI/Ollama)</p>
-                                                <a href="#" id="welcome-reconfigure-link" class="text-sm text-gray-400 hover:text-white transition-colors hidden">
-                                                    or reconfigure settings
+                                            <div id="welcome-config-info" class="flex flex-col items-center gap-2">
+                                                <div class="welcome-subtext"></div>
+                                                <a href="#" id="welcome-reconfigure-link" class="hidden text-xs transition-colors" style="text-decoration:none;color:var(--text-muted);opacity:0.5;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" style="display:inline;width:10px;height:10px;vertical-align:-1px;margin-right:3px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>reconfigure
                                                 </a>
                                             </div>
                                         </div>
@@ -1075,12 +1251,12 @@
                                             <div class="grid md:grid-cols-2 gap-x-12 gap-y-6 relative">
                                                 <!-- Timeline connector line for desktop -->
                                                 <div class="hidden md:block absolute left-1/2 top-0 bottom-0 w-px bg-white/10 welcome-timeline-item"></div>
-                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10" style="border-color:rgba(241,95,34,0.4)">
                                                     <div class="flex items-start gap-3">
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
-                                                            <p class="text-sm font-semibold text-teradata-orange">28-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">Independent Phase Parallelization — Independent plan phases and date-range calls run concurrently, reducing multi-phase query time from N × phase_latency to 1 × phase_latency.</p>
+                                                            <p class="text-sm font-semibold text-teradata-orange">02-May-2026</p>
+                                                            <p class="text-base text-white font-medium">Continuous Knowledge Sync (CDC) — Repositories stay current automatically. Only changed documents are re-processed; deleted content is removed. Sync results show exactly which files changed.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1088,8 +1264,35 @@
                                                     <div class="flex items-start gap-3">
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
-                                                            <p class="text-sm font-semibold text-teradata-orange">27-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">Engine Modularization — Fusion Optimizer split into five engine classes (Ideate, Focus, Coordinate, Optimize, Conversation) via EngineRegistry; executor reduced from ~6,800 to ~3,160 lines.</p>
+                                                            <p class="text-sm font-semibold text-teradata-orange">02-May-2026</p>
+                                                            <p class="text-base text-white font-medium">Knowledge Sync Scheduling — Set exactly when repositories sync using a datetime anchor in Platform Jobs; the schedule auto-advances after each run. Repository cards include a Manage button that opens the sync job directly.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">02-May-2026</p>
+                                                            <p class="text-base text-white font-medium">SAML 2.0 &amp; JIT Provisioning — Connect to corporate identity providers via SAML 2.0; user roles update automatically at login based on IdP group membership.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">01-May-2026</p>
+                                                            <p class="text-base text-white font-medium">Task Scheduler — Schedule any agent query to run automatically on a cron or interval; manage schedules through conversation or the split-panel UI, with results delivered by email or webhook.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">28-Apr-2026</p>
+                                                            <p class="text-base text-white font-medium">Parallel Query Execution — Multi-step queries run faster: independent plan phases and date-range iterations now execute in parallel instead of sequentially.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1098,16 +1301,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">16-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">Knowledge Graphs first-class citizens of Agent Packs — Export bundles the active KG per profile; import fully restores graph data with safe non-displacing activation. Two-mode import dialog: create new or merge into existing KG.</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
-                                                    <div class="flex items-start gap-3">
-                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
-                                                        <div>
-                                                            <p class="text-sm font-semibold text-teradata-orange">15-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">Teradata EVS Hybrid Search — Native server-side BM25 for server-side chunked collections; VantageCloud performs RRF fusion internally. Enable via the BM25 card in the repository inspector.</p>
+                                                            <p class="text-base text-white font-medium">Knowledge Graphs in Agent Packs — Export and import Knowledge Graphs as part of agent packs; import restores graphs without displacing existing active graphs.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1116,7 +1310,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">10-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">Genie Coordinator Pass-Through — Skips coordinator synthesis for single-expert queries with no prior context, cutting coordinator token cost in half</p>
+                                                            <p class="text-base text-white font-medium">Genie Coordinator Pass-Through — Single-expert queries skip the synthesis step, cutting coordinator token cost and response time in half.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1125,7 +1319,16 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">04-Apr-2026</p>
-                                                            <p class="text-base text-white font-medium">OpenRouter Support - Unified gateway to 100+ open and proprietary models via a single API key with full LangChain and Fusion Optimizer integration</p>
+                                                            <p class="text-base text-white font-medium">OpenRouter Support — Access 100+ models (Llama, Mistral, Gemma, and more) via a single API key.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
+                                                        <div>
+                                                            <p class="text-sm font-semibold text-teradata-orange">15-Apr-2026</p>
+                                                            <p class="text-base text-white font-medium">Teradata Hybrid Search — Enable BM25 hybrid search on Teradata VantageCloud knowledge repositories directly from the repository inspector.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1134,7 +1337,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">10-Mar-2026</p>
-                                                            <p class="text-base text-white font-medium">Hybrid Search - Semantic, hybrid (RRF), and keyword (BM25) search modes for Qdrant Cloud knowledge repositories</p>
+                                                            <p class="text-base text-white font-medium">Hybrid Search — Choose between semantic, hybrid (RRF), and keyword (BM25) search on Qdrant Cloud knowledge repositories.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1143,7 +1346,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">08-Mar-2026</p>
-                                                            <p class="text-base text-white font-medium">Teradata EVS Backend - Enterprise vector store with server-side embedding and connection resilience</p>
+                                                            <p class="text-base text-white font-medium">Teradata VantageCloud Backend — Store and search knowledge in Teradata VantageCloud with server-side embedding and enterprise-grade connection resilience.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1152,16 +1355,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">07-Mar-2026</p>
-                                                            <p class="text-base text-white font-medium">ChromaDB & Qdrant Cloud Backends - Production-ready vector backends with embedded and cloud options</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
-                                                    <div class="flex items-start gap-3">
-                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
-                                                        <div>
-                                                            <p class="text-sm font-semibold text-teradata-orange">06-Mar-2026</p>
-                                                            <p class="text-base text-white font-medium">Vector Store Abstraction Layer - Pluggable multi-backend vector database architecture with unified interface</p>
+                                                            <p class="text-base text-white font-medium">ChromaDB &amp; Qdrant Cloud — Zero-config local knowledge storage (ChromaDB) or managed cloud vector search (Qdrant), selectable per repository.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1170,7 +1364,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">01-Mar-2026</p>
-                                                            <p class="text-base text-white font-medium">Context Window Management - Intelligent token budget control with configurable context types and live optimization</p>
+                                                            <p class="text-base text-white font-medium">Context Window Management — Control how much of your conversation history and knowledge the agent sees; configure per profile with live token budget visualization.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1179,16 +1373,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">29-Feb-2026</p>
-                                                            <p class="text-base text-white font-medium">Canvas Component - Interactive code editor with SQL syntax highlighting and in-place execution</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="welcome-timeline-item glass-panel p-4 rounded-xl transition-all duration-300 hover:shadow-lg hover:border-teradata-orange/50 border border-white/10">
-                                                    <div class="flex items-start gap-3">
-                                                        <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
-                                                        <div>
-                                                            <p class="text-sm font-semibold text-teradata-orange">28-Feb-2026</p>
-                                                            <p class="text-base text-white font-medium">Generative UI Components - Plugin-based component architecture with hot-reload and profile-level controls</p>
+                                                            <p class="text-base text-white font-medium">Canvas Component — Write and run SQL directly in the chat canvas with syntax highlighting and live result rendering.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1197,7 +1382,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">27-Feb-2026</p>
-                                                            <p class="text-base text-white font-medium">Data Visualization (Chart Component) - Interactive charting with 16 chart types and intelligent data-to-visual mapping</p>
+                                                            <p class="text-base text-white font-medium">Data Visualization — Turn query results into interactive charts (16 types) automatically; the agent picks the right visual for your data.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1206,7 +1391,7 @@
                                                         <div class="mt-1.5 w-3 h-3 rounded-full bg-teradata-orange flex-shrink-0 shadow-lg shadow-teradata-orange/50"></div>
                                                         <div>
                                                             <p class="text-sm font-semibold text-teradata-orange">23-Feb-2026</p>
-                                                            <p class="text-base text-white font-medium">Extensions - Post-processing pipeline with 6 built-in extensions and custom framework support</p>
+                                                            <p class="text-base text-white font-medium">Extensions — Transform agent responses on the fly: extract JSON, classify, summarize, generate PDFs, or chain custom transformations with a single <code>#</code> trigger.</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1726,6 +1911,24 @@
                                     </div>
                                 </div>
                                 <div id="kg-split-content" class="kg-split-body"></div>
+                            </aside>
+
+                            <!-- Scheduler Split Panel — side-by-side with chat, hidden by default -->
+                            <aside id="scheduler-split-panel" style="display:none;">
+                                <div class="sched-split-header">
+                                    <div class="sched-split-header-left">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" style="color:#a855f7;flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                                        <span id="scheduler-split-title" class="sched-split-title-text">Task Scheduler</span>
+                                    </div>
+                                    <div class="sched-split-header-actions">
+                                        <button id="scheduler-split-close" class="sched-split-action-btn" title="Close scheduler panel">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="scheduler-split-content" class="sched-split-body"></div>
                             </aside>
                           </div>
 
@@ -2323,17 +2526,18 @@
                 </div>
             </div>
 
-            <!-- VIEW: Components Gallery -->
+            <!-- VIEW: Platform Components -->
             <div id="components-view" class="app-view w-full h-full overflow-y-auto">
                 <div class="max-w-7xl mx-auto p-8">
 
                     <!-- Page Header -->
-                    <div class="flex items-center justify-between mb-8">
+                    <div class="flex items-center justify-between mb-6">
                         <div>
-                            <h1 class="text-3xl font-bold text-white header-title mb-2">Generative UI Components</h1>
-                            <p class="text-gray-400">Manage visual components for LLM output rendering</p>
+                            <h1 class="text-3xl font-bold text-white header-title mb-2">Platform Components</h1>
+                            <p class="text-gray-400">Manage visual components and platform capability servers</p>
                         </div>
-                        <div class="flex items-center gap-3">
+                        <!-- UI Components tab actions (hidden when MCP Servers tab is active) -->
+                        <div id="platform-ui-components-actions" class="flex items-center gap-3">
                             <button id="import-component-btn-top" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5" style="display: none;">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
@@ -2347,36 +2551,110 @@
                                 Reload
                             </button>
                         </div>
-                    </div>
-
-                    <!-- Filter Pills -->
-                    <div class="flex items-center gap-4 mb-6">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs text-gray-400 uppercase tracking-wide">Category:</span>
-                            <div class="flex gap-1.5" id="component-category-filters-top">
-                                <button class="filter-pill filter-pill--active" data-filter="all">All</button>
-                                <button class="filter-pill" data-filter="action">Action</button>
-                                <button class="filter-pill" data-filter="structural">Structural</button>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs text-gray-400 uppercase tracking-wide">Status:</span>
-                            <div class="flex gap-1.5" id="component-status-filters-top">
-                                <button class="filter-pill filter-pill--active" data-filter="all">All</button>
-                                <button class="filter-pill" data-filter="active">Active</button>
-                                <button class="filter-pill" data-filter="inactive">Inactive</button>
-                            </div>
+                        <!-- Connectors tab actions -->
+                        <div id="platform-connector-actions" class="items-center gap-3 hidden">
+                            <button id="refresh-platform-connector-btn" class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5"
+                                    onclick="if(window.loadPlatformConnectorPanel) window.loadPlatformConnectorPanel()">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Refresh
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Component Gallery (cards grid) -->
-                    <div id="components-grid-top" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                        <!-- Cards rendered by componentHandler.js -->
+                    <!-- Sub-tab Navigation -->
+                    <div class="mb-6 border-b border-white/10">
+                        <div class="flex gap-4">
+                            <button id="platform-tab-ui-components"
+                                    class="platform-component-tab ind-tab ind-tab--underline active"
+                                    data-tab="ui-components"
+                                    onclick="window.switchPlatformComponentsTab('ui-components')">
+                                <div class="flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                                    </svg>
+                                    UI Components
+                                </div>
+                            </button>
+                            <button id="platform-tab-mcp-servers"
+                                    class="platform-component-tab ind-tab ind-tab--underline"
+                                    data-tab="mcp-servers"
+                                    onclick="window.switchPlatformComponentsTab('mcp-servers')">
+                                <div class="flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                                    </svg>
+                                    Connectors
+                                </div>
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- Component Detail Panel (hidden until a card is selected) -->
-                    <div id="component-detail-panel" class="hidden transition-all duration-200">
-                        <!-- Rendered dynamically by componentHandler.js when a card is clicked -->
+                    <!-- UI Components Content -->
+                    <div id="platform-content-ui-components" class="platform-component-content">
+                        <!-- Filter Pills -->
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-400 uppercase tracking-wide">Category:</span>
+                                <div class="flex gap-1.5" id="component-category-filters-top">
+                                    <button class="filter-pill filter-pill--active" data-filter="all">All</button>
+                                    <button class="filter-pill" data-filter="action">Action</button>
+                                    <button class="filter-pill" data-filter="structural">Structural</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-400 uppercase tracking-wide">Status:</span>
+                                <div class="flex gap-1.5" id="component-status-filters-top">
+                                    <button class="filter-pill filter-pill--active" data-filter="all">All</button>
+                                    <button class="filter-pill" data-filter="active">Active</button>
+                                    <button class="filter-pill" data-filter="inactive">Inactive</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Component Gallery (cards grid) -->
+                        <div id="components-grid-top" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                            <!-- Cards rendered by componentHandler.js -->
+                        </div>
+
+                        <!-- Component Detail Panel (hidden until a card is selected) -->
+                        <div id="component-detail-panel" class="hidden transition-all duration-200">
+                            <!-- Rendered dynamically by componentHandler.js when a card is clicked -->
+                        </div>
+                    </div>
+
+                    <!-- Connectors Content -->
+                    <div id="platform-content-mcp-servers" class="platform-component-content hidden">
+                        <!-- Filter Pills — mirrors UI Components filter bar -->
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-400 uppercase tracking-wide">Type:</span>
+                                <div class="flex gap-1.5" id="pmcp-type-filters">
+                                    <button class="filter-pill filter-pill--active" data-filter="all"
+                                            onclick="window._pmcpSetTypeFilter('all', this)">All</button>
+                                    <button class="filter-pill" data-filter="platform"
+                                            onclick="window._pmcpSetTypeFilter('platform', this)">Platform</button>
+                                    <button class="filter-pill" data-filter="user"
+                                            onclick="window._pmcpSetTypeFilter('user', this)">User</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-400 uppercase tracking-wide">Status:</span>
+                                <div class="flex gap-1.5" id="pmcp-status-filters">
+                                    <button class="filter-pill filter-pill--active" data-filter="all"
+                                            onclick="window._pmcpSetStatusFilter('all', this)">All</button>
+                                    <button class="filter-pill" data-filter="active"
+                                            onclick="window._pmcpSetStatusFilter('active', this)">Active</button>
+                                    <button class="filter-pill" data-filter="inactive"
+                                            onclick="window._pmcpSetStatusFilter('inactive', this)">Inactive</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="platform-connector-container">
+                            <!-- Loaded by platformConnectorHandler.js on tab activation -->
+                        </div>
                     </div>
 
                 </div>
@@ -4142,6 +4420,14 @@
                                 Optimizer
                             </div>
                         </button>
+                        <button class="admin-tab ind-tab ind-tab--underline" data-tab="platform-connector-tab">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                </svg>
+                                Components
+                            </div>
+                        </button>
                         <button class="admin-tab ind-tab ind-tab--underline" data-tab="cost-management-tab">
                             <div class="flex items-center gap-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -4164,6 +4450,15 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z" />
                                 </svg>
                                 Templates
+                            </div>
+                        </button>
+                        <button class="admin-tab ind-tab ind-tab--underline" data-tab="sso-tab"
+                            onclick="window.adminSsoHandler && window.adminSsoHandler.loadSsoConfigs()">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                </svg>
+                                SSO
                             </div>
                         </button>
                     </div>
@@ -6866,6 +7161,223 @@
                             </div>
                         </div>
 
+                        <!-- SSO Tab -->
+                        <div id="sso-tab" class="admin-tab-content hidden">
+                            <div class="flex gap-6">
+                                <!-- SSO sub-tab nav -->
+                                <div class="w-44 flex-shrink-0">
+                                    <nav class="space-y-1 sticky top-4">
+                                        <button type="button" id="sso-subtab-oidc"
+                                            class="sso-subtab ind-tab ind-tab--sidebar active"
+                                            onclick="window._switchSsoSubtab('oidc')"
+                                            style="width:100%;text-align:left;padding:0.5rem 0.75rem;display:flex;align-items:center;gap:0.5rem;">
+                                            <svg xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                                            </svg>
+                                            <span style="font-size:0.85rem;font-weight:500;">OIDC Providers</span>
+                                        </button>
+                                        <button type="button" id="sso-subtab-saml"
+                                            class="sso-subtab ind-tab ind-tab--sidebar"
+                                            onclick="window._switchSsoSubtab('saml')"
+                                            style="width:100%;text-align:left;padding:0.5rem 0.75rem;display:flex;align-items:center;gap:0.5rem;">
+                                            <svg xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                            </svg>
+                                            <span style="font-size:0.85rem;font-weight:500;">SAML 2.0</span>
+                                        </button>
+                                        <button type="button" id="sso-subtab-users"
+                                            class="sso-subtab ind-tab ind-tab--sidebar"
+                                            onclick="window._switchSsoSubtab('users')"
+                                            style="width:100%;text-align:left;padding:0.5rem 0.75rem;display:flex;align-items:center;gap:0.5rem;">
+                                            <svg xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                            </svg>
+                                            <span style="font-size:0.85rem;font-weight:500;">SSO Users</span>
+                                        </button>
+                                    </nav>
+                                </div>
+
+                                <!-- SSO sub-tab content -->
+                                <div class="flex-1 min-w-0">
+
+                                    <!-- OIDC panel -->
+                                    <div id="sso-panel-oidc" class="sso-panel">
+                                        <div class="glass-panel rounded-xl p-6">
+                                            <div class="flex items-center justify-between mb-5">
+                                                <div>
+                                                    <h3 style="font-size:1.05rem;font-weight:700;color:var(--text-primary);margin:0 0 0.25rem;">OIDC Providers</h3>
+                                                    <p style="font-size:0.82rem;color:var(--text-muted);margin:0;">Okta, Azure AD, Keycloak, Auth0, Google Workspace, Ping…</p>
+                                                </div>
+                                                <button onclick="window.adminSsoHandler && window.adminSsoHandler.openAddForm()"
+                                                    style="padding:7px 14px;border-radius:8px;border:none;background:var(--teradata-orange,#F15F22);color:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:6px;">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                                    Add OIDC Provider
+                                                </button>
+                                            </div>
+                                            <div id="sso-list-container"></div>
+                                            <div style="margin-top:1.25rem;padding:0.875rem;border-radius:8px;background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);font-size:0.78rem;color:var(--text-muted);">
+                                                <strong style="color:#93c5fd;">Setup:</strong>
+                                                Register an OAuth app in your IdP → set Redirect URI to
+                                                <code style="font-family:monospace;padding:1px 4px;border-radius:3px;background:rgba(0,0,0,0.3);">{base_url}/api/v1/auth/sso/callback/{id}</code>
+                                                → paste Issuer URL, Client ID, Secret → click Test.
+                                            </div>
+                                        </div>
+                                        <div id="sso-form-modal" class="hidden"></div>
+                                    </div>
+
+                                    <!-- SAML 2.0 panel -->
+                                    <div id="sso-panel-saml" class="sso-panel hidden">
+                                        <div class="glass-panel rounded-xl p-6">
+                                            <div class="flex items-center justify-between mb-5">
+                                                <div>
+                                                    <h3 style="font-size:1.05rem;font-weight:700;color:var(--text-primary);margin:0 0 0.25rem;">SAML 2.0 Providers</h3>
+                                                    <p style="font-size:0.82rem;color:var(--text-muted);margin:0;">ADFS, Shibboleth, Okta SAML, Ping, Oracle, SAP…</p>
+                                                </div>
+                                                <button onclick="window.adminSsoHandler && window.adminSsoHandler.openAddSamlForm()"
+                                                    style="padding:7px 14px;border-radius:8px;border:none;background:var(--teradata-orange,#F15F22);color:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:6px;">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                                    Add SAML Provider
+                                                </button>
+                                            </div>
+                                            <div id="saml-list-container"></div>
+                                            <div style="margin-top:1.25rem;padding:0.875rem;border-radius:8px;background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);font-size:0.78rem;color:var(--text-muted);">
+                                                <strong style="color:#93c5fd;">Setup:</strong>
+                                                Register Uderia as a SAML SP in your IdP →
+                                                download SP metadata from
+                                                <code style="font-family:monospace;padding:1px 4px;border-radius:3px;background:rgba(0,0,0,0.3);">/api/v1/auth/saml/{id}/metadata</code>
+                                                → upload IdP metadata or paste IdP cert/SSO URL → save.
+                                            </div>
+                                        </div>
+                                        <div id="saml-form-modal" class="hidden"></div>
+                                    </div>
+
+                                    <!-- SSO Users panel -->
+                                    <div id="sso-panel-users" class="sso-panel hidden">
+                                        <div class="glass-panel rounded-xl p-6">
+                                            <div class="flex items-center justify-between mb-5">
+                                                <div>
+                                                    <h3 style="font-size:1.05rem;font-weight:700;color:var(--text-primary);margin:0 0 0.25rem;">SSO-Provisioned Users</h3>
+                                                    <p style="font-size:0.82rem;color:var(--text-muted);margin:0;">View current IdP groups and tier assignments. Use Sync to re-apply group → tier mapping immediately.</p>
+                                                </div>
+                                                <button onclick="window.adminSsoHandler && window.adminSsoHandler.loadSsoUsers()"
+                                                    style="padding:7px 14px;border-radius:8px;border:1px solid var(--border-primary);background:transparent;color:var(--text-primary);cursor:pointer;font-size:0.85rem;font-weight:500;">
+                                                    Refresh
+                                                </button>
+                                            </div>
+                                            <div id="sso-users-container"></div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+
+                            <script>
+                            window._switchSsoSubtab = function(tab) {
+                                document.querySelectorAll('.sso-subtab').forEach(b => b.classList.remove('active'));
+                                document.querySelectorAll('.sso-panel').forEach(p => p.classList.add('hidden'));
+                                const btn = document.getElementById('sso-subtab-' + tab);
+                                const panel = document.getElementById('sso-panel-' + tab);
+                                if (btn) btn.classList.add('active');
+                                if (panel) panel.classList.remove('hidden');
+                                if (tab === 'oidc' && window.adminSsoHandler) window.adminSsoHandler.loadSsoConfigs();
+                                if (tab === 'saml' && window.adminSsoHandler) window.adminSsoHandler.loadSamlConfigs();
+                                if (tab === 'users' && window.adminSsoHandler) window.adminSsoHandler.loadSsoUsers();
+                            };
+                            </script>
+                        </div>
+
+                        <!-- Platform Components Tab (Components Administration) -->
+                        <div id="platform-connector-tab" class="admin-tab-content hidden">
+                            <div class="flex gap-6">
+                                <!-- Vertical Tab Bar — Connectors is fixed; component entries are dynamic -->
+                                <div class="w-52 flex-shrink-0">
+                                    <nav id="components-admin-sidebar" class="space-y-1 sticky top-4">
+                                        <!-- Fixed: Connectors (not a component, always first) -->
+                                        <button type="button" data-platform-tab="mcp-servers" class="platform-comp-subtab ind-tab ind-tab--sidebar active"
+                                                onclick="window.switchPlatformComponentsAdminTab('mcp-servers')">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                                            </svg>
+                                            <span class="text-sm font-medium flex-1">Connectors</span>
+                                        </button>
+                                        <!-- Divider -->
+                                        <div class="pt-1 pb-0.5 px-4">
+                                            <div class="border-t" style="border-color:rgba(148,163,184,0.1)"></div>
+                                            <div class="flex items-center gap-1.5 mt-1.5">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--text-muted)">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                                                </svg>
+                                                <p class="text-[10px]" style="color:var(--text-muted)">Components</p>
+                                            </div>
+                                        </div>
+                                        <!-- Dynamic component entries injected by _buildComponentAdminSidebar() -->
+                                        <div id="components-admin-dynamic-nav">
+                                            <div class="py-2 px-2 text-[11px]" style="color:var(--text-muted)">Loading…</div>
+                                        </div>
+                                    </nav>
+                                </div>
+
+                                <!-- Content Area -->
+                                <div class="flex-1 min-w-0">
+                                    <!-- Connectors panel (unchanged) -->
+                                    <div id="platform-comp-panel-mcp-servers" class="platform-comp-panel space-y-6">
+                                        <div class="border-b border-gray-700 pb-3 flex items-center justify-between">
+                                            <div>
+                                                <h2 class="text-lg font-bold" style="color:var(--text-primary)" >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline mr-2" style="color:#818cf8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                                                    </svg>
+                                                    Connectors
+                                                </h2>
+                                                <p class="text-sm mt-1" style="color:var(--text-muted)">Install and govern platform-level capability servers. Each connector can be independently enabled or disabled.</p>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <button onclick="openPlatformConnectorMarketplace()"
+                                                        class="card-btn card-btn--sm flex items-center gap-1.5"
+                                                        style="background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.3);color:#818cf8">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                                    Browse Registry
+                                                </button>
+                                                <button onclick="if(window.loadPlatformConnectorAdminPanel) window.loadPlatformConnectorAdminPanel()"
+                                                        class="card-btn card-btn--sm card-btn--secondary flex items-center gap-1.5">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                                    Refresh
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div id="platform-connector-admin-container">
+                                            <div class="text-center py-8" style="color:var(--text-muted)">Loading platform connectors…</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Task Scheduler admin panel -->
+                                    <div id="platform-comp-panel-task-scheduler" class="platform-comp-panel hidden">
+                                        <div id="comp-admin-scheduler-container"></div>
+                                    </div>
+
+                                    <!-- Canvas component admin panel (injected by JS) -->
+                                    <div id="platform-comp-panel-canvas" class="platform-comp-panel hidden">
+                                        <div id="comp-admin-canvas-container" class="text-center py-8" style="color:var(--text-muted)">Loading…</div>
+                                    </div>
+
+                                    <!-- Chart component admin panel (injected by JS) -->
+                                    <div id="platform-comp-panel-chart" class="platform-comp-panel hidden">
+                                        <div id="comp-admin-chart-container" class="text-center py-8" style="color:var(--text-muted)">Loading…</div>
+                                    </div>
+
+                                    <!-- Knowledge Graph component admin panel (injected by JS) -->
+                                    <div id="platform-comp-panel-knowledge_graph" class="platform-comp-panel hidden">
+                                        <div id="comp-admin-knowledge_graph-container" class="text-center py-8" style="color:var(--text-muted)">Loading…</div>
+                                    </div>
+
+                                    <!-- Context Window component admin panel (injected by JS) -->
+                                    <div id="platform-comp-panel-context_window" class="platform-comp-panel hidden">
+                                        <div id="comp-admin-context_window-container" class="text-center py-8" style="color:var(--text-muted)">Loading…</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Tab 7: Cost Management -->
                         <div id="cost-management-tab" class="admin-tab-content hidden">
                             <!-- Cost Analytics Dashboard (Header KPIs) -->
@@ -8542,7 +9054,7 @@
     <script src="{{ url_for('static', filename='js/executionDashboard.js') }}?v=2.9"></script>
     <script src="{{ url_for('static', filename='js/templateManager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/adminManager.js') }}?v=3.0"></script>
-    <script type="module" src="{{ url_for('static', filename='js/main.js') }}?v=4.3"></script>
+    <script type="module" src="{{ url_for('static', filename='js/main.js') }}?v=4.9"></script>
     <script type="module" src="{{ url_for('static', filename='js/handlers/ragCollectionManagement.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/accessTokenManager.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/documentUploadConfigManager.js') }}"></script>
@@ -8554,6 +9066,14 @@
     <script src="{{ url_for('static', filename='js/handlers/vectorStoreHandler.js') }}"></script>
     <script src="{{ url_for('static', filename='js/oauth.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/handlers/userProfileHandler.js') }}"></script>
+    <!-- Platform Connector Handlers -->
+    <script defer src="{{ url_for('static', filename='js/handlers/platformConnectorAdminHandler.js') }}?v=2.1"></script>
+    <script defer src="{{ url_for('static', filename='js/handlers/adminSsoHandler.js') }}?v=1.0"></script>
+    <script defer src="{{ url_for('static', filename='js/handlers/platformConnectorHandler.js') }}?v=2.0"></script>
+    <!-- Task Scheduler Handler -->
+    <script defer src="{{ url_for('static', filename='js/handlers/schedulerHandler.js') }}"></script>
+    <!-- Jobs Tab Handler (Task Scheduler detail panel) -->
+    <script defer src="{{ url_for('static', filename='js/handlers/jobsHandler.js') }}"></script>
     <!-- RAG Case Modal -->
     <div id="rag-case-modal-overlay" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden opacity-0">
         <div id="rag-case-modal-content" class="glass-panel rounded-xl shadow-2xl w-full max-w-4xl p-6 transform scale-95 opacity-0 flex flex-col" style="height: 90vh;">
@@ -8622,6 +9142,12 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
                             </svg>
                             <span class="text-sm font-medium">Resources</span>
+                        </button>
+                        <button type="button" class="profile-nav-item ind-tab ind-tab--sidebar" data-profile-section="platform-connector" id="profile-nav-platform-connector">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                            </svg>
+                            <span class="text-sm font-medium">Connectors</span>
                         </button>
                     </nav>
                 </div>
@@ -9642,6 +10168,25 @@
 
                     </div><!-- End profile-section-resources -->
 
+                    <!-- ============================================================ -->
+                    <!-- SECTION: PLATFORM CONNECTORS -->
+                    <!-- ============================================================ -->
+                    <div id="profile-section-platform-connector" class="profile-modal-section space-y-4 hidden">
+                        <div class="border-b border-gray-700/60 pb-2 mb-2">
+                            <h2 class="text-base font-bold text-white flex items-center gap-2">
+                                <svg class="h-5 w-5" fill="none" stroke="#818cf8" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/>
+                                </svg>
+                                Connectors
+                            </h2>
+                            <p class="text-xs text-gray-500 mt-1">Fine-tune which platform tools are active for this profile. Enable/disable connectors in Platform Components → Connectors.</p>
+                        </div>
+                        <!-- Populated by platformConnectorHandler.js → loadProfileConnectorSection() -->
+                        <div id="profile-connector-content">
+                            <div class="text-center text-gray-500 text-sm py-6">Loading connector configuration…</div>
+                        </div>
+                    </div><!-- End profile-section-platform-connector -->
+
                 </div><!-- End right panel -->
             </div><!-- End two-column body -->
 
@@ -10052,13 +10597,13 @@
                         if (buttonText === 'Configure Application') {
                             // Profile needs configuration - go to credentials view
                             console.log('[Welcome Button] Configure Application clicked - switching to credentials view');
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=1.6');
                             handleViewSwitch('credentials-view');
                             return;
                         }
                         
-                        // Button says "Start Conversation" - profile is valid, proceed with session
-                        console.log('[Welcome Button] Start Conversation clicked (authenticated user)');
+                        // Button says "Start Reasoning" - profile is valid, proceed with session
+                        console.log('[Welcome Button] Start Reasoning clicked (authenticated user)');
                         
                         // Show loading state - keep welcome screen visible
                         if (welcomeBtn) welcomeBtn.disabled = true;
@@ -10074,7 +10619,7 @@
                             // Import required modules
                             const { checkServerStatus } = await import('/static/js/api.js');
                             const { finalizeConfiguration } = await import('/static/js/handlers/configManagement.js');
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=1.6');
                             
                             // Get current config from status
                             const status = await checkServerStatus();
@@ -10149,7 +10694,7 @@
                             } catch (validationError) {
                                 console.error('[Welcome Button] Session creation/validation failed:', validationError);
                                 // Credentials may be invalid - redirect to configuration
-                                const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
+                                const { handleViewSwitch } = await import('/static/js/ui.js?v=1.6');
                                 handleViewSwitch('credentials-view');
                                 return;
                             }
@@ -10173,7 +10718,7 @@
                         } catch (error) {
                             console.error('[Welcome Button] Error initializing:', error);
                             // Redirect to configuration on any error
-                            const { handleViewSwitch } = await import('/static/js/ui.js?v=3.2');
+                            const { handleViewSwitch } = await import('/static/js/ui.js?v=1.6');
                             handleViewSwitch('credentials-view');
                         }
                     });

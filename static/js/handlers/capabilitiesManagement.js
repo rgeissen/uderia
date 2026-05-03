@@ -12,6 +12,82 @@ import * as UI from '../ui.js?v=1.5';
 // This creates a temporary, manageable circular dependency
 import { handleStreamRequest } from '../eventHandlers.js?v=3.4';
 
+// ── Badge helpers (matching componentsPanelHandler style) ────────────────────
+
+const _IFOC = {
+    tool_enabled: { label: 'Optimize', color: '#F15F22', bg: 'rgba(241,95,34,0.10)',  border: 'rgba(241,95,34,0.25)'  },
+    llm_only:     { label: 'Ideate',   color: '#4ade80', bg: 'rgba(74,222,128,0.10)', border: 'rgba(74,222,128,0.25)' },
+    rag_focused:  { label: 'Focus',    color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.25)' },
+    genie:        { label: 'Coordinate', color: '#9333ea', bg: 'rgba(147,51,234,0.10)', border: 'rgba(147,51,234,0.25)' },
+};
+
+function _pill(text, color, bg, border, mono = false) {
+    const font = mono ? 'font-mono' : 'font-medium';
+    return `<span class="text-[10px] ${font} px-1.5 py-0.5 rounded whitespace-nowrap"
+        style="background:${bg};color:${color};border:1px solid ${border};">${text}</span>`;
+}
+
+function createKnowledgeCard(collection) {
+    const name = collection.name || collection.collection_name || collection.collection_id || 'Unknown';
+    const el = document.createElement('details');
+    el.className = 'resource-item rounded-lg';
+    el.style.cssText = 'background:var(--card-bg,rgba(30,41,59,0.5));border:1px solid var(--border-primary,rgba(148,163,184,0.18));border-left:4px solid #3b82f6;';
+
+    const typeBadge   = _pill('knowledge',   '#3b82f6', 'rgba(59,130,246,0.10)',  'rgba(59,130,246,0.25)');
+    const storeBadge  = _pill('vector store', '#34d399', 'rgba(16,185,129,0.12)',  'rgba(16,185,129,0.25)', true);
+    const activeBadge = _pill('ACTIVE',       '#4ade80', 'rgba(74,222,128,0.10)',  'rgba(74,222,128,0.2)');
+
+    el.innerHTML = `
+        <summary style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;border-radius:8px;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;">
+                <span style="font-size:13px;font-weight:500;color:var(--text-primary,#e5e7eb);">${name}</span>
+                ${typeBadge}${storeBadge}${activeBadge}
+            </div>
+            <svg class="chevron" style="width:16px;height:16px;flex-shrink:0;color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+        </summary>
+        <div style="padding:8px 12px 10px;font-size:11px;color:var(--text-muted,#9ca3af);border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
+            Semantically searched on every query using this profile.
+        </div>`;
+    return el;
+}
+
+function createCoordCard(entry) {
+    const tag = entry.tag || 'Unknown';
+    const profileType = entry.profile_type || '';
+    const ifoc = _IFOC[profileType] || { label: profileType, color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.2)' };
+
+    const el = document.createElement('details');
+    el.className = 'resource-item rounded-lg';
+    el.style.cssText = `background:var(--card-bg,rgba(30,41,59,0.5));border:1px solid var(--border-primary,rgba(148,163,184,0.18));border-left:4px solid ${ifoc.color};`;
+
+    const tagPill   = UI.renderProfileTag(tag, profileType);
+    const ifocBadge = _pill(ifoc.label, ifoc.color, ifoc.bg, ifoc.border);
+
+    const descriptions = {
+        tool_enabled: 'Multi-step planning with MCP tool execution.',
+        llm_only:     'Direct LLM conversation, optional tool access.',
+        rag_focused:  'Knowledge retrieval from document collections.',
+        genie:        'Nested coordination across multiple profiles.',
+    };
+
+    el.innerHTML = `
+        <summary style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;border-radius:8px;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;">
+                ${tagPill}
+                ${ifocBadge}
+            </div>
+            <svg class="chevron" style="width:16px;height:16px;flex-shrink:0;color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+        </summary>
+        <div style="padding:8px 12px 10px;font-size:11px;color:var(--text-muted,#9ca3af);border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
+            ${descriptions[profileType] || 'Child profile coordinated by this profile.'}
+        </div>`;
+    return el;
+}
+
 /**
  * Loads resources (tools, prompts, etc.) for a given type and populates the UI.
  * @param {string} type - The type of resource to load (e.g., 'tools', 'prompts').
@@ -78,7 +154,7 @@ export async function handleLoadResources(type) {
 
         Object.keys(data).forEach(category => {
             const categoryTab = document.createElement('button');
-            categoryTab.className = 'category-tab px-4 py-2 rounded-md font-semibold text-sm transition-colors hover:bg-[#D9501A]';
+            categoryTab.className = 'category-tab';
             categoryTab.textContent = category;
             categoryTab.dataset.category = category;
             categoryTab.dataset.type = type;
@@ -131,7 +207,20 @@ export function renderResourcePanel(type) {
     const tabButton = document.querySelector(`.resource-tab[data-type="${type}"]`);
     const categoriesContainer = document.getElementById(`${type}-categories`);
     const panelsContainer = document.getElementById(`${type}-panels-container`);
+    const panelTitle = document.querySelector(`#${type}-panel .panel-title`);
     const typeCapitalized = type.charAt(0).toUpperCase() + type.slice(1);
+
+    // Helper: update the rail button label + hide/show the MCP chip for special profile modes
+    const setRailLabel = (label, showMcpChip = false) => {
+        if (type !== 'tools') return;
+        const railBtn = document.querySelector('.rail-item[data-type="tools"]');
+        if (!railBtn) return;
+        const lbl = railBtn.querySelector('.rail-label');
+        const chip = railBtn.querySelector('.rail-mcp-chip');
+        if (lbl) lbl.textContent = label;
+        if (chip) chip.style.display = showMcpChip ? '' : 'none';
+        railBtn.title = label;
+    };
 
     try {
         // Use data from state instead of fetching
@@ -145,178 +234,131 @@ export function renderResourcePanel(type) {
             const knowledgeCollections = state.activeLlmOnlyProfile.knowledgeCollections || [];
             const hasKnowledge = knowledgeCollections.length > 0;
 
-            if (tabButton) {
-                tabButton.style.display = 'inline-block';
-                tabButton.textContent = hasKnowledge ? `Tools (Knowledge)` : `Tools (Conversation)`;
-            }
-
             // Hide Resources tab for LLM-only profiles without MCP tools
             const resourcesTab = document.querySelector('.resource-tab[data-type="resources"]');
-            if (resourcesTab) {
-                resourcesTab.style.display = 'none';
-            }
-
-            // Hide categories container to avoid double border
-            categoriesContainer.innerHTML = '';
-            categoriesContainer.style.display = 'none';
+            if (resourcesTab) resourcesTab.style.display = 'none';
 
             if (hasKnowledge) {
-                // Show knowledge-focused message for LLM-only profiles with knowledge collections
-                // Clean book/document icon representing knowledge
-                panelsContainer.innerHTML = `
-                    <div class="p-6 text-center space-y-3">
-                        <svg class="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <!-- Open book -->
-                            <path d="M4 19.5 C4 18.1 5.1 17 6.5 17 L12 17 L12 6.5 C12 5.7 11.3 5 10.5 5 L6.5 5 C5.1 5 4 6.1 4 7.5 Z" stroke-width="2" stroke-linejoin="round"/>
-                            <path d="M20 19.5 C20 18.1 18.9 17 17.5 17 L12 17 L12 6.5 C12 5.7 12.7 5 13.5 5 L17.5 5 C18.9 5 20 6.1 20 7.5 Z" stroke-width="2" stroke-linejoin="round"/>
-                            <!-- Page lines -->
-                            <line x1="7" y1="9" x2="10" y2="9" stroke-width="1.5" stroke-linecap="round"/>
-                            <line x1="7" y1="12" x2="10" y2="12" stroke-width="1.5" stroke-linecap="round"/>
-                            <line x1="14" y1="9" x2="17" y2="9" stroke-width="1.5" stroke-linecap="round"/>
-                            <line x1="14" y1="12" x2="17" y2="12" stroke-width="1.5" stroke-linecap="round"/>
-                        </svg>
-                        <div class="text-lg font-semibold text-gray-200">Knowledge-Enhanced Conversation</div>
-                        <div class="text-sm text-gray-400 max-w-md mx-auto">
-                            This profile uses LLM conversation enhanced with knowledge retrieval from document repositories.
-                            It doesn't use MCP tools - instead, it searches configured knowledge collections.
-                        </div>
-                        ${knowledgeCollections.length > 0 ? `
-                            <div class="mt-4 text-sm text-gray-300">
-                                <div class="font-semibold mb-2">Knowledge Collections:</div>
-                                <div class="flex flex-wrap gap-2 justify-center">
-                                    ${knowledgeCollections.map(collection => {
-                                        const name = collection.name || collection.collection_name || 'Unknown';
-                                        return `<span class="px-3 py-1 bg-gray-700 rounded-md">${name}</span>`;
-                                    }).join('')}
-                                </div>
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
+                // Render KNOWLEDGE category with collection cards (same as rag_focused path)
+                if (tabButton) {
+                    tabButton.style.display = 'inline-block';
+                    tabButton.textContent = `Tools (${knowledgeCollections.length})`;
+                }
+                if (panelTitle) panelTitle.textContent = 'Knowledge';
+                setRailLabel('Knowledge');
+
+                categoriesContainer.innerHTML = '';
+                categoriesContainer.style.display = 'none';
+                panelsContainer.innerHTML = '';
+
+                const panel = document.createElement('div');
+                panel.id = 'panel-tools-knowledge';
+                panel.className = 'category-panel open px-4 space-y-2';
+                panel.dataset.category = 'knowledge';
+
+                knowledgeCollections.forEach(collection => {
+                    panel.appendChild(createKnowledgeCard(collection));
+                });
+                panelsContainer.appendChild(panel);
             } else {
-                // Show pure conversation message for LLM-only profiles without any external resources
+                // Pure conversation: no tab, minimal message
+                if (tabButton) tabButton.style.display = 'none';
+                categoriesContainer.innerHTML = '';
+                categoriesContainer.style.display = 'none';
                 panelsContainer.innerHTML = `
                     <div class="p-6 text-center space-y-3">
                         <svg class="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <!-- Message square with dialogue waves -->
                             <rect x="4" y="6" width="16" height="12" rx="2" stroke-width="2"/>
-                            <!-- Dialogue wave lines -->
                             <path d="M8 10 Q9 9 10 10 T12 10" stroke-width="1.5" stroke-linecap="round" fill="none"/>
                             <path d="M8 13 Q10 12 12 13 T16 13" stroke-width="1.5" stroke-linecap="round" fill="none"/>
-                            <path d="M8 16 Q9 15 10 16 T12 16" stroke-width="1.5" stroke-linecap="round" fill="none"/>
                         </svg>
-                        <div class="text-lg font-semibold text-gray-200">Conversation-Focused Profile</div>
-                        <div class="text-sm text-gray-400 max-w-md mx-auto">
-                            This profile uses direct LLM conversation without external tools or data sources.
-                            It focuses on natural language understanding and generation for general-purpose dialogue.
-                        </div>
+                        <div class="text-lg font-semibold" style="color:var(--text-primary)">Conversation Profile</div>
+                        <div class="text-sm" style="color:var(--text-muted)">Direct LLM conversation — no external tools or knowledge collections.</div>
                     </div>
                 `;
             }
             return;
         }
 
-        // Special handling for Genie coordinator profiles
+        // Special handling for Genie coordinator profiles — render COORD category with child profile cards
         if (state.activeGenieProfile && type === 'tools') {
-            // Show Genie coordinator info instead of hiding the tab
+            // Resolve slave profile entries to { tag, profile_type } objects
+            // Entries may be plain IDs (string), { id, tag } objects, or full profile objects
+            const slaveEntries = (state.activeGenieProfile.slaveProfiles || []).map(entry => {
+                if (typeof entry === 'string') {
+                    return window.configState?.profiles?.find(p => p.id === entry) || null;
+                }
+                // Object entry — look up full profile to get profile_type if missing
+                if (!entry.profile_type && entry.id) {
+                    const full = window.configState?.profiles?.find(p => p.id === entry.id);
+                    return full || entry;
+                }
+                return entry;
+            }).filter(Boolean);
+
+            // Update hidden tab so rail badge picks up the count
             if (tabButton) {
                 tabButton.style.display = 'inline-block';
-                tabButton.textContent = `Tools (Coordinator)`;
+                tabButton.textContent = `Tools (${slaveEntries.length})`;
             }
+            if (panelTitle) panelTitle.textContent = 'Coordinate';
+            setRailLabel('Coordinate');
 
-            // Hide Resources tab for Genie profiles
+            // Hide Resources tab for Genie profiles (no MCP data sources)
             const resourcesTab = document.querySelector('.resource-tab[data-type="resources"]');
-            if (resourcesTab) {
-                resourcesTab.style.display = 'none';
-            }
+            if (resourcesTab) resourcesTab.style.display = 'none';
 
-            // Hide categories container to avoid double border
+            // Render cards directly — no category pill needed for a single category
             categoriesContainer.innerHTML = '';
             categoriesContainer.style.display = 'none';
-            panelsContainer.innerHTML = `
-                <div class="p-6 text-center space-y-3">
-                    <svg class="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="3" stroke-width="2"/>
-                        <circle cx="6" cy="6" r="2" stroke-width="2"/>
-                        <circle cx="18" cy="6" r="2" stroke-width="2"/>
-                        <circle cx="6" cy="18" r="2" stroke-width="2"/>
-                        <circle cx="18" cy="18" r="2" stroke-width="2"/>
-                        <line x1="9.5" y1="10.5" x2="6.8" y2="7.8" stroke-width="2"/>
-                        <line x1="14.5" y1="10.5" x2="17.2" y2="7.8" stroke-width="2"/>
-                        <line x1="9.5" y1="13.5" x2="6.8" y2="16.2" stroke-width="2"/>
-                        <line x1="14.5" y1="13.5" x2="17.2" y2="16.2" stroke-width="2"/>
-                    </svg>
-                    <div class="text-lg font-semibold text-gray-200">Genie Coordinator Profile</div>
-                    <div class="text-sm text-gray-400 max-w-md mx-auto">
-                        This profile coordinates multiple specialized profiles to answer complex questions.
-                        It doesn't use tools directly - instead, it intelligently routes queries to slave profiles.
-                    </div>
-                    ${state.activeGenieProfile.slaveProfiles && state.activeGenieProfile.slaveProfiles.length > 0 ? `
-                        <div class="mt-4 text-sm text-gray-300">
-                            <div class="font-semibold mb-2">Coordinating Profiles:</div>
-                            <div class="flex flex-wrap gap-2 justify-center">
-                                ${state.activeGenieProfile.slaveProfiles.map(entry => {
-                                    if (typeof entry === 'object' && entry.tag) {
-                                        return UI.renderProfileTag(entry.tag);
-                                    }
-                                    const profile = window.configState?.profiles?.find(p => p.id === entry);
-                                    return profile ? UI.renderProfileTag(profile.tag, profile.profile_type) : '';
-                                }).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
+            panelsContainer.innerHTML = '';
+
+            const panel = document.createElement('div');
+            panel.id = 'panel-tools-coord';
+            panel.className = 'category-panel open px-4 space-y-2';
+            panel.dataset.category = 'coord';
+
+            if (slaveEntries.length === 0) {
+                panel.innerHTML = '<p class="text-sm text-gray-400 py-4 text-center">No child profiles configured.</p>';
+            } else {
+                slaveEntries.forEach(entry => panel.appendChild(createCoordCard(entry)));
+            }
+            panelsContainer.appendChild(panel);
             return;
         }
 
-        // Special handling for RAG-focused profiles
+        // Special handling for RAG-focused profiles — render KNOWLEDGE category instead of tools
         if (state.activeRagProfile && type === 'tools') {
-            // Show RAG-focused info instead of tools
+            const collections = state.activeRagProfile.knowledgeCollections || [];
+
+            // Update hidden tab so rail badge picks up the count
             if (tabButton) {
                 tabButton.style.display = 'inline-block';
-                tabButton.textContent = `Tools (Knowledge)`;
+                tabButton.textContent = `Tools (${collections.length})`;
             }
+            if (panelTitle) panelTitle.textContent = 'Knowledge';
+            setRailLabel('Knowledge');
 
-            // Hide Resources tab for RAG profiles
+            // Hide Resources tab for RAG profiles (no MCP data sources)
             const resourcesTab = document.querySelector('.resource-tab[data-type="resources"]');
-            if (resourcesTab) {
-                resourcesTab.style.display = 'none';
-            }
+            if (resourcesTab) resourcesTab.style.display = 'none';
 
-            // Hide categories container to avoid double border
+            // Render cards directly — no category pill needed for a single category
             categoriesContainer.innerHTML = '';
             categoriesContainer.style.display = 'none';
-            panelsContainer.innerHTML = `
-                <div class="p-6 text-center space-y-3">
-                    <svg class="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <!-- Filing cabinet / archive -->
-                        <rect x="5" y="4" width="14" height="5" rx="1" stroke-width="2"/>
-                        <rect x="5" y="10" width="14" height="5" rx="1" stroke-width="2"/>
-                        <rect x="5" y="16" width="14" height="4" rx="1" stroke-width="2"/>
-                        <!-- Drawer handles -->
-                        <line x1="10" y1="6.5" x2="14" y2="6.5" stroke-width="2" stroke-linecap="round"/>
-                        <line x1="10" y1="12.5" x2="14" y2="12.5" stroke-width="2" stroke-linecap="round"/>
-                        <line x1="10" y1="18" x2="14" y2="18" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                    <div class="text-lg font-semibold text-gray-200">Knowledge-Focused Profile</div>
-                    <div class="text-sm text-gray-400 max-w-md mx-auto">
-                        This profile retrieves knowledge from document repositories to answer questions.
-                        It doesn't use tools directly - instead, it searches configured knowledge collections.
-                    </div>
-                    ${state.activeRagProfile.knowledgeCollections && state.activeRagProfile.knowledgeCollections.length > 0 ? `
-                        <div class="mt-4 text-sm text-gray-300">
-                            <div class="font-semibold mb-2">Knowledge Collections:</div>
-                            <div class="flex flex-wrap gap-2 justify-center">
-                                ${state.activeRagProfile.knowledgeCollections.map(collection => {
-                                    const name = collection.name || collection.collection_name || 'Unknown';
-                                    return `<span class="px-3 py-1 bg-gray-700 rounded-md">${name}</span>`;
-                                }).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
+            panelsContainer.innerHTML = '';
+
+            const panel = document.createElement('div');
+            panel.id = 'panel-tools-knowledge';
+            panel.className = 'category-panel open px-4 space-y-2';
+            panel.dataset.category = 'knowledge';
+
+            if (collections.length === 0) {
+                panel.innerHTML = '<p class="text-sm text-gray-400 py-4 text-center">No knowledge collections configured.</p>';
+            } else {
+                collections.forEach(collection => panel.appendChild(createKnowledgeCard(collection)));
+            }
+            panelsContainer.appendChild(panel);
             return;
         }
 
@@ -332,8 +374,10 @@ export function renderResourcePanel(type) {
         // Restore categories container for normal profiles (not special types)
         // Note: Resources tab visibility is controlled by handleLoadResources('resources') based on actual data
         if (!state.activeGenieProfile && !state.activeRagProfile && !state.activeLlmOnlyProfile) {
-            // Restore categories container display
+            // Restore categories container display and panel title for normal profiles
             categoriesContainer.style.display = 'flex';
+            if (panelTitle && type === 'tools') panelTitle.textContent = 'MCP Tools';
+            setRailLabel('MCP Tools', true);
         }
 
         if (type === 'prompts') {
@@ -350,7 +394,7 @@ export function renderResourcePanel(type) {
 
         Object.keys(data).forEach(category => {
             const categoryTab = document.createElement('button');
-            categoryTab.className = 'category-tab px-4 py-2 rounded-md font-semibold text-sm transition-colors hover:bg-[#D9501A]';
+            categoryTab.className = 'category-tab';
             categoryTab.textContent = category;
             categoryTab.dataset.category = category;
             categoryTab.dataset.type = type;

@@ -1,0 +1,98 @@
+{
+  "id": "uderia-sharepoint",
+  "name": "uderia-sharepoint",
+  "display_name": "Uderia SharePoint",
+  "description": "Microsoft SharePoint and OneDrive integration. Provides list_sites, list_libraries, list_files, read_file, upload_file, and search_files tools. Requires user Microsoft account connection.",
+  "version": "1.0.0",
+  "transport": "stdio",
+  "install_type": "builtin",
+  "entry_point": "mcp_servers/builtin/uderia-sharepoint/server.py",
+  "tools": ["list_sites", "list_libraries", "list_files", "read_file", "upload_file", "search_files"],
+  "tool_schemas": [
+    {
+      "name": "list_sites",
+      "description": "List SharePoint sites the user has access to.",
+      "arguments": [
+        {"name": "max_results", "type": "integer", "description": "Maximum number of sites (default: 20, max: 100).", "required": false}
+      ]
+    },
+    {
+      "name": "list_libraries",
+      "description": "List document libraries (drives) in a SharePoint site.",
+      "arguments": [
+        {"name": "site_id", "type": "string", "description": "SharePoint site ID (from list_sites).", "required": true}
+      ]
+    },
+    {
+      "name": "list_files",
+      "description": "List files and folders in a SharePoint document library or subfolder.",
+      "arguments": [
+        {"name": "drive_id", "type": "string", "description": "Drive/library ID (from list_libraries).", "required": true},
+        {"name": "folder_path", "type": "string", "description": "Folder path relative to library root (default: '/').", "required": false},
+        {"name": "max_results", "type": "integer", "description": "Maximum items (default: 50, max: 200).", "required": false}
+      ]
+    },
+    {
+      "name": "read_file",
+      "description": "Get file metadata and content for text files up to 4 MB.",
+      "arguments": [
+        {"name": "drive_id", "type": "string", "description": "Drive/library ID.", "required": true},
+        {"name": "item_id", "type": "string", "description": "File item ID (from list_files).", "required": true}
+      ]
+    },
+    {
+      "name": "upload_file",
+      "description": "Create or update a text file in a SharePoint document library.",
+      "arguments": [
+        {"name": "drive_id", "type": "string", "description": "Drive/library ID.", "required": true},
+        {"name": "folder_path", "type": "string", "description": "Target folder path (use '/' for root).", "required": true},
+        {"name": "file_name", "type": "string", "description": "File name including extension.", "required": true},
+        {"name": "content", "type": "string", "description": "Text content to write.", "required": true}
+      ]
+    },
+    {
+      "name": "search_files",
+      "description": "Search across all SharePoint sites and OneDrive for files matching a query.",
+      "arguments": [
+        {"name": "query", "type": "string", "description": "Search query (file name, content keywords, etc.).", "required": true},
+        {"name": "max_results", "type": "integer", "description": "Maximum results (default: 20, max: 50).", "required": false}
+      ]
+    }
+  ],
+  "credential_schema": {
+    "AZURE_CLIENT_ID": {
+      "label": "Azure App (Client) ID",
+      "description": "Application (client) ID from your Azure App Registration (Azure Portal → App registrations → your app → Overview).",
+      "required": true,
+      "sensitive": false
+    },
+    "AZURE_CLIENT_SECRET": {
+      "label": "Azure Client Secret",
+      "description": "Client secret from Azure Portal → App registrations → your app → Certificates & secrets.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "config_schema": {
+    "AZURE_TENANT_ID": {
+      "label": "Azure Tenant ID (optional)",
+      "description": "Azure AD tenant ID to restrict to a single organisation. Leave empty to allow any Microsoft account.",
+      "type": "string",
+      "default": "common"
+    }
+  },
+  "dependencies": [
+    "httpx>=0.24.0"
+  ],
+  "requires_docker": false,
+  "requires_user_auth": true,
+  "oauth_provider": "sharepoint",
+  "auth_schema": {
+    "type": "oauth2",
+    "display_name": "Microsoft",
+    "description": "Connect your Microsoft account to enable SharePoint and OneDrive tools.",
+    "icon": "microsoft"
+  },
+  "security_acknowledgment_required": false,
+  "tags": ["microsoft", "sharepoint", "onedrive", "files", "documents", "collaboration", "search"]
+}

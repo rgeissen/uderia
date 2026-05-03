@@ -1,5 +1,7 @@
 # Phase 1: Backend Foundation - COMPLETE ✅
 
+> **Note (May 2026):** This document describes the initial Phase 1 foundation. The platform has since gained a full CDC Sync Infrastructure (source_uri tracking, hash-based change detection, scheduled re-embedding, Source Root configuration). For the complete architecture including CDC sync, see [Knowledge Retrieval Architecture](../Architecture/KNOWLEDGE_RETRIEVAL_ARCHITECTURE.md#cdc-sync-infrastructure).
+
 ## Implementation Summary
 
 Phase 1 has been **fully completed** and all code is functional. The Knowledge Repository infrastructure is now ready for integration.

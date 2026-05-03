@@ -1,0 +1,92 @@
+{
+  "id": "uderia-teams",
+  "name": "uderia-teams",
+  "display_name": "Uderia Teams",
+  "description": "Microsoft Teams integration. Provides list_teams, list_channels, get_messages, send_message, and create_meeting tools. Requires user Microsoft account connection.",
+  "version": "1.0.0",
+  "transport": "stdio",
+  "install_type": "builtin",
+  "entry_point": "mcp_servers/builtin/uderia-teams/server.py",
+  "tools": ["list_teams", "list_channels", "get_messages", "send_message", "create_meeting"],
+  "tool_schemas": [
+    {
+      "name": "list_teams",
+      "description": "List Microsoft Teams the user is a member of.",
+      "arguments": [
+        {"name": "max_results", "type": "integer", "description": "Maximum number of teams to return (default: 20, max: 50).", "required": false}
+      ]
+    },
+    {
+      "name": "list_channels",
+      "description": "List channels in a Microsoft Teams team.",
+      "arguments": [
+        {"name": "team_id", "type": "string", "description": "Teams team ID (from list_teams).", "required": true},
+        {"name": "max_results", "type": "integer", "description": "Maximum number of channels (default: 50).", "required": false}
+      ]
+    },
+    {
+      "name": "get_messages",
+      "description": "Get recent messages from a Microsoft Teams channel.",
+      "arguments": [
+        {"name": "team_id", "type": "string", "description": "Teams team ID.", "required": true},
+        {"name": "channel_id", "type": "string", "description": "Channel ID (from list_channels).", "required": true},
+        {"name": "max_results", "type": "integer", "description": "Maximum number of messages (default: 20, max: 50).", "required": false}
+      ]
+    },
+    {
+      "name": "send_message",
+      "description": "Post a text message to a Microsoft Teams channel.",
+      "arguments": [
+        {"name": "team_id", "type": "string", "description": "Teams team ID.", "required": true},
+        {"name": "channel_id", "type": "string", "description": "Channel ID.", "required": true},
+        {"name": "message", "type": "string", "description": "Message text to send.", "required": true}
+      ]
+    },
+    {
+      "name": "create_meeting",
+      "description": "Create a Microsoft Teams online meeting and get the join link.",
+      "arguments": [
+        {"name": "subject", "type": "string", "description": "Meeting subject / title.", "required": true},
+        {"name": "start_datetime", "type": "string", "description": "Start time in ISO 8601 format, e.g. 2026-05-15T10:00:00+02:00.", "required": true},
+        {"name": "end_datetime", "type": "string", "description": "End time in ISO 8601 format.", "required": true},
+        {"name": "attendees", "type": "array", "description": "List of attendee email addresses / UPNs (optional).", "required": false}
+      ]
+    }
+  ],
+  "credential_schema": {
+    "AZURE_CLIENT_ID": {
+      "label": "Azure App (Client) ID",
+      "description": "Application (client) ID from your Azure App Registration (Azure Portal → App registrations → your app → Overview).",
+      "required": true,
+      "sensitive": false
+    },
+    "AZURE_CLIENT_SECRET": {
+      "label": "Azure Client Secret",
+      "description": "Client secret from Azure Portal → App registrations → your app → Certificates & secrets.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "config_schema": {
+    "AZURE_TENANT_ID": {
+      "label": "Azure Tenant ID (optional)",
+      "description": "Azure AD tenant ID to restrict to a single organisation. Leave empty to allow any Microsoft account (personal + work).",
+      "type": "string",
+      "default": "common"
+    }
+  },
+  "dependencies": [
+    "httpx>=0.24.0"
+  ],
+  "requires_docker": false,
+  "requires_user_auth": true,
+  "oauth_provider": "teams",
+  "auth_schema": {
+    "type": "oauth2",
+    "display_name": "Microsoft",
+    "description": "Connect your Microsoft account to enable Teams tools.",
+    "icon": "microsoft"
+  },
+  "security_acknowledgment_required": false,
+  "tags": ["microsoft", "teams", "chat", "meetings", "collaboration"]
+}

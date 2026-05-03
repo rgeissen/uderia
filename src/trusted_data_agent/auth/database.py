@@ -145,6 +145,27 @@ def init_database():
         # Create canvas connector credentials table
         _create_canvas_connector_tables()
 
+        # Create platform MCP server registry tables (admin-governed capability servers)
+        _create_platform_mcp_tables()
+
+        # Create scheduled tasks tables (Track B — autonomous scheduling)
+        _create_scheduled_tasks_tables()
+
+        # Scheduler enhancements: platform jobs + independent scheduler gates
+        _create_scheduler_enhancements()
+
+        # Per-user component access override table
+        _create_user_component_settings_table()
+
+        # Create SSO / OIDC configuration tables (Phase 1 SSO)
+        _create_sso_tables()
+
+        # Create SAML 2.0 + group-sync tables (Phase 2 / Phase 3 SSO)
+        _create_saml_tables()
+
+        # Knowledge repository CDC fields (ingest_epoch, source_uri, sync controls)
+        _run_knowledge_cdc_migrations()
+
         # Create default admin account if no users exist
         _create_default_admin_if_needed()
         
@@ -1617,6 +1638,316 @@ def _create_canvas_connector_tables():
         logger.error(f"Error creating canvas connector tables: {e}", exc_info=True)
 
 
+def _create_platform_mcp_tables():
+    """
+    Create platform connector registry tables.
+    These tables govern admin-installed capability servers (browser, files, shell, web, google)
+    and are strictly separate from user-configured data source servers.
+    Safe to call multiple times (CREATE TABLE IF NOT EXISTS).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "27_platform_mcp_servers.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                cursor.executescript(f.read())
+        else:
+            logger.warning("Schema file 27_platform_mcp_servers.sql not found — skipping")
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating platform connector tables: {e}", exc_info=True)
+
+
+def _create_scheduled_tasks_tables():
+    """
+    Create scheduled task tables for the autonomous scheduling component (Track B).
+    Safe to call multiple times (CREATE TABLE IF NOT EXISTS).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "28_scheduled_tasks.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 28_scheduled_tasks.sql")
+        else:
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                    id TEXT PRIMARY KEY,
+                    user_uuid TEXT NOT NULL,
+                    profile_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    schedule TEXT NOT NULL,
+                    enabled INTEGER DEFAULT 1,
+                    session_id TEXT,
+                    last_run_at TEXT,
+                    last_run_status TEXT,
+                    next_run_at TEXT,
+                    output_channel TEXT,
+                    output_config TEXT,
+                    max_tokens_per_run INTEGER,
+                    overlap_policy TEXT DEFAULT 'skip',
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS scheduled_task_runs (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+                    bg_task_id TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    status TEXT,
+                    skip_reason TEXT,
+                    result_summary TEXT,
+                    tokens_used INTEGER,
+                    cost_usd REAL
+                );
+                CREATE TABLE IF NOT EXISTS messaging_identities (
+                    user_uuid TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    platform_user_id TEXT NOT NULL,
+                    access_token TEXT,
+                    refresh_token TEXT,
+                    token_expiry TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (user_uuid, platform)
+                );
+            """)
+            logger.info("Created scheduled_tasks tables (inline fallback)")
+
+        conn.commit()
+        conn.close()
+
+        # Run column migrations after schema is guaranteed to exist
+        try:
+            from trusted_data_agent.core.task_scheduler import _ensure_columns
+            _ensure_columns()
+        except Exception:
+            pass
+
+    except Exception as e:
+        logger.error(f"Error creating scheduled_tasks tables: {e}", exc_info=True)
+
+
+def _create_scheduler_enhancements():
+    """
+    Apply scheduler enhancements: seed platform maintenance jobs and add independent
+    scheduler gate settings to component_settings. The job_type column migration is
+    handled by task_scheduler._ensure_columns() which runs before this.
+    Safe to call multiple times (INSERT OR IGNORE throughout).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "33_scheduler_enhancements.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            # Run only INSERT statements (safe on any install state); skip comment lines
+            for statement in sql.split(';'):
+                stmt = statement.strip()
+                if stmt and not stmt.startswith('--'):
+                    try:
+                        cursor.execute(stmt)
+                    except Exception:
+                        pass
+            conn.commit()
+            logger.debug("Applied schema: 33_scheduler_enhancements.sql")
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error applying scheduler enhancements: {e}", exc_info=True)
+
+
+def _create_user_component_settings_table():
+    """
+    Create user_component_settings table for per-user component access overrides.
+    Admin can explicitly grant or block individual users from using specific components.
+    Safe to call multiple times (CREATE TABLE IF NOT EXISTS).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "34_user_component_settings.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                sql = f.read()
+            cursor.executescript(sql)
+            logger.debug("Applied schema: 34_user_component_settings.sql")
+        else:
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS user_component_settings (
+                    id          INTEGER PRIMARY KEY,
+                    user_uuid   TEXT NOT NULL,
+                    component_id TEXT NOT NULL,
+                    is_enabled  INTEGER NOT NULL DEFAULT 1,
+                    note        TEXT,
+                    updated_at  TEXT DEFAULT (datetime('now')),
+                    updated_by  TEXT,
+                    UNIQUE(user_uuid, component_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_ucs_user_uuid
+                    ON user_component_settings(user_uuid);
+                CREATE INDEX IF NOT EXISTS idx_ucs_component_id
+                    ON user_component_settings(component_id);
+            """)
+            logger.info("Created user_component_settings table (inline fallback)")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error creating user_component_settings table: {e}", exc_info=True)
+
+
+def _create_sso_tables():
+    """
+    Create SSO / OIDC configuration tables and add SSO columns to users.
+    Safe to call multiple times (CREATE TABLE IF NOT EXISTS + ALTER TABLE checks).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        conn = sqlite3.connect(DATABASE_URL.replace('sqlite:///', ''))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "30_sso.sql"
+        if schema_path.exists():
+            with open(schema_path, 'r') as f:
+                cursor.executescript(f.read())
+            logger.debug("Applied schema: 30_sso.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS sso_configurations (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    provider TEXT NOT NULL DEFAULT 'oidc',
+                    issuer_url TEXT NOT NULL,
+                    client_id TEXT NOT NULL,
+                    client_secret TEXT NOT NULL,
+                    discovery_doc TEXT,
+                    discovery_cached_at TEXT,
+                    scopes TEXT NOT NULL DEFAULT '["openid","profile","email"]',
+                    email_claim TEXT NOT NULL DEFAULT 'email',
+                    name_claim TEXT NOT NULL DEFAULT 'name',
+                    groups_claim TEXT,
+                    sub_claim TEXT NOT NULL DEFAULT 'sub',
+                    group_tier_map TEXT,
+                    default_tier TEXT NOT NULL DEFAULT 'user',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    auto_provision_users INTEGER NOT NULL DEFAULT 1,
+                    require_email_verification INTEGER NOT NULL DEFAULT 0,
+                    display_order INTEGER NOT NULL DEFAULT 0,
+                    button_label TEXT,
+                    icon_url TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS sso_sessions (
+                    id TEXT PRIMARY KEY,
+                    user_uuid TEXT NOT NULL,
+                    sso_config_id TEXT NOT NULL,
+                    id_token_hash TEXT NOT NULL,
+                    sid TEXT,
+                    sub TEXT NOT NULL,
+                    issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    expires_at TEXT,
+                    revoked INTEGER NOT NULL DEFAULT 0,
+                    revoked_at TEXT
+                );
+            """)
+
+        # Migrate users table: add SSO columns if not present
+        sso_columns = [
+            ("auth_method", "TEXT"),
+            ("sso_config_id", "TEXT"),
+            ("sso_session_id", "TEXT"),
+            ("sso_groups", "TEXT"),
+        ]
+        for col, col_type in sso_columns:
+            try:
+                cursor.execute(f"SELECT {col} FROM users LIMIT 1")
+            except sqlite3.OperationalError:
+                logger.info(f"Adding {col} column to users table for SSO")
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
+                conn.commit()
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating SSO tables: {e}", exc_info=True)
+
+
+def _create_saml_tables():
+    """
+    Create SAML 2.0 provider configuration table and group-sync audit log.
+    Safe to call multiple times (uses CREATE TABLE IF NOT EXISTS).
+    """
+    import sqlite3
+    from pathlib import Path
+
+    try:
+        db_path = Path(__file__).resolve().parents[3] / "tda_auth.db"
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        schema_path = Path(__file__).resolve().parents[3] / "schema" / "31_saml.sql"
+        if schema_path.exists():
+            cursor.executescript(schema_path.read_text())
+            logger.debug("Applied schema: 31_saml.sql")
+        else:
+            # Inline fallback
+            cursor.executescript("""
+                CREATE TABLE IF NOT EXISTS saml_configurations (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL,
+                    sp_entity_id TEXT NOT NULL, sp_acs_url TEXT,
+                    sp_private_key TEXT, sp_certificate TEXT,
+                    idp_entity_id TEXT NOT NULL, idp_sso_url TEXT NOT NULL,
+                    idp_slo_url TEXT, idp_certificate TEXT NOT NULL,
+                    email_attr TEXT DEFAULT 'email', name_attr TEXT DEFAULT 'displayName',
+                    groups_attr TEXT, default_tier TEXT DEFAULT 'user',
+                    group_tier_map TEXT, auto_provision_users INTEGER DEFAULT 1,
+                    enabled INTEGER DEFAULT 1, button_label TEXT, icon_url TEXT,
+                    display_order INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS sso_sync_events (
+                    id TEXT PRIMARY KEY, user_uuid TEXT NOT NULL,
+                    config_id TEXT, config_type TEXT, sync_type TEXT NOT NULL,
+                    old_tier TEXT, new_tier TEXT, old_groups TEXT, new_groups TEXT,
+                    changed INTEGER DEFAULT 0,
+                    synced_at TEXT DEFAULT (datetime('now'))
+                );
+            """)
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error creating SAML tables: {e}", exc_info=True)
+
+
 def _run_user_table_migrations():
     """
     Run schema migrations for the users table.
@@ -1715,6 +2046,134 @@ def _run_consumption_table_migrations():
 
     except Exception as e:
         logger.error(f"Error running consumption table migrations: {e}", exc_info=True)
+
+
+def _run_knowledge_cdc_migrations():
+    """
+    Add CDC fields to knowledge_documents and collections tables.
+    Safe to call multiple times — checks column existence before altering.
+
+    knowledge_documents:
+        source_uri       — where the document was fetched from (NULL = manual upload)
+        ingest_epoch     — Unix timestamp of last successful write; generation cleanup key
+        sync_enabled     — 1 = scheduler re-checks source_uri on each sync run
+        last_checked_at  — ISO8601 UTC of last hash-check (manual or scheduled)
+
+    collections:
+        sync_interval         — scheduler cadence: 'hourly','6h','daily','weekly'
+        embedding_model_locked — 1 after a validated re-index; 0 = consistency unverified
+    """
+    import sqlite3
+
+    try:
+        db_path = DEFAULT_DB_PATH
+        if not db_path.exists():
+            return
+
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # knowledge_documents: source_uri
+        try:
+            cursor.execute("SELECT source_uri FROM knowledge_documents LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding source_uri to knowledge_documents")
+            cursor.execute("ALTER TABLE knowledge_documents ADD COLUMN source_uri TEXT")
+            conn.commit()
+
+        # knowledge_documents: ingest_epoch
+        try:
+            cursor.execute("SELECT ingest_epoch FROM knowledge_documents LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding ingest_epoch to knowledge_documents")
+            cursor.execute("ALTER TABLE knowledge_documents ADD COLUMN ingest_epoch INTEGER")
+            # Backfill from created_at so existing docs have a valid epoch
+            cursor.execute("""
+                UPDATE knowledge_documents
+                SET ingest_epoch = CAST(strftime('%s', created_at) AS INTEGER)
+                WHERE ingest_epoch IS NULL AND created_at IS NOT NULL
+            """)
+            conn.commit()
+            if cursor.rowcount > 0:
+                logger.info(f"CDC: backfilled ingest_epoch for {cursor.rowcount} existing documents")
+
+        # knowledge_documents: sync_enabled
+        try:
+            cursor.execute("SELECT sync_enabled FROM knowledge_documents LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding sync_enabled to knowledge_documents")
+            cursor.execute("ALTER TABLE knowledge_documents ADD COLUMN sync_enabled INTEGER DEFAULT 0")
+            conn.commit()
+
+        # knowledge_documents: last_checked_at
+        try:
+            cursor.execute("SELECT last_checked_at FROM knowledge_documents LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding last_checked_at to knowledge_documents")
+            cursor.execute("ALTER TABLE knowledge_documents ADD COLUMN last_checked_at TEXT")
+            conn.commit()
+
+        # knowledge_documents: chunk_count (per-document; summed by sync_collection_counts)
+        try:
+            cursor.execute("SELECT chunk_count FROM knowledge_documents LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding chunk_count to knowledge_documents")
+            cursor.execute("ALTER TABLE knowledge_documents ADD COLUMN chunk_count INTEGER DEFAULT 0")
+            conn.commit()
+
+        # collections: sync_interval
+        try:
+            cursor.execute("SELECT sync_interval FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding sync_interval to collections")
+            cursor.execute("ALTER TABLE collections ADD COLUMN sync_interval TEXT DEFAULT 'daily'")
+            conn.commit()
+
+        # collections: embedding_model_locked
+        try:
+            cursor.execute("SELECT embedding_model_locked FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding embedding_model_locked to collections")
+            cursor.execute("ALTER TABLE collections ADD COLUMN embedding_model_locked INTEGER DEFAULT 0")
+            conn.commit()
+
+        # collections: source_root (base directory for resolving relative file:// URIs)
+        try:
+            cursor.execute("SELECT source_root FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding source_root to collections")
+            cursor.execute("ALTER TABLE collections ADD COLUMN source_root TEXT DEFAULT NULL")
+            conn.commit()
+
+        # collections: next_sync_at (explicit schedule anchor; auto-advances by interval after each sync)
+        try:
+            cursor.execute("SELECT next_sync_at FROM collections LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("CDC: adding next_sync_at to collections")
+            cursor.execute("ALTER TABLE collections ADD COLUMN next_sync_at TEXT DEFAULT NULL")
+            conn.commit()
+
+        # Staleness sweep index
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_knowledge_docs_sync
+            ON knowledge_documents (collection_id, sync_enabled, last_checked_at)
+        """)
+
+        # Upsert lookup index (get_document_by_filename)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_knowledge_docs_filename
+            ON knowledge_documents (collection_id, filename)
+        """)
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"Error running knowledge CDC migrations: {e}", exc_info=True)
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def _create_default_admin_if_needed():

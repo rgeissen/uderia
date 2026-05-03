@@ -175,15 +175,8 @@ export async function loadSkillsPanel() {
             } else {
                 tabBtn.style.display = 'inline-block';
                 const activeCount = skills.filter(s => s.active).length;
-                const enabledCount = skills.filter(s => s.enabled && !s.active).length;
-                let label = 'Skills';
-                if (activeCount > 0 || enabledCount > 0) {
-                    const parts = [];
-                    if (activeCount > 0) parts.push(`${activeCount} auto`);
-                    if (enabledCount > 0) parts.push(`${enabledCount} on`);
-                    label = `Skills (${parts.join(', ')})`;
-                }
-                tabBtn.textContent = label;
+                // Use (N) format so _syncRailBadgesFromTabs can extract the count for rail-badge-skills
+                tabBtn.textContent = activeCount > 0 ? `Skills (${activeCount})` : 'Skills';
             }
         }
 
@@ -204,6 +197,32 @@ export async function loadSkillsPanel() {
             </div>
         `;
     }
+}
+
+// ── Dynamic focus (called from eventHandlers.js on skills_applied) ──────────
+
+export function highlightSkill(skillId) {
+    // Switch tab directly — do NOT call tabBtn.click() here because that triggers
+    // loadSkillsPanel() via handleResourceTabClick, which wipes the card DOM before
+    // we can highlight it.
+    document.querySelectorAll('.resource-tab').forEach(t => t.classList.remove('active'));
+    const tabBtn = document.querySelector('.resource-tab[data-type="skills"]');
+    if (tabBtn) tabBtn.classList.add('active');
+    document.querySelectorAll('.resource-panel').forEach(p => {
+        p.style.display = p.id === 'skills-panel' ? 'flex' : 'none';
+    });
+
+    const card = document.querySelector(`[data-skill-id="${CSS.escape(skillId)}"]`);
+    if (!card) {
+        // Panel not yet populated (first visit) — load it now.
+        loadSkillsPanel();
+        return;
+    }
+    if (state?.currentlySelectedResource) state.currentlySelectedResource.classList.remove('resource-selected');
+    card.open = true;
+    card.classList.add('resource-selected');
+    if (state) state.currentlySelectedResource = card;
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
 }
 
 // ── Toggle handler ──────────────────────────────────────────────────────────

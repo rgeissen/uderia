@@ -199,8 +199,9 @@ export function handleConversationAgentEvent(eventType, payload) {
             break;
 
         case 'conversation_llm_step':
-            // LLM step events are handled by ui.js for Live Status rendering
-            // No additional state tracking needed here
+        case 'conversation_llm_complete':
+        case 'component_llm_resolution':
+            // Rendered by ui.js in the Live Status window; no state tracking needed here
             break;
 
         default:

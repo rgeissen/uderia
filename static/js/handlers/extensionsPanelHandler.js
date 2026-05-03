@@ -38,6 +38,7 @@ function _getHeaders() {
 function createExtensionCard(ext) {
     const detailsEl = document.createElement('details');
     detailsEl.className = 'resource-item bg-gray-800/50 rounded-lg border border-gray-700/60';
+    detailsEl.dataset.extName = ext.activation_name;
 
     // Amber left border for activated extensions
     detailsEl.style.borderLeftWidth = '4px';
@@ -158,6 +159,30 @@ export async function loadExtensionsPanel() {
             </div>
         `;
     }
+}
+
+// ── Dynamic focus (called from eventHandlers.js on extension_start/complete) ──
+
+export function highlightExtension(extName) {
+    // Switch tab directly — avoids tabBtn.click() which would trigger loadExtensionsPanel()
+    // and wipe the card DOM before it can be highlighted.
+    document.querySelectorAll('.resource-tab').forEach(t => t.classList.remove('active'));
+    const tabBtn = document.querySelector('.resource-tab[data-type="extensions"]');
+    if (tabBtn) tabBtn.classList.add('active');
+    document.querySelectorAll('.resource-panel').forEach(p => {
+        p.style.display = p.id === 'extensions-panel' ? 'flex' : 'none';
+    });
+
+    const card = document.querySelector(`[data-ext-name="${CSS.escape(extName)}"]`);
+    if (!card) {
+        loadExtensionsPanel();
+        return;
+    }
+    if (state.currentlySelectedResource) state.currentlySelectedResource.classList.remove('resource-selected');
+    card.open = true;
+    card.classList.add('resource-selected');
+    state.currentlySelectedResource = card;
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
 }
 
 // ── Reset (called on session switch) ─────────────────────────────────────────

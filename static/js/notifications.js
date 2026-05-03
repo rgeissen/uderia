@@ -572,7 +572,9 @@ export function subscribeToNotifications() {
                 break;
             }
             case 'rest_task_complete': {
-                const { session_id, turn_id, user_input, final_answer, profile_tag, extension_specs, skill_specs } = data.payload;
+                const { session_id, turn_id, user_input, final_answer, profile_tag, extension_specs, skill_specs, source } = data.payload;
+                // source is optional — 'scheduler' for background task sessions, 'rest' otherwise
+                const msgSource = source || 'rest';
 
                 // --- Definitive cleanup for REST session tracking ---
                 state.activeRestSessions.delete(session_id);
@@ -581,9 +583,42 @@ export function subscribeToNotifications() {
                 }
 
                 if (session_id === state.currentSessionId) {
-                    // User is viewing this session — render Q&A and clean up
-                    UI.addMessage('user', user_input, turn_id, true, 'rest', profile_tag, false, extension_specs || null, skill_specs || null);
-                    UI.addMessage('assistant', final_answer, turn_id, true);
+                    // User is viewing this session — render Q&A and clean up.
+                    //
+                    // Guard against duplicate messages from the race between two render paths:
+                    //
+                    // Path A: handleLoadSession loads server history → renders user message (no turn_id
+                    //         yet since it's set retroactively by the assistant message). If the task was
+                    //         still running when the user switched, history only has the user message.
+                    //         Then this notification fires and would add ANOTHER user + assistant pair.
+                    //
+                    // Path B: handleLoadSession loads complete history (both user + assistant already on
+                    //         server). This notification fires and would add a duplicate pair.
+                    //
+                    // Fix for Path B: if any DOM element already has data-turn-id matching this turn,
+                    //   the full Q&A is already rendered — skip everything.
+                    //
+                    // Fix for Path A: if the last chat bubble is a user message (no assistant after it),
+                    //   the server pre-loaded the user message but the turn wasn't complete yet.
+                    //   Skip adding the user message again; only add the assistant message.
+                    //   The assistant addMessage call will retroactively stamp data-turn-id + badge
+                    //   onto the existing server-loaded user bubble — correct behaviour.
+
+                    const turnAlreadyRendered = turn_id && DOM.chatLog?.querySelector(`[data-turn-id="${turn_id}"]`);
+                    if (!turnAlreadyRendered) {
+                        // Detect server-preloaded user message: last bubble is a user bubble
+                        const allBubbles = DOM.chatLog ? Array.from(DOM.chatLog.querySelectorAll('.message-bubble')) : [];
+                        const lastBubble = allBubbles[allBubbles.length - 1];
+                        const serverPreloadedUserMsg = lastBubble && lastBubble.querySelector('.user-avatar');
+
+                        if (!serverPreloadedUserMsg) {
+                            // No partial history — add user message fresh
+                            UI.addMessage('user', user_input, turn_id, true, msgSource, profile_tag, false, extension_specs || null, skill_specs || null);
+                        }
+                        // Always add assistant message; its render retroactively stamps turn_id on
+                        // the preceding user bubble (whether freshly added or server-preloaded)
+                        UI.addMessage('assistant', final_answer, turn_id, true);
+                    }
                     UI.moveSessionToTop(session_id);
                     UI.setExecutionState(false);
 

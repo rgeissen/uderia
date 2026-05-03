@@ -14,6 +14,7 @@ let _componentSettings = {};
 let _cachedComponents = [];
 let _selectedComponentId = null;
 let _initialized = false;
+let _pendingJobsTabCollection = null;
 
 // ─── DOM IDs (top-level view) ───────────────────────────────────────────────
 const GRID_ID = 'components-grid-top';
@@ -50,6 +51,39 @@ export async function loadComponentsView() {
  */
 export async function loadComponents() {
     await _loadComponents();
+}
+
+/**
+ * Navigate directly to the Task Scheduler → Jobs → Platform Jobs for the
+ * given collection. Called from knowledge repository card "Manage" buttons.
+ *
+ * Does a bare-DOM view switch (no dynamic import / no competing _loadComponents)
+ * so there is only one _onCardClick in flight. The _pendingJobsTabCollection flag
+ * is consumed inside _onCardClick after _renderDetailPanel completes.
+ */
+export async function openSchedulerToCollection(collectionId) {
+    // 1. Switch to components-view via bare DOM (avoids triggering a second _loadComponents)
+    document.querySelectorAll('.app-view').forEach(v => {
+        v.classList.toggle('active', v.id === 'components-view');
+    });
+    document.querySelectorAll('.view-switch-button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === 'components-view');
+    });
+
+    // 2. Pre-select scheduler so _loadComponents auto-select picks the right card,
+    //    and set the flag so _onCardClick activates Jobs tab after render.
+    _selectedComponentId = 'scheduler';
+    _pendingJobsTabCollection = collectionId;
+
+    // 3. Load components grid (if not already loaded) then open scheduler detail
+    if (_cachedComponents.length === 0) {
+        // _loadComponents sees _selectedComponentId='scheduler' and calls
+        // _onCardClick('scheduler') internally, which consumes the flag.
+        await _loadComponents();
+    } else {
+        // Grid already rendered; go straight to scheduler detail.
+        await _onCardClick('scheduler');
+    }
 }
 
 /**
@@ -122,27 +156,42 @@ function _renderComponentCard(comp) {
     const typeClasses = {
         action: 'bg-blue-500/20 text-blue-300 comp-lt-blue',
         structural: 'bg-gray-500/20 text-gray-300 comp-lt-gray',
+        service: 'bg-purple-500/20 text-purple-300 comp-lt-purple',
     };
 
+    const isDisabled = !!comp.globally_disabled;
     const sourceBadge = sourceClasses[comp.source] || sourceClasses.builtin;
     const typeBadge = typeClasses[comp.component_type] || typeClasses.action;
-    const toolName = comp.tool_name ? `<span class="text-xs font-mono text-cyan-300 comp-lt-text-cyan">${comp.tool_name}</span>` : '';
+    const toolName = comp.tool_name ? `<span class="text-xs font-mono ${isDisabled ? 'comp-lt-text-muted' : 'text-cyan-300 comp-lt-text-cyan'}">${comp.tool_name}</span>` : '';
 
     const renderTargets = (comp.render_targets?.supports || ['inline']).map(t =>
         `<span class="text-xs px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-300 comp-lt-gray">${t}</span>`
     ).join('');
 
+    const statusFooter = isDisabled
+        ? `<div class="flex items-center gap-1 text-xs" style="color:var(--text-muted)">
+               <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                   <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+               </svg>
+               Disabled globally
+           </div>`
+        : comp.has_handler
+            ? '<div class="flex items-center gap-1 text-xs text-green-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Handler loaded</div>'
+            : '<div class="flex items-center gap-1 text-xs text-yellow-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> No handler</div>';
+
     return `
-        <div class="glass-panel rounded-lg p-4 flex flex-col gap-3 component-card transition-all duration-150"
+        <div class="glass-panel rounded-lg p-4 flex flex-col gap-3 component-card transition-all duration-150${isDisabled ? ' opacity-50' : ''}"
              data-component-type="${comp.component_type}"
              data-component-source="${comp.source}"
-             data-component-id="${comp.component_id}">
+             data-component-id="${comp.component_id}"
+             data-globally-disabled="${isDisabled}">
             <div class="flex items-start justify-between">
                 <div class="flex-1">
                     <h4 class="text-sm font-semibold" style="color:var(--text-primary)">${comp.display_name}</h4>
                     <p class="text-xs mt-0.5" style="color:var(--text-muted)">${comp.description || ''}</p>
                 </div>
                 <div class="flex items-center gap-1.5 ml-2">
+                    ${isDisabled ? `<span class="text-xs px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400 comp-lt-gray">inactive</span>` : ''}
                     <span class="text-xs px-1.5 py-0.5 rounded ${sourceBadge}">${comp.source}</span>
                     <span class="text-xs px-1.5 py-0.5 rounded ${typeBadge}">${comp.component_type}</span>
                 </div>
@@ -156,10 +205,7 @@ function _renderComponentCard(comp) {
                     ${renderTargets}
                 </div>
             </div>
-            ${comp.has_handler
-                ? '<div class="flex items-center gap-1 text-xs text-green-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Handler loaded</div>'
-                : '<div class="flex items-center gap-1 text-xs text-yellow-400"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> No handler</div>'
-            }
+            ${statusFooter}
         </div>
     `;
 }
@@ -203,6 +249,19 @@ async function _onCardClick(componentId) {
         const data = await resp.json();
         _renderDetailPanel(data.component);
 
+        // Deep-link: activate Jobs tab after render if requested for this scheduler render
+        if (_pendingJobsTabCollection !== null && data.component.component_id === 'scheduler') {
+            const collId = _pendingJobsTabCollection;
+            _pendingJobsTabCollection = null;
+            requestAnimationFrame(() => {
+                const jobsTab = document.getElementById('comp-tab-jobs');
+                if (jobsTab) {
+                    jobsTab.click();
+                    window.jobsHandler?.openToCollection(collId);
+                }
+            });
+        }
+
     } catch (err) {
         console.error('[ComponentHandler] Detail fetch error:', err);
         _showDetailError('Error loading component details');
@@ -231,6 +290,7 @@ function _renderDetailPanel(comp) {
     const typeClasses = {
         action: 'bg-blue-500/20 text-blue-300 comp-lt-blue',
         structural: 'bg-gray-500/20 text-gray-300 comp-lt-gray',
+        service: 'bg-purple-500/20 text-purple-300 comp-lt-purple',
     };
     const sourceBadge = sourceClasses[comp.source] || sourceClasses.builtin;
     const typeBadge = typeClasses[comp.component_type] || typeClasses.action;
@@ -334,6 +394,13 @@ function _renderDetailPanel(comp) {
         </div>`
     });
 
+    // Jobs tab — only for the scheduler component (after Profiles)
+    if (comp.component_id === 'scheduler') {
+        const jobsIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>`;
+        tabs.push({ id: 'comp-tab-jobs', label: 'Jobs', icon: jobsIcon, panelId: 'comp-panel-jobs' });
+        tabPanels.push({ id: 'comp-panel-jobs', html: '<div id="jobs-tab-root"></div>' });
+    }
+
     const tabBarHTML = tabs.map((t, i) => `
         <button class="ind-tab ind-tab--underline ${i === 0 ? 'active' : ''}"
                 style="--tab-color: 6, 182, 212"
@@ -382,6 +449,11 @@ function _renderDetailPanel(comp) {
     // Async-load connections tab (canvas component only)
     if (comp.component_id === 'canvas') {
         _loadConnections();
+    }
+
+    // Init Jobs tab (scheduler component only)
+    if (comp.component_id === 'scheduler') {
+        window.jobsHandler?.initJobsTab('jobs-tab-root');
     }
 }
 
@@ -576,15 +648,21 @@ async function _loadProfileAssignments(comp) {
             const intensityTooltip = intensityLevels
                 .map(l => `${l.charAt(0).toUpperCase() + l.slice(1)} — ${manifestTooltips[l] || (l === 'medium' ? 'Use when appropriate' : 'Proactively use at every opportunity')}`)
                 .join('\n');
-            const intensitySelect = isAction ? `
+            // Scheduler: replace intensity selector with a task count badge (loaded async after render)
+            const isScheduler = componentId === 'scheduler';
+            const intensitySelect = (isAction && !isScheduler) ? `
                 <select class="profile-comp-intensity text-xs bg-gray-800 border border-gray-600 text-gray-300 comp-lt-select rounded px-2 py-1"
                         data-profile-id="${profile.id}" ${!isEnabled ? 'disabled' : ''}
                         data-tooltip="${intensityTooltip}">
                     ${intensityOptions}
                 </select>` : '';
+            const taskCountBadge = isScheduler
+                ? `<span class="profile-sched-task-count" data-profile-id="${profile.id}" style="font-size:11px;padding:2px 10px;border-radius:20px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.2);color:var(--text-muted,#94a3b8);white-space:nowrap;">…</span>`
+                : '';
 
             return `
-                <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-800/30 border border-gray-700/20 comp-lt-row">
+                <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-800/30 border border-gray-700/20 comp-lt-row"
+                     data-profile-id="${profile.id}">
                     <div class="flex items-center gap-3 min-w-0">
                         <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 comp-lt-cyan flex-shrink-0">@${_escapeHtml(profile.tag || '?')}</span>
                         <span class="text-sm truncate" style="color:var(--text-primary)">${_escapeHtml(profile.name || profile.id)}</span>
@@ -592,6 +670,7 @@ async function _loadProfileAssignments(comp) {
                     </div>
                     <div class="flex items-center gap-3 flex-shrink-0">
                         ${intensitySelect}
+                        ${taskCountBadge}
                         <label class="ind-toggle ind-toggle--sm">
                             <input type="checkbox" class="profile-comp-toggle"
                                    data-profile-id="${profile.id}" ${isEnabled ? 'checked' : ''}>
@@ -626,15 +705,42 @@ async function _loadProfileAssignments(comp) {
             });
         });
 
-        // Wire intensity handlers
+        // Wire intensity handlers (not used for scheduler)
         container.querySelectorAll('.profile-comp-intensity').forEach(select => {
             select.addEventListener('change', async (e) => {
                 const profileId = e.target.dataset.profileId;
                 const intensity = e.target.value;
-
                 await _updateProfileComponentConfig(profileId, componentId, { intensity }, profiles);
             });
         });
+
+        // For scheduler: fetch task counts per profile asynchronously
+        if (componentId === 'scheduler') {
+            const badges = container.querySelectorAll('.profile-sched-task-count');
+            badges.forEach(async badge => {
+                const profileId = badge.dataset.profileId;
+                try {
+                    const token = localStorage.getItem('tda_auth_token') || '';
+                    const resp = await fetch(`/api/v1/scheduled-tasks?profile_id=${encodeURIComponent(profileId)}`, {
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        const count = (data.tasks || []).length;
+                        badge.textContent = count === 0 ? 'No tasks' : `${count} task${count !== 1 ? 's' : ''}`;
+                        if (count > 0) {
+                            badge.style.background = 'rgba(168,85,247,0.15)';
+                            badge.style.borderColor = 'rgba(168,85,247,0.4)';
+                            badge.style.color = '#c084fc';
+                        } else {
+                            badge.style.color = 'var(--text-muted, #94a3b8)';
+                        }
+                    } else {
+                        badge.textContent = '';
+                    }
+                } catch (_) { badge.textContent = ''; }
+            });
+        }
 
     } catch (err) {
         console.error('[ComponentHandler] Error loading profiles:', err);
@@ -1104,7 +1210,8 @@ function _filterComponentCards(dimension, filter) {
             visible = card.dataset.componentType === filter;
         }
         if (dimension === 'status' && filter !== 'all') {
-            visible = filter === 'active';
+            const isDisabled = card.dataset.globallyDisabled === 'true';
+            visible = filter === 'active' ? !isDisabled : isDisabled;
         }
 
         card.style.display = visible ? '' : 'none';

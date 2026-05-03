@@ -1453,8 +1453,9 @@ grep "Token count" logs/app.log
 **The system migrated from file-based config to database schema (Dec 2024)**:
 
 - Old: `tda_config.json` (read-write user config)
-- New: Database tables in `tda_auth.db`
-- Bootstrap: `tda_config.json` is now a read-only template copied on first user login
+- New: Per-user configuration stored as JSON in `user_preferences.preferences_json` (in `tda_auth.db`)
+- Bootstrap: `tda_config.json` is a **read-only** template used only to initialise a new user's `user_preferences` row on first login — it is never written to again
+- **Profiles are stored in `user_preferences.preferences_json`** under the `"profiles"` key — there is no separate `profiles` table. Use `config_manager.get_profiles(user_uuid)` / `get_profile(profile_id, user_uuid)` to read them. To inspect directly: `SELECT preferences_json FROM user_preferences WHERE user_id = '<uuid>';`
 
 Schema files in `schema/`:
 - `00_master.sql` - Database initialization
@@ -1469,6 +1470,24 @@ Schema files in `schema/`:
 - `09_agent_packs.sql` - Agent pack installations
 - `10_marketplace_agent_packs.sql` - Marketplace agent packs
 - `11_marketplace_sharing.sql` - Sharing and permissions
+- `12_extensions.sql` - Extension system
+- `13_extension_settings.sql` - Extension settings
+- `14_marketplace_extensions.sql` - Marketplace extensions
+- `15_skills.sql` - User skills
+- `16_skill_settings.sql` - Skill settings
+- `17_marketplace_skills.sql` - Marketplace skills
+- `18_components.sql` - UI components
+- `19_component_settings.sql` - Component settings
+- `20_canvas_connectors.sql` - Canvas connectors
+- `21_knowledge_graph.sql` - Knowledge graph entities
+- `22_kg_profile_assignments.sql` - KG profile assignments
+- `23_marketplace_knowledge_graphs.sql` - Marketplace KGs
+- `24_vectorstore_settings.sql` - Vector store settings
+- `25_hybrid_search.sql` - Hybrid search (BM25)
+- `26_server_side_chunking.sql` - Server-side chunking metadata
+- `27_platform_mcp_servers.sql` - Platform connectors (original creation)
+- `28_scheduled_tasks.sql` - Scheduled tasks + `messaging_identities` (per-user OAuth tokens)
+- `29_rename_platform_connectors.sql` - Renames `mcp_*` tables → `connector_*`; adds `connector_type` column
 
 ### Prompt Management System
 
@@ -1715,6 +1734,130 @@ Files: `src/trusted_data_agent/core/cost_manager.py`
 4. **Rate limiting**: Configurable per-user quotas (disabled by default)
 5. **OAuth**: Google/GitHub integration with email verification
 
+### Platform Connector Subsystem
+
+**Purpose:** Admin-governed capability tools (browser, files, shell, web search, Google Workspace) that give the agent autonomous execution capability. Strictly separate from user-configured MCP data source servers.
+
+**Critical distinction — two permanently separate namespaces:**
+
+| | User MCP Data Sources | Platform Connectors |
+|---|---|---|
+| Examples | Teradata, Postgres, custom databases | Browser, files, shell, web, Google |
+| Who configures | User | Admin |
+| UI surface | Configuration → MCP Servers | Platform Components → Connectors |
+| DB table | in `user_preferences` JSON | `platform_connectors` |
+| Code | `mcp_adapter/adapter.py` | `core/platform_connector_registry.py` |
+
+These namespaces **never share a UI surface**. Never add platform connectors to the Configuration → MCP Servers panel, and never add user servers to the Platform Components → Connectors panel.
+
+**Current table names** (after `schema/29_rename_platform_connectors.sql` migration):
+- `connector_registry_sources` — registry endpoints
+- `platform_connectors` — installed connectors + governance settings
+- `profile_connector_settings` — per-profile user opt-in state
+- `messaging_identities` — per-user OAuth tokens (Fernet-encrypted)
+
+**⚠ Encryption salt is intentionally frozen:** The Fernet key in `platform_connector_registry._platform_fernet()` uses salt `b'platform_mcp_registry'` even though the module was renamed. **Do not change this salt** — doing so would corrupt all admin credentials already encrypted in production databases.
+
+**Connector type system (`connector_type` field on `platform_connectors`):**
+
+| Type | Transport | Status |
+|---|---|---|
+| `mcp_stdio` | Subprocess stdin/stdout (MCP wire protocol) | Implemented — all existing connectors |
+| `mcp_http` | HTTP/SSE MCP endpoint | Stub |
+| `rest` | Direct REST API | Future |
+| `oauth_only` | Auth only, no tool execution | Future |
+
+Adding a new transport type: implement `ConnectorInvocationStrategy`, add instance to `_INVOCATION_STRATEGIES` dict — no other files need changing. See [CONNECTOR_ARCHITECTURE.md](docs/Architecture/CONNECTOR_ARCHITECTURE.md) §12.
+
+**Two connector sub-categories (`requires_user_auth` field):**
+- `0` — Platform connector: admin credentials shared by all users (web, files, browser, shell)
+- `1` — User connector: admin sets OAuth `client_id`/`client_secret`; each user connects their own account via popup OAuth flow (Google)
+
+**Adding a new connector:** create `connectors/<name>_connector.py` implementing `is_configured`, `initiate_oauth`, `handle_callback`, `get_connection_status`, `disconnect`, `get_tokens`, `inject_env_tokens`, and `SERVER_ID`; register in `connectors/registry.py`. See [CONNECTOR_ARCHITECTURE.md](docs/Architecture/CONNECTOR_ARCHITECTURE.md) §13.
+
+**Files:**
+- `src/trusted_data_agent/core/platform_connector_registry.py` — governance, tool resolution, invocation dispatch
+- `src/trusted_data_agent/connectors/registry.py` — platform-name → module mapping
+- `src/trusted_data_agent/connectors/google_connector.py` — Google OAuth (reference implementation)
+- `src/trusted_data_agent/api/connector_routes.py` — generic OAuth routes (`/api/v1/connectors/<platform>/auth|callback|status|connection`)
+- `static/js/handlers/platformConnectorAdminHandler.js` — Admin Panel → Connectors tab
+- `static/js/handlers/platformConnectorHandler.js` — Platform Components → Connectors tab
+
+**Architecture doc:** [docs/Architecture/CONNECTOR_ARCHITECTURE.md](docs/Architecture/CONNECTOR_ARCHITECTURE.md)
+
+---
+
+### Task Scheduler
+
+**Purpose:** Transforms Uderia from a reactive assistant into an always-on agent. Users create recurring tasks through natural conversation; the scheduler fires them through the **identical `execute_query()` pipeline** as user-submitted queries — same LLM, same profile, same MCP tools.
+
+**Design principle:** A scheduled task is not a special execution mode — it is a queued user query with a timer. All platform improvements (new providers, updated prompts, MCP tool changes) apply automatically to scheduled tasks.
+
+**Implementation:** The scheduler is a **builtin component** (`TDA_Scheduler`), not a standalone system. It lives in `components/builtin/scheduler/`. The LLM creates, updates, and deletes tasks by calling the `TDA_Scheduler` tool; `task_scheduler.py` provides the execution engine; `renderer.js` renders the task list split panel and inline toast confirmations.
+
+**Governance — two gates, both must be open:**
+1. Admin enables the scheduler component globally (Platform Components panel → disable list, checked via `is_scheduler_globally_enabled()`)
+2. Profile has `componentConfig.scheduler.enabled: true` (Profile Edit → Capabilities)
+
+**APScheduler integration:**
+- `AsyncIOScheduler` starts with Quart via `start_scheduler()` in `@app.before_serving`
+- APScheduler is an **optional dependency** — if not installed, all REST endpoints still work but scheduled execution is disabled
+- Job settings: `coalesce=True` (collapse missed firings into one), `misfire_grace_time=60` (catch up within 60s after downtime), `replace_existing=True`
+- `_ensure_columns()` runs at import time and on startup to auto-migrate the DB (adds `session_id` column to existing tables via `ALTER TABLE`)
+
+**Schedule formats** (stored in `scheduled_tasks.schedule`):
+- Cron: `"0 9 * * 1-5"` (standard 5-field POSIX syntax)
+- Interval shorthand: `"interval:30m"`, `"interval:2h"`, `"interval:1d"`, `"interval:300s"`
+
+**Session context model** (`session_id` column):
+- `NULL` — new ephemeral session created per run; appears in sidebar; `new_session_created` notification emitted
+- Set to an existing session ID — task runs in the user's pinned session, inheriting full conversation history; `new_session_created` NOT emitted. Falls back to new session if pinned session was deleted (logs warning but does NOT clear `session_id`)
+
+**Overlap policy** (`overlap_policy` column, default `'skip'`):
+
+| Policy | When previous run still active |
+|---|---|
+| `skip` | New run logged immediately as `status='skipped'`; execution aborted |
+| `queue` | Waits up to 300 s for previous run to complete; proceeds (or continues if timeout) |
+| `allow` | Concurrent runs permitted — only for idempotent tasks |
+
+Active executions tracked in `_running_tasks: dict[task_id, asyncio.Task]`; cleared in `finally`.
+
+**Token budget** (`max_tokens_per_run` column): post-run check only (no mid-run cancellation). If exceeded, run is recorded as `status='error'` and result delivery is skipped.
+
+**Result delivery channels** (`output_channel` column):
+- `null` — SSE only (live session feed)
+- `email` — uses existing `email_service.py` (SMTP/SendGrid/SES); subject: `[Uderia] Scheduled task: {name}`
+- `webhook` — POST JSON to `output_config.webhook_url` with optional bearer token
+- `google_mail` — deferred (requires Google OAuth connector, Track C)
+
+**`source: 'scheduler'` badge:** `rest_task_complete` notification carries `source: 'scheduler'`; `notifications.js` renders a "Scheduled" badge on both the user message and assistant message in the chat log.
+
+**REST API** (all require JWT auth; users can only access their own tasks):
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/scheduled-tasks` | List tasks (`?profile_id=` optional) |
+| `POST` | `/v1/scheduled-tasks` | Create — validates admin enable state |
+| `GET/PUT/DELETE` | `/v1/scheduled-tasks/{id}` | Read / update / delete |
+| `GET` | `/v1/scheduled-tasks/{id}/runs` | Run history (max 100) |
+| `POST` | `/v1/scheduled-tasks/{id}/run-now` | Manual trigger; returns `{run_id}` |
+| `GET` | `/v1/scheduler/status` | Health: `{running, globally_enabled, job_count}` |
+
+**Key files:**
+
+| File | Purpose |
+|---|---|
+| `components/builtin/scheduler/handler.py` | Component tool handler — CRUD + list, returns `ComponentRenderPayload` |
+| `components/builtin/scheduler/renderer.js` | Frontend split panel + inline toast renderer |
+| `components/builtin/scheduler/manifest.json` | Tool definition (`TDA_Scheduler`), render targets |
+| `src/trusted_data_agent/core/task_scheduler.py` | APScheduler integration, execution pipeline, delivery channels |
+| `schema/28_scheduled_tasks.sql` | `scheduled_tasks`, `scheduled_task_runs`, `messaging_identities` tables |
+
+**Architecture doc:** [docs/Architecture/SCHEDULER_ARCHITECTURE.md](docs/Architecture/SCHEDULER_ARCHITECTURE.md)
+
+---
+
 ### Agent Packs System
 
 **Purpose:** Portable bundles containing profiles, collections, MCP servers, and skills for quick deployment.
@@ -1953,7 +2096,9 @@ static/js/main.js                           # Frontend initialization
 ```
 docs/
   ├── Architecture/
+  │   ├── CONNECTOR_ARCHITECTURE.md         # Platform Connector subsystem (governance, types, OAuth)
   │   ├── CONTEXT_WINDOW_ARCHITECTURE.md    # Context window management (comprehensive)
+  │   ├── SCHEDULER_ARCHITECTURE.md         # Task Scheduler: APScheduler, execution pipeline, renderer
   │   ├── PROMPT_ENCRYPTION.md              # Encryption architecture
   │   └── NESTED_GENIE_UPGRADE_GUIDE.md     # Genie coordinator guide
   ├── RestAPI/restAPI.md                    # REST API reference
@@ -2063,6 +2208,51 @@ npx tailwindcss build
 ```
 
 ## Project-Specific Conventions
+
+### Theme-Aware UI Styling (MANDATORY)
+
+**All UI elements must use CSS variables, not hardcoded colours.** The platform supports both dark and light themes; hardcoded Tailwind colour classes (e.g. `text-purple-300/60`, `bg-gray-800`) will break in light mode.
+
+**Required CSS variables:**
+
+| Variable | Purpose |
+|---|---|
+| `var(--text-primary)` | Primary text |
+| `var(--text-muted)` | Secondary / dimmed text |
+| `var(--card-bg)` | Card / panel background |
+| `var(--border-primary)` | Primary border |
+| `var(--border-secondary)` | Subtle border |
+| `var(--bg-overlay)` / `var(--bg-primary)` | Panel overlay backgrounds |
+| `var(--hover-bg-strong)` | Hover state backgrounds |
+| `var(--teradata-orange)` | Brand accent (`#F15F22`) |
+
+**Rules:**
+- **Inline styles**: Use `color: var(--text-primary)`, `border-color: var(--border-primary)`, etc.
+- **Injected CSS** (e.g. renderer `_injectCSS()`): Reference the same CSS variables throughout.
+- **Tailwind utility classes**: Use only for layout/spacing/sizing (`flex`, `gap-2`, `px-3`, `rounded-lg`). Never use Tailwind for colours, backgrounds, or borders on elements that must adapt to the theme.
+- **Accent colours** (purple for scheduler, orange for brand): Use `rgba(...)` with low opacity for backgrounds and explicit hex for text so they degrade gracefully in both themes.
+- **Auth token in JS**: Always use `localStorage.getItem('tda_auth_token')` — never `auth_token`, `jwt_token`, or `window.state.authToken`.
+
+**Example (correct):**
+```javascript
+badge.style.color = 'var(--text-muted, #94a3b8)';
+badge.style.background = 'rgba(168,85,247,0.08)';
+badge.style.borderColor = 'rgba(168,85,247,0.2)';
+```
+
+**Example (wrong — breaks light mode):**
+```javascript
+badge.className = 'text-purple-300/60 bg-purple-500/10 border-purple-500/20';
+```
+
+### Icon Style (MANDATORY)
+
+**All icons must be monochrome industrial-style SVGs. Multi-colour icons and emoji are strictly forbidden in the Uderia UI.**
+
+- **Use only**: inline SVG icons with a single `stroke` or `fill` colour driven by `currentColor` or a single CSS variable. The `ICONS` object in component renderers is the canonical source.
+- **Never use**: emoji characters (⏸ ▶ 🔴 📅 etc.), system icon fonts with colour glyphs, or multi-colour SVGs.
+- **In LLM-facing instructions** (`instructions.json`): explicitly tell the LLM not to use emoji in its text responses. Keep status labels as plain text ("Disabled", "Active") — the component renders the visual state; the LLM response should only carry words.
+- **Rationale**: emoji render differently across platforms/OS, break light/dark theming, and conflict with the platform's neutral enterprise visual identity.
 
 ### Code Organization
 
@@ -2207,6 +2397,8 @@ Example: "Using the n8n-uderia skill, how do I configure profile override in a w
 
 ## Recent Major Changes
 
+- **May 2026**: Task Scheduler (Track B) — always-on autonomous agent execution via APScheduler `AsyncIOScheduler`; `TDA_Scheduler` builtin component lets users create/manage recurring tasks through natural language; tasks run through identical `execute_query()` pipeline (same LLM, profile, MCP tools); session context model: `NULL` = new ephemeral session per run, pinned `session_id` = run inside existing session with conversation history; overlap policies: `skip | queue | allow`; post-run token budget guard; result delivery via email, webhook (google_mail deferred); `source: 'scheduler'` badge in chat log; APScheduler optional dependency — graceful degradation if absent. Files: `components/builtin/scheduler/`, `core/task_scheduler.py`, `schema/28_scheduled_tasks.sql`. See [SCHEDULER_ARCHITECTURE.md](docs/Architecture/SCHEDULER_ARCHITECTURE.md).
+- **May 2026**: Platform Connector subsystem rename + multi-type architecture — renamed all `platform_mcp_*` identifiers to `platform_connector_*` (DB tables, REST URLs, JS handlers, Python module, HTML element IDs); introduced `connector_type` discriminator (`mcp_stdio | mcp_http | rest | oauth_only`) with `ConnectorInvocationStrategy` ABC and `_INVOCATION_STRATEGIES` registry dict; `McpStdioStrategy` encapsulates subprocess logic; adding a new transport type requires one class + one dict entry. Encryption salt `b'platform_mcp_registry'` intentionally frozen to preserve existing encrypted credentials. Generic OAuth routes (`/api/v1/connectors/<platform>/auth|callback|status|connection`) replace hardcoded Google paths. `_inject_user_tokens()` now delegates to connector module's `inject_env_tokens()` via `connectors/registry.py`. Files: `core/platform_connector_registry.py`, `connectors/registry.py`, `connectors/google_connector.py`, `api/connector_routes.py`, `schema/29_rename_platform_connectors.sql`, `static/js/handlers/platformConnectorAdminHandler.js`, `static/js/handlers/platformConnectorHandler.js`. See [CONNECTOR_ARCHITECTURE.md](docs/Architecture/CONNECTOR_ARCHITECTURE.md).
 - **Apr 2026**: `llm_filter_deloop` rewrite pass — new deterministic pass (inserted before `multi_loop_synthesis`) that converts any TDA_LLMFilter loop phase to a standalone filter phase; prevents `redundant_argument_pruning` from stripping `data_to_filter` when the planner incorrectly places TDA_LLMFilter inside a loop. Planner now has 12 rewrite passes. File: `planner.py:_rewrite_llm_filter_deloop()`
 - **Apr 2026**: Reflexion-pattern correction history — `correction_history: list` replaces single-overwrite `last_failed_action_info: str` on `PlanExecutor`; every failed tool call in a phase is appended (tool name, arguments, error, strategy); cleared at phase start; rendered into `{correction_history_section}` in `WORKFLOW_TACTICAL_PROMPT`; prevents oscillation where the tactical LLM repeats a previously failed call. Files: `executor.py`, `phase_executor.py:_build_correction_history_section()`, `WORKFLOW_TACTICAL_PROMPT.txt`
 - **Apr 2026**: Universal JSON parsing hardening — new `agent/json_utils.py` with `robust_json_parse()` (three-tier: direct `json.loads` → `json_repair` → return None + one-shot retry); replaces all 9 brittle bare `json.loads` sites in `planner.py` and `phase_executor.py`; `json-repair>=0.30.0` added to `requirements.txt`; handles trailing commas, truncated output, markdown fences, single-quoted strings, and surrounding prose across all providers
