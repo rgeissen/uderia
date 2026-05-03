@@ -976,37 +976,51 @@ async function loadProfileConnectorSection(modal, profileId) {
     container.innerHTML = '<div class="text-center text-gray-500 text-sm py-4">Loading…</div>';
 
     try {
-        const [serversResp, settingsResp] = await Promise.all([
+        const fetchPromises = [
             fetch('/api/v1/platform-connectors', { headers: _pconnuHeaders(false) }),
-            fetch(`/api/v1/profiles/${profileId}/connector-settings`, { headers: _pconnuHeaders(false) }),
-        ]);
+        ];
+        if (profileId) {
+            fetchPromises.push(fetch(`/api/v1/profiles/${profileId}/connector-settings`, { headers: _pconnuHeaders(false) }));
+        }
+        const [serversResp, settingsResp] = await Promise.all(fetchPromises);
 
         const serversData  = serversResp.ok  ? await serversResp.json()  : { servers: [] };
-        const settingsData = settingsResp.ok ? await settingsResp.json() : { settings: [] };
+        const settingsData = (settingsResp && settingsResp.ok) ? await settingsResp.json() : { settings: [] };
 
         const enabledServers = (serversData.servers || []).filter(s => s.enabled);
         const settingsMap    = {};
         (settingsData.settings || []).forEach(s => { settingsMap[s.server_id] = s; });
 
-        const activeServers = enabledServers.filter(server => {
-            const setting = settingsMap[server.id];
-            if (setting && setting.opted_in !== null && setting.opted_in !== undefined) return !!setting.opted_in;
-            return !!server.auto_opt_in;
-        });
+        // For user-auth connectors, fetch whether this user has connected their account
+        const userAuthServers = enabledServers.filter(s => s.requires_user_auth);
+        const connectionMap = {};
+        if (userAuthServers.length > 0) {
+            await Promise.all(userAuthServers.map(async s => {
+                const platform = s.id.replace(/^uderia-/, '');
+                try {
+                    const r = await fetch(`/api/v1/connectors/${platform}/status`, { headers: _pconnuHeaders(false) });
+                    const d = r.ok ? await r.json() : {};
+                    connectionMap[s.id] = !!d.connected;
+                } catch (_) {
+                    connectionMap[s.id] = false;
+                }
+            }));
+        }
 
-        if (navItem) navItem.classList.toggle('hidden', activeServers.length === 0);
+        // Show nav item whenever there are enabled connectors (not just opted-in ones)
+        if (navItem) navItem.classList.toggle('hidden', enabledServers.length === 0);
 
-        if (activeServers.length === 0) {
+        if (enabledServers.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-6">
-                    <p class="text-gray-400 text-sm">No platform servers are enabled for this profile.</p>
-                    <p class="text-gray-500 text-xs mt-1">Go to Platform Components → Connectors to assign servers.</p>
+                    <p class="text-gray-400 text-sm">No platform connectors are enabled.</p>
+                    <p class="text-gray-500 text-xs mt-1">Go to Platform Components → Connectors to enable connectors.</p>
                 </div>`;
             return;
         }
 
         container.innerHTML = `<div class="space-y-4">
-            ${activeServers.map(s => _renderProfileMcpServerCard(s, settingsMap[s.id] || {})).join('')}
+            ${enabledServers.map(s => _renderProfileMcpServerCard(s, settingsMap[s.id] || {}, profileId, connectionMap)).join('')}
         </div>`;
 
     } catch (err) {
@@ -1014,12 +1028,20 @@ async function loadProfileConnectorSection(modal, profileId) {
     }
 }
 
-function _renderProfileMcpServerCard(server, setting) {
+function _renderProfileMcpServerCard(server, setting, profileId, connectionMap) {
     const isLocked       = server.auto_opt_in && !server.user_can_opt_out;
     const canConfigTools = !!server.user_can_configure_tools;
+    // User-auth connectors (OAuth) require the user to have connected their account
+    const needsUserAuth  = !!server.requires_user_auth;
+    const userConnected  = needsUserAuth ? !!(connectionMap && connectionMap[server.id]) : true;
     const availableTools = _resolveTools(server);
     let userTools = [];
     try { userTools = JSON.parse(setting.user_tools || '[]'); } catch (_) {}
+
+    // Determine current opt-in state (explicit setting > auto_opt_in default)
+    const isOptedIn = (setting.opted_in !== null && setting.opted_in !== undefined)
+        ? !!setting.opted_in
+        : !!server.auto_opt_in;
 
     const lockBadge = isLocked ? `
         <span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded"
@@ -1031,8 +1053,26 @@ function _renderProfileMcpServerCard(server, setting) {
             Admin-enforced
         </span>` : '';
 
+    // Opt-in toggle (hidden for locked/admin-enforced connectors; disabled when no profileId yet)
+    const toggleDisabled = !profileId || (needsUserAuth && !userConnected);
+    const toggleTitle    = !profileId ? 'Save profile first to configure connectors'
+                         : (needsUserAuth && !userConnected) ? 'Connect your account first in Platform Components → Connectors'
+                         : '';
+    const optInToggle = isLocked ? '' : `
+        <div style="display:flex;align-items:center;gap:8px;opacity:${toggleDisabled ? '0.45' : '1'}">
+            <div class="pmcp-toggle-wrap" data-server-id="${_esc(server.id)}"
+                 style="position:relative;width:36px;height:20px;cursor:${toggleDisabled ? 'not-allowed' : 'pointer'}"
+                 ${!toggleDisabled ? `onclick="window.toggleProfileConnectorOptIn('${_esc(server.id)}', '${_esc(profileId || '')}', this)"` : `data-tooltip="${_esc(toggleTitle)}"`}>
+                <div class="pmcp-toggle-track"
+                     style="position:absolute;inset:0;border-radius:9999px;transition:background 0.2s;background:${isOptedIn && userConnected ? '#818cf8' : 'rgba(100,100,120,0.35)'}"></div>
+                <div class="pmcp-toggle-thumb"
+                     style="position:absolute;top:2px;width:16px;height:16px;border-radius:9999px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);transition:left 0.2s;left:${isOptedIn && userConnected ? '18px' : '2px'}"></div>
+            </div>
+            <span class="pmcp-toggle-label" style="font-size:11px;color:var(--text-muted)">${isOptedIn && userConnected ? 'Enabled' : needsUserAuth && !userConnected ? 'Not connected' : 'Disabled'}</span>
+        </div>`;
+
     let toolSection = '';
-    if (canConfigTools && availableTools.length > 0) {
+    if (isOptedIn && userConnected && canConfigTools && availableTools.length > 0) {
         const checkboxes = availableTools.map(tool => {
             const isChecked = userTools.length === 0 || userTools.includes(tool);
             return `
@@ -1051,7 +1091,7 @@ function _renderProfileMcpServerCard(server, setting) {
                 <p class="text-[11px] text-gray-500 uppercase tracking-wide font-medium mb-2">Active Tools for this Profile</p>
                 <div class="space-y-0.5">${checkboxes}</div>
             </div>`;
-    } else if (!canConfigTools && availableTools.length > 0) {
+    } else if (isOptedIn && userConnected && !canConfigTools && availableTools.length > 0) {
         toolSection = `
             <div class="mt-2 flex flex-wrap gap-1">
                 ${availableTools.map(t => `
@@ -1062,13 +1102,16 @@ function _renderProfileMcpServerCard(server, setting) {
     }
 
     return `
-        <div class="glass-panel rounded-lg p-4" style="border-color:rgba(129,140,248,0.12)"
+        <div class="glass-panel rounded-lg p-4" style="border-color:rgba(129,140,248,0.12);opacity:${isOptedIn ? '1' : '0.6'}"
              data-server-id="${_esc(server.id)}">
-            <div class="flex items-center gap-2 mb-1">
-                <span class="text-sm font-semibold text-white">${_esc(server.display_name || server.name)}</span>
-                ${lockBadge}
+            <div class="flex items-center justify-between mb-1">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-semibold" style="color:var(--text-primary)">${_esc(server.display_name || server.name)}</span>
+                    ${lockBadge}
+                </div>
+                ${optInToggle}
             </div>
-            <p class="text-xs text-gray-400 mb-2">${_esc(server.description || '')}</p>
+            <p class="text-xs mb-2" style="color:var(--text-muted)">${_esc(server.description || '')}</p>
             ${toolSection}
         </div>`;
 }
@@ -1097,6 +1140,42 @@ async function updateProfileConnectorTools(serverId) {
     }
 }
 
+async function toggleProfileConnectorOptIn(serverId, profileId, wrapEl) {
+    if (!profileId) return;
+    const card  = wrapEl.closest('[data-server-id]');
+    const track = wrapEl.querySelector('.pmcp-toggle-track');
+    const thumb = wrapEl.querySelector('.pmcp-toggle-thumb');
+    const label = wrapEl.parentElement.querySelector('.pmcp-toggle-label');
+
+    // Derive new state by checking current thumb position
+    const currentlyOn = thumb && thumb.style.left === '18px';
+    const enabled = !currentlyOn;
+
+    // Optimistic UI update
+    if (track) track.style.background = enabled ? '#818cf8' : 'rgba(100,100,120,0.35)';
+    if (thumb) thumb.style.left = enabled ? '18px' : '2px';
+    if (label) label.textContent = enabled ? 'Enabled' : 'Disabled';
+    if (card)  card.style.opacity = enabled ? '1' : '0.6';
+
+    try {
+        await fetch(
+            `/api/v1/profiles/${profileId}/connector-settings/${serverId}`,
+            {
+                method: 'PUT',
+                headers: _pconnuHeaders(),
+                body: JSON.stringify({ opted_in: enabled ? 1 : 0 }),
+            }
+        );
+    } catch (err) {
+        // Revert on failure
+        if (track) track.style.background = !enabled ? '#818cf8' : 'rgba(100,100,120,0.35)';
+        if (thumb) thumb.style.left = !enabled ? '18px' : '2px';
+        if (label) label.textContent = !enabled ? 'Enabled' : 'Disabled';
+        if (card)  card.style.opacity = !enabled ? '1' : '0.6';
+        _pconnuNotify('error', `Could not update connector: ${err.message}`);
+    }
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 window.loadPlatformConnectorPanel           = loadPlatformConnectorPanel;
@@ -1104,5 +1183,6 @@ window.renderPlatformConnectorPanel         = () => _renderGrid();
 window.togglePlatformConnectorProfileAssignment = togglePlatformConnectorProfileAssignment;
 window.loadProfileConnectorSection  = loadProfileConnectorSection;
 window.updateProfileConnectorTools  = updateProfileConnectorTools;
+window.toggleProfileConnectorOptIn  = toggleProfileConnectorOptIn;
 window._pmcpSetTypeFilter             = _pmcpSetTypeFilter;
 window._pmcpSetStatusFilter           = _pmcpSetStatusFilter;

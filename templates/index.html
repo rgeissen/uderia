@@ -3318,7 +3318,7 @@
                     </div>
 
                     <!-- Tab Content Container -->
-                    <div class="flex-1 overflow-y-auto">
+                    <div id="config-tab-content-container" class="flex-1 overflow-y-auto">
                         <!-- Tab 1: MCP Servers -->
                         <div id="mcp-servers-tab" class="config-tab-content active">
                             <div class="space-y-6">
@@ -3895,9 +3895,10 @@
                         </div>
 
                         <!-- Tab 3: Profiles -->
-                        <div id="profiles-tab" class="config-tab-content hidden">
-                            <div class="space-y-6">
-                                <div class="glass-panel rounded-xl p-6">
+                        <div id="profiles-tab" class="config-tab-content hidden flex-1 flex flex-col min-h-0">
+                            <div class="flex flex-col flex-1 min-h-0">
+                                <div class="glass-panel rounded-xl flex flex-col flex-1 min-h-0 overflow-hidden">
+                                    <div class="px-6 pt-6 pb-4 flex-shrink-0" style="border-bottom: 1px solid var(--border-primary)">
                                     <div class="flex justify-between items-center mb-6">
                                         <div>
                                             <h3 class="text-xl font-bold text-white">Configure Agent Profiles</h3>
@@ -4017,7 +4018,10 @@
                                             </div>
                                         </div>
                                     </div>
+                                    </div><!-- end sticky header -->
 
+                                    <!-- Scrollable profile list -->
+                                    <div class="flex-1 overflow-y-auto min-h-0 px-6 pt-2 pb-6">
                                     <!-- 1. Conversation Profiles Container (Ideate - default visible) -->
                                     <div id="conversation-profiles-container" class="profile-type-content space-y-4">
                                         <!-- Conversation profile cards will be dynamically added here -->
@@ -4037,6 +4041,7 @@
                                     <div id="genie-profiles-container" class="profile-type-content space-y-4 hidden">
                                         <!-- Genie profile cards will be dynamically added here -->
                                     </div>
+                                    </div><!-- end scrollable list -->
                                 </div>
                             </div>
                         </div>

@@ -2915,6 +2915,22 @@ function initializeConfigTabs() {
                 }
             });
 
+            // Profiles tab: make outer container a flex column with no overflow
+            // so flex-1 on profiles-tab resolves to a definite height, enabling
+            // the inner card list to scroll independently.
+            const tabContainer = document.getElementById('config-tab-content-container');
+            if (tabContainer) {
+                if (targetTabId === 'profiles-tab') {
+                    tabContainer.style.display = 'flex';
+                    tabContainer.style.flexDirection = 'column';
+                    tabContainer.style.overflowY = 'hidden';
+                } else {
+                    tabContainer.style.display = '';
+                    tabContainer.style.flexDirection = '';
+                    tabContainer.style.overflowY = '';
+                }
+            }
+
             // Lazy-load context window types when tab is activated
             if (targetTabId === 'context-window-tab') {
                 loadContextWindowTypes().then(() => initContextWindowTab());
@@ -7276,8 +7292,9 @@ async function showProfileModal(profileId = null, defaultProfileType = null) {
     await _populateSkillsTab(modal, profile);
 
     // Populate Platform Connectors section (fine-grained tool selection per profile)
-    if (profile && typeof window.loadProfileConnectorSection === 'function') {
-        await window.loadProfileConnectorSection(modal, profile.id);
+    // Pass null for new profiles — loadProfileConnectorSection handles missing settings gracefully
+    if (typeof window.loadProfileConnectorSection === 'function') {
+        await window.loadProfileConnectorSection(modal, profile ? profile.id : null);
     }
 
     // Show the modal
