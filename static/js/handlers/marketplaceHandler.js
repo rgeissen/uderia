@@ -729,9 +729,11 @@ function createMyExtensionCard(ext) {
  */
 function createAgentPackMarketplaceCard(pack) {
     const card = document.createElement('div');
-    card.className = 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-teradata-orange transition-colors';
-
     const isPublisher = pack.is_publisher || false;
+    card.className = isPublisher
+        ? 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 opacity-60 transition-colors'
+        : 'glass-panel rounded-xl p-4 flex flex-col gap-3 border border-white/10 hover:border-teradata-orange transition-colors';
+
     const rating = pack.average_rating || 0;
     const packType = pack.pack_type || 'genie';
 
@@ -767,6 +769,7 @@ function createAgentPackMarketplaceCard(pack) {
                     <h2 class="text-lg font-semibold text-white">${escapeHtml(pack.name)}</h2>
                     ${pack.version ? `<span class="px-2 py-0.5 text-xs rounded-full bg-white/10 text-gray-300">v${escapeHtml(pack.version)}</span>` : ''}
                     <span class="px-2 py-0.5 text-xs rounded-full ${badge.bg} ${badge.text}">${badge.label}</span>
+                    ${isPublisher ? `<span class="px-2 py-0.5 text-xs rounded-full bg-white/10 text-gray-400">Your listing</span>` : ''}
                     ${pack.is_subscribed ? `<span class="px-2 py-0.5 text-xs rounded-full bg-green-500/20 text-green-400">Subscribed</span>` : ''}
                 </div>
                 ${pack.author ? `<p class="text-sm text-gray-400 mt-0.5">by ${escapeHtml(pack.author)}</p>` : ''}

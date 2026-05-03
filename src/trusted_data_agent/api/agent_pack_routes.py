@@ -605,6 +605,25 @@ async def uninstall_agent_pack(current_user, installation_id: int):
     try:
         manager = _manager()
         result = await manager.uninstall_pack(installation_id, user_uuid)
+
+        # Auto-unpublish any marketplace listing tied to this installation
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute(
+                "DELETE FROM marketplace_agent_packs WHERE source_installation_id = ? AND publisher_user_id = ?",
+                (installation_id, user_uuid),
+            )
+            if cur.rowcount:
+                app_logger.info(
+                    f"Auto-unpublished marketplace listing for uninstalled pack {installation_id}"
+                )
+            conn.commit()
+            conn.close()
+        except Exception as mp_err:
+            app_logger.warning(f"Failed to auto-unpublish marketplace listing: {mp_err}")
+
         return jsonify({"status": "success", **result}), 200
 
     except ValueError as e:
