@@ -402,6 +402,7 @@ body {
 
 details.resource-item > summary { list-style: none; cursor: pointer; }
 details.resource-item > summary::-webkit-details-marker { display: none; }
+details.resource-item > summary:hover { background: var(--hover-bg-strong, rgba(148,163,184,0.12)); border-radius: 0.5rem; }
 details.resource-item .chevron { transition: transform 0.2s ease-in-out; }
 details.resource-item[open] > summary .chevron { transform: rotate(90deg); }
 
