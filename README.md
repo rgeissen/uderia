@@ -383,6 +383,15 @@ Maintain complete control over your data exposure strategy with flexible deploym
   - Hands-free operation with configurable voice modes
   - Key observations handling (autoplay-off, autoplay-on, off)
 
+* **Microsoft 365 & Slack Platform Connectors**: Extend agent autonomy with enterprise collaboration integrations:
+  - **Outlook** — Read emails, send messages, manage calendar events via Microsoft Graph API
+  - **Teams** — Read channel history, post messages, schedule meetings via Graph API
+  - **SharePoint** — Browse sites, read and write files via Graph API
+  - **Slack** — Read channel history, post messages via Slack API
+  - **Google Workspace** — Gmail read/send and Calendar management (existing connector)
+  - All require per-user OAuth consent flow; admin configures app credentials once via Admin Panel → Components → Connectors
+  - Tokens stored encrypted (`messaging_identities` table, Fernet-encrypted) with automatic refresh
+
 * **Document Upload & Multimodal Analysis**: Attach documents and images directly in chat conversations:
   - Native multimodal delivery for capable providers (Google Gemini, Anthropic Claude, OpenAI GPT-4o, Azure, AWS Bedrock Claude)
   - Automatic text extraction fallback for all other providers (OpenRouter, Friendli, Ollama, Bedrock Nova)
@@ -1968,11 +1977,13 @@ The Uderia Platform is built on a modern, asynchronous client-server architectur
   - `api/` - REST endpoints and SSE handlers
   - `agent/` - Executor, Formatter, and planning logic
   - `llm/` - Multi-provider LLM connectors
-  - `mcp/` - MCP protocol client
+  - `mcp_adapter/` - MCP protocol client
   - `core/` - Configuration, sessions, utilities
+  - `connectors/` - Platform connector OAuth modules (Google, Microsoft 365, Slack)
+  - `vectorstore/` - Pluggable vector store backends (ChromaDB, Teradata EVS, Qdrant)
 
 #### LLM Integration Layer
-- **Supported Providers:** Google (Gemini), Anthropic (Claude), OpenAI, Azure OpenAI, AWS Bedrock, Friendli.AI, Ollama
+- **Supported Providers:** Google (Gemini), Anthropic (Claude), OpenAI, Azure OpenAI, AWS Bedrock, OpenRouter (100+ models), Friendli.AI, Ollama
 - **Authentication:** Dynamic credential handling per session
 - **Protocol:** REST API calls with structured prompts (system + user + tools)
 
@@ -3444,6 +3455,11 @@ Under the AGPLv3, you are free to use, modify, and distribute this software. How
 
 This list reflects the recent enhancements and updates to the Uderia Platform, as shown on the application's welcome screen.
 
+*   **03-May-2026:** Microsoft 365 Platform Connectors — Uderia v1.8 ships five new OAuth connectors for the Microsoft ecosystem: **Outlook** (email read/send, calendar), **Teams** (channel messaging, meeting scheduling), **SharePoint** (file read/write, site browsing), available alongside the existing Google connector. Admin configures `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` once; users connect their own accounts via Platform Components → Connectors.
+*   **03-May-2026:** Slack Platform Connector — New `uderia-slack` OAuth connector lets users connect their Slack workspace; the agent can read channel history and post messages. Admin configures `SLACK_CLIENT_ID` + `SLACK_CLIENT_SECRET` via Admin Panel.
+*   **03-May-2026:** Per-User Component Settings — Admins can now grant or block access to individual components (Chart, Canvas, Scheduler, Knowledge Graph) for specific users, independent of global settings and profile-level `componentConfig`. Governance chain: global disable_list → user override → profile componentConfig.
+*   **03-May-2026:** Scheduler Platform Jobs — Three built-in maintenance jobs automatically reset consumption counters (hourly, daily, monthly) via APScheduler, replacing the previous cron-only approach. Independent scheduler gates let admins enable/disable profile and platform schedulers separately without restarting.
+*   **03-May-2026:** Resource Panel UX — Consistent card styleguide across all resource types (profiles, collections, connectors, components) with unified hover states, action menus, and status indicators. Component and profile management dialogs refreshed.
 *   **02-May-2026:** Knowledge Sync Scheduling — Set exactly when knowledge repositories sync using a datetime anchor in Platform Jobs; the schedule auto-advances after each run. Repository cards include a Manage button that opens the matching sync job directly.
 *   **02-May-2026:** Portable Source URIs — Knowledge repositories now work across environments without reconfiguration; set a Source Root in Platform Jobs to tell the platform where documents live on each server.
 *   **02-May-2026:** Continuous Knowledge Sync (CDC) — Repositories stay current automatically. Only changed documents are re-processed; deleted content is removed. Sync results show exactly which files changed.

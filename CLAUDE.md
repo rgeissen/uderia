@@ -1488,6 +1488,11 @@ Schema files in `schema/`:
 - `27_platform_mcp_servers.sql` - Platform connectors (original creation)
 - `28_scheduled_tasks.sql` - Scheduled tasks + `messaging_identities` (per-user OAuth tokens)
 - `29_rename_platform_connectors.sql` - Renames `mcp_*` tables → `connector_*`; adds `connector_type` column
+- `30_sso.sql` - SSO/OIDC provider configurations (`sso_configurations` table) with group→tier mapping and JIT provisioning
+- `31_saml.sql` - SAML 2.0 IdP configurations (`saml_configurations` table) with SP/IdP metadata, ACS URL, and attribute mapping
+- `32_knowledge_cdc.sql` - Knowledge Repository CDC: adds `source_uri`, `ingest_epoch`, `sync_enabled`, `last_checked_at`, `chunk_count` to `knowledge_documents`; adds `sync_interval`, `embedding_model_locked` to `collections`
+- `33_scheduler_enhancements.sql` - Seeds three platform maintenance jobs (consumption hourly/daily/monthly reset); adds independent `profile_scheduler_enabled` / `platform_scheduler_enabled` gates to `component_settings`
+- `34_user_component_settings.sql` - Per-user component access overrides (`user_component_settings` table); admin can grant/block specific components for individual users independent of global settings
 
 ### Prompt Management System
 
@@ -1771,7 +1776,19 @@ Adding a new transport type: implement `ConnectorInvocationStrategy`, add instan
 
 **Two connector sub-categories (`requires_user_auth` field):**
 - `0` — Platform connector: admin credentials shared by all users (web, files, browser, shell)
-- `1` — User connector: admin sets OAuth `client_id`/`client_secret`; each user connects their own account via popup OAuth flow (Google)
+- `1` — User connector: admin sets OAuth `client_id`/`client_secret`; each user connects their own account via popup OAuth flow (Google, Microsoft 365, Slack)
+
+**Built-in user connectors (v1.8):**
+
+| Connector ID | Platform | OAuth App Credentials | Graph/API Scopes |
+|---|---|---|---|
+| `uderia-google` | Google | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Gmail, Calendar |
+| `uderia-outlook` | Microsoft | `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` (+ optional `AZURE_TENANT_ID`) | Mail.Read/Send/ReadWrite, Calendars.ReadWrite, Contacts.Read |
+| `uderia-teams` | Microsoft | `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | Team.ReadBasic, Channel.ReadBasic, ChannelMessage.Read/Send, OnlineMeetings.ReadWrite |
+| `uderia-sharepoint` | Microsoft | `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | Files.Read/Write.All, Sites.Read/Write.All |
+| `uderia-slack` | Slack | `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` | channels:read/history, chat:write, users:read, search:read, files:read |
+
+All three Microsoft connectors share the same Azure AD app registration — admin only needs to configure `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` once.
 
 **Adding a new connector:** create `connectors/<name>_connector.py` implementing `is_configured`, `initiate_oauth`, `handle_callback`, `get_connection_status`, `disconnect`, `get_tokens`, `inject_env_tokens`, and `SERVER_ID`; register in `connectors/registry.py`. See [CONNECTOR_ARCHITECTURE.md](docs/Architecture/CONNECTOR_ARCHITECTURE.md) §13.
 
@@ -1779,6 +1796,10 @@ Adding a new transport type: implement `ConnectorInvocationStrategy`, add instan
 - `src/trusted_data_agent/core/platform_connector_registry.py` — governance, tool resolution, invocation dispatch
 - `src/trusted_data_agent/connectors/registry.py` — platform-name → module mapping
 - `src/trusted_data_agent/connectors/google_connector.py` — Google OAuth (reference implementation)
+- `src/trusted_data_agent/connectors/outlook_connector.py` — Microsoft Outlook OAuth (Graph API)
+- `src/trusted_data_agent/connectors/teams_connector.py` — Microsoft Teams OAuth (Graph API)
+- `src/trusted_data_agent/connectors/sharepoint_connector.py` — Microsoft SharePoint OAuth (Graph API)
+- `src/trusted_data_agent/connectors/slack_connector.py` — Slack OAuth
 - `src/trusted_data_agent/api/connector_routes.py` — generic OAuth routes (`/api/v1/connectors/<platform>/auth|callback|status|connection`)
 - `static/js/handlers/platformConnectorAdminHandler.js` — Admin Panel → Connectors tab
 - `static/js/handlers/platformConnectorHandler.js` — Platform Components → Connectors tab
@@ -2397,6 +2418,11 @@ Example: "Using the n8n-uderia skill, how do I configure profile override in a w
 
 ## Recent Major Changes
 
+- **May 2026 (v1.8)**: Microsoft 365 & Slack Platform Connectors — four new built-in user connectors: `uderia-outlook` (email + calendar via Graph API), `uderia-teams` (channel messaging + meetings), `uderia-sharepoint` (files + sites), `uderia-slack` (channel history + messaging). All Microsoft connectors share a single Azure AD app registration; Slack uses its own OAuth app. Registered in `connectors/registry.py`; builtin MCP servers in `mcp_servers/builtin/`. See [CONNECTOR_ARCHITECTURE.md](docs/Architecture/CONNECTOR_ARCHITECTURE.md).
+- **May 2026 (v1.8)**: Per-user component settings — `user_component_settings` table (`schema/34_user_component_settings.sql`) lets admins grant or block individual components per user, independent of global `component_settings` and per-profile `componentConfig`. Governance chain: global disable_list → user override → profile componentConfig.
+- **May 2026 (v1.8)**: Scheduler enhancements — three platform maintenance jobs seed `scheduled_tasks` (`schema/33_scheduler_enhancements.sql`) to auto-reset consumption counters (hourly, daily, monthly rollover) via APScheduler. Independent `profile_scheduler_enabled` / `platform_scheduler_enabled` gates in `component_settings` decouple profile and platform scheduler governance.
+- **May 2026 (v1.8)**: Continuous Knowledge Sync (CDC) — `schema/32_knowledge_cdc.sql` adds `source_uri`, `ingest_epoch`, `sync_enabled`, `last_checked_at` to `knowledge_documents`; repositories auto-re-index changed files on a configurable schedule. Portable Source URIs allow repos to work across environments using a per-environment Source Root.
+- **May 2026 (v1.8)**: SAML 2.0 + Generic OIDC SSO — `schema/30_sso.sql` and `schema/31_saml.sql` add admin-configurable IdP tables; JIT provisioning maps IdP group membership to Uderia tiers on every login. See [SECURITY_ARCHITECTURE.md](docs/Architecture/SECURITY_ARCHITECTURE.md).
 - **May 2026**: Task Scheduler (Track B) — always-on autonomous agent execution via APScheduler `AsyncIOScheduler`; `TDA_Scheduler` builtin component lets users create/manage recurring tasks through natural language; tasks run through identical `execute_query()` pipeline (same LLM, profile, MCP tools); session context model: `NULL` = new ephemeral session per run, pinned `session_id` = run inside existing session with conversation history; overlap policies: `skip | queue | allow`; post-run token budget guard; result delivery via email, webhook (google_mail deferred); `source: 'scheduler'` badge in chat log; APScheduler optional dependency — graceful degradation if absent. Files: `components/builtin/scheduler/`, `core/task_scheduler.py`, `schema/28_scheduled_tasks.sql`. See [SCHEDULER_ARCHITECTURE.md](docs/Architecture/SCHEDULER_ARCHITECTURE.md).
 - **May 2026**: Platform Connector subsystem rename + multi-type architecture — renamed all `platform_mcp_*` identifiers to `platform_connector_*` (DB tables, REST URLs, JS handlers, Python module, HTML element IDs); introduced `connector_type` discriminator (`mcp_stdio | mcp_http | rest | oauth_only`) with `ConnectorInvocationStrategy` ABC and `_INVOCATION_STRATEGIES` registry dict; `McpStdioStrategy` encapsulates subprocess logic; adding a new transport type requires one class + one dict entry. Encryption salt `b'platform_mcp_registry'` intentionally frozen to preserve existing encrypted credentials. Generic OAuth routes (`/api/v1/connectors/<platform>/auth|callback|status|connection`) replace hardcoded Google paths. `_inject_user_tokens()` now delegates to connector module's `inject_env_tokens()` via `connectors/registry.py`. Files: `core/platform_connector_registry.py`, `connectors/registry.py`, `connectors/google_connector.py`, `api/connector_routes.py`, `schema/29_rename_platform_connectors.sql`, `static/js/handlers/platformConnectorAdminHandler.js`, `static/js/handlers/platformConnectorHandler.js`. See [CONNECTOR_ARCHITECTURE.md](docs/Architecture/CONNECTOR_ARCHITECTURE.md).
 - **Apr 2026**: `llm_filter_deloop` rewrite pass — new deterministic pass (inserted before `multi_loop_synthesis`) that converts any TDA_LLMFilter loop phase to a standalone filter phase; prevents `redundant_argument_pruning` from stripping `data_to_filter` when the planner incorrectly places TDA_LLMFilter inside a loop. Planner now has 12 rewrite passes. File: `planner.py:_rewrite_llm_filter_deloop()`

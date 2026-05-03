@@ -33,7 +33,11 @@ Connectors are the mechanism by which Uderia closes the autonomous execution gap
 | `uderia-web` | Web search, fetch, content extraction |
 | `uderia-files` | Read/write filesystem within an admin-configured allowlist |
 | `uderia-browser` | Playwright-based browser automation, screenshots, form fill |
-| `uderia-google` | Gmail read/send, Calendar list/create, per-user OAuth |
+| `uderia-google` | Gmail read/send, Calendar list/create, per-user OAuth (Google) |
+| `uderia-outlook` | Email read/send, calendar management via Microsoft Graph API, per-user OAuth (Azure AD) |
+| `uderia-teams` | Channel messaging, meeting scheduling via Microsoft Graph API, per-user OAuth (Azure AD) |
+| `uderia-sharepoint` | File read/write, site browsing via Microsoft Graph API, per-user OAuth (Azure AD) |
+| `uderia-slack` | Channel history, post messages, file access via Slack API, per-user OAuth |
 | `uderia-shell` | Command execution inside Docker-isolated containers (requires Docker) |
 
 ### System-level positioning
@@ -620,38 +624,38 @@ To activate a REST-type connector via the admin UI, set `connector_type: "rest"`
 
 ## 13. How to Add a New Connector Instance
 
-A new connector instance (e.g. `uderia-slack`, `uderia-github`) requires two steps:
+A new connector instance (e.g. `uderia-github`) requires two steps:
 
 **Step 1: Create the connector module**
 
-Create `src/trusted_data_agent/connectors/slack_connector.py`:
+Create `src/trusted_data_agent/connectors/github_connector.py`:
 
 ```python
-SERVER_ID = "uderia-slack"
+SERVER_ID = "uderia-github"
 
 def is_configured() -> bool:
-    """Return True if admin has set SLACK_BOT_TOKEN in credentials."""
+    """Return True if admin has set GITHUB_TOKEN in credentials."""
     from trusted_data_agent.core.platform_connector_registry import get_server_credentials
     creds = get_server_credentials(SERVER_ID)
-    return bool(creds.get("SLACK_BOT_TOKEN"))
+    return bool(creds.get("GITHUB_TOKEN"))
 
 def inject_env_tokens(user_uuid: str, env: dict):
     """Platform connector — no per-user auth; admin token already in env from credentials."""
-    pass  # Admin SLACK_BOT_TOKEN already injected by invoke_connector_tool()
+    pass  # Admin GITHUB_TOKEN already injected by invoke_connector_tool()
 ```
 
-For a user OAuth connector (like Google), implement all 7 required functions (§9). For a platform connector (shared admin credentials only), `inject_env_tokens` may be a no-op or omitted entirely.
+For a user OAuth connector (like Google, Outlook, Teams, SharePoint, or Slack), implement all 7 required functions (§9). For a platform connector (shared admin credentials only), `inject_env_tokens` may be a no-op or omitted entirely.
 
 **Step 2: Register in the connector registry**
 
 Add to the bottom of `src/trusted_data_agent/connectors/registry.py`:
 
 ```python
-from trusted_data_agent.connectors import slack_connector as _slack
-register("slack", _slack)
+from trusted_data_agent.connectors import github_connector as _github
+register("github", _github)
 ```
 
-The platform name (`"slack"`) becomes the `<platform>` path parameter in all OAuth routes and the key in `messaging_identities.platform` if per-user auth is added later.
+The platform name (`"github"`) becomes the `<platform>` path parameter in all OAuth routes and the key in `messaging_identities.platform` if per-user auth is added later.
 
 **Step 3 (if installing from admin UI): Create the connector record**
 
@@ -715,7 +719,11 @@ Each tool invocation spawns a fresh subprocess. The environment is built as `os.
 |---|---|
 | `src/trusted_data_agent/core/platform_connector_registry.py` | Central registry module: governance, tool resolution, invocation dispatch, strategy pattern |
 | `src/trusted_data_agent/connectors/registry.py` | Maps platform names (`"google"`) to connector modules; `server_id_to_platform()` lookup |
-| `src/trusted_data_agent/connectors/google_connector.py` | Google OAuth connector: initiate, callback, token storage, refresh, disconnect, inject |
+| `src/trusted_data_agent/connectors/google_connector.py` | Google OAuth connector (reference implementation) |
+| `src/trusted_data_agent/connectors/outlook_connector.py` | Microsoft Outlook OAuth connector (Graph API) |
+| `src/trusted_data_agent/connectors/teams_connector.py` | Microsoft Teams OAuth connector (Graph API) |
+| `src/trusted_data_agent/connectors/sharepoint_connector.py` | Microsoft SharePoint OAuth connector (Graph API) |
+| `src/trusted_data_agent/connectors/slack_connector.py` | Slack OAuth connector |
 | `src/trusted_data_agent/api/connector_routes.py` | Generic OAuth REST routes: `auth`, `callback`, `status`, `connection` |
 | `src/trusted_data_agent/api/rest_routes.py` | Connector registry + platform connector management REST routes |
 | `src/trusted_data_agent/mcp_adapter/adapter.py` | Tool injection (line ~915) and tool invocation routing (line ~1950) |
@@ -748,4 +756,8 @@ Each tool invocation spawns a fresh subprocess. The environment is built as `os.
 | `mcp_servers/builtin/uderia-files/` | Filesystem read/write (path allowlist) |
 | `mcp_servers/builtin/uderia-browser/` | Playwright browser automation |
 | `mcp_servers/builtin/uderia-google/` | Gmail + Calendar (per-user OAuth via `google_connector.py`) |
+| `mcp_servers/builtin/uderia-outlook/` | Outlook email + calendar (per-user OAuth via `outlook_connector.py`) |
+| `mcp_servers/builtin/uderia-teams/` | Teams messaging + meetings (per-user OAuth via `teams_connector.py`) |
+| `mcp_servers/builtin/uderia-sharepoint/` | SharePoint files + sites (per-user OAuth via `sharepoint_connector.py`) |
+| `mcp_servers/builtin/uderia-slack/` | Slack channels + messaging (per-user OAuth via `slack_connector.py`) |
 | `mcp_servers/builtin/uderia-shell/` | Docker-isolated command execution |

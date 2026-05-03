@@ -37,6 +37,8 @@
    - [Vector Store Configuration Management](#326-vector-store-configuration-management)
    - [Execution Provenance & Audit Trail](#327-execution-provenance--audit-trail)
    - [Knowledge Graph Marketplace](#328-knowledge-graph-marketplace)
+   - [Scheduled Tasks](#329-scheduled-tasks)
+   - [Platform Connectors (OAuth)](#330-platform-connectors-oauth)
 4. [Data Models](#4-data-models)
 5. [Code Examples](#5-code-examples)
 6. [Security Best Practices](#6-security-best-practices)
@@ -10474,6 +10476,142 @@ Remove a knowledge graph from the marketplace (publisher only).
 
 ---
 
+### 3.29. Scheduled Tasks
+
+The Task Scheduler lets users create and manage recurring agent queries that execute automatically on a cron or interval schedule. All endpoints require authentication; users can only access their own tasks.
+
+**All scheduled task endpoints require:** `Authorization: Bearer <token>`
+
+#### 3.29.1. List Scheduled Tasks
+
+**Endpoint:** `GET /api/v1/scheduled-tasks`
+
+**Query Parameters:**
+- `profile_id` (optional) — Filter tasks by profile
+
+**Success Response:**
+```json
+{
+  "tasks": [
+    {
+      "id": "task-abc123",
+      "name": "Daily Sales Report",
+      "prompt": "Generate a summary of today's sales figures",
+      "schedule": "0 8 * * 1-5",
+      "enabled": true,
+      "profile_id": "profile-xyz",
+      "session_id": null,
+      "overlap_policy": "skip",
+      "max_tokens_per_run": null,
+      "output_channel": "email",
+      "output_config": {"email": "user@example.com"},
+      "last_run_at": "2026-05-03T08:00:00Z",
+      "next_run_at": "2026-05-04T08:00:00Z",
+      "created_at": "2026-05-01T12:00:00Z"
+    }
+  ]
+}
+```
+
+#### 3.29.2. Create Scheduled Task
+
+**Endpoint:** `POST /api/v1/scheduled-tasks`
+
+**Request Body:**
+```json
+{
+  "name": "Weekly Performance Review",
+  "prompt": "Generate a performance report for the past week",
+  "schedule": "0 9 * * 1",
+  "profile_id": "profile-xyz",
+  "session_id": null,
+  "overlap_policy": "skip",
+  "max_tokens_per_run": 50000,
+  "output_channel": "webhook",
+  "output_config": {"webhook_url": "https://hooks.example.com/report", "bearer_token": "secret"}
+}
+```
+
+**Schedule formats:**
+- Cron: `"0 9 * * 1-5"` (weekdays at 9 AM)
+- Interval shorthand: `"interval:30m"`, `"interval:2h"`, `"interval:1d"`, `"interval:300s"`
+
+**Overlap policies:** `skip` (default), `queue`, `allow`
+**Output channels:** `null` (SSE only), `email`, `webhook`
+
+#### 3.29.3. Get / Update / Delete Scheduled Task
+
+**Endpoints:**
+- `GET /api/v1/scheduled-tasks/{task_id}`
+- `PUT /api/v1/scheduled-tasks/{task_id}` — update any fields
+- `DELETE /api/v1/scheduled-tasks/{task_id}`
+
+#### 3.29.4. Get Task Run History
+
+**Endpoint:** `GET /api/v1/scheduled-tasks/{task_id}/runs`
+
+Returns up to 100 most recent runs with `status`, `started_at`, `completed_at`, `tokens_used`, `error`.
+
+#### 3.29.5. Trigger Task Immediately
+
+**Endpoint:** `POST /api/v1/scheduled-tasks/{task_id}/run-now`
+
+Fires the task immediately, bypassing its schedule. Returns `{"run_id": "..."}`.
+
+#### 3.29.6. Scheduler Status
+
+**Endpoint:** `GET /api/v1/scheduler/status`
+
+Returns `{"running": true, "globally_enabled": true, "job_count": 5}`.
+
+---
+
+### 3.30. Platform Connectors (OAuth)
+
+Platform Connectors give users the ability to connect their personal SaaS accounts (Google, Microsoft 365, Slack) so the agent can act on their behalf. Admin configures app credentials once; users complete the per-account OAuth consent flow.
+
+**All connector endpoints require:** `Authorization: Bearer <token>`
+
+Available connector IDs: `uderia-google`, `uderia-outlook`, `uderia-teams`, `uderia-sharepoint`, `uderia-slack`
+
+#### 3.30.1. Initiate OAuth Flow
+
+**Endpoint:** `GET /api/v1/connectors/{connector_id}/auth`
+
+Redirects the user to the provider's OAuth consent screen. Called by the frontend; not used directly in REST automation.
+
+#### 3.30.2. OAuth Callback (Internal)
+
+**Endpoint:** `GET /api/v1/connectors/{connector_id}/callback`
+
+Handles the provider callback, stores the encrypted token in `messaging_identities`, and redirects to the UI. Internal — not called directly.
+
+#### 3.30.3. Get Connection Status
+
+**Endpoint:** `GET /api/v1/connectors/{connector_id}/status`
+
+**Success Response:**
+```json
+{
+  "connected": true,
+  "account_name": "user@example.com",
+  "expires_at": "2026-06-03T12:00:00Z"
+}
+```
+
+#### 3.30.4. Disconnect Account
+
+**Endpoint:** `DELETE /api/v1/connectors/{connector_id}/connection`
+
+Revokes the stored token and removes the `messaging_identities` row for the calling user.
+
+**Success Response:**
+```json
+{"status": "disconnected"}
+```
+
+---
+
 ## 4. Data Models
 
 ### 4.1. The Task Object
@@ -11727,6 +11865,6 @@ The user UUID is now automatically extracted from your token. Remove the `X-TDA-
 
 ---
 
-**Last Updated:** February 22, 2026
+**Last Updated:** May 3, 2026 (v1.8)
 **API Version:** v1
-**Document Version:** 2.2.0
+**Document Version:** 2.4.0
