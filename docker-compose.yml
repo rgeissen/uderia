@@ -5,10 +5,10 @@ services:
       context: . # Assumes Dockerfile is in this directory
       dockerfile: Dockerfile
     # This will be the name of the image after it's built
-    image: uderia-v1-7-1:latest
+    image: uderia-v1-8:latest
 
     # This is the container name from your JSON config
-    container_name: uderia-v1-7-1
+    container_name: uderia-v1-8
 
     # Memory limit to prevent OOM killing the host
     mem_limit: "4g"
