@@ -175,15 +175,8 @@ export async function loadSkillsPanel() {
             } else {
                 tabBtn.style.display = 'inline-block';
                 const activeCount = skills.filter(s => s.active).length;
-                const enabledCount = skills.filter(s => s.enabled && !s.active).length;
-                let label = 'Skills';
-                if (activeCount > 0 || enabledCount > 0) {
-                    const parts = [];
-                    if (activeCount > 0) parts.push(`${activeCount} auto`);
-                    if (enabledCount > 0) parts.push(`${enabledCount} on`);
-                    label = `Skills (${parts.join(', ')})`;
-                }
-                tabBtn.textContent = label;
+                // Use (N) format so _syncRailBadgesFromTabs can extract the count for rail-badge-skills
+                tabBtn.textContent = activeCount > 0 ? `Skills (${activeCount})` : 'Skills';
             }
         }
 

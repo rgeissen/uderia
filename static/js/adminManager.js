@@ -4016,6 +4016,9 @@ const AdminManager = {
             if (window.showNotification) {
                 window.showNotification('success', 'Feature settings saved successfully');
             }
+
+            // Refresh the components panel so globally_disabled state reflects immediately
+            import('./handlers/componentsPanelHandler.js').then(mod => mod.loadComponentsPanel()).catch(() => {});
         } catch (error) {
             console.error('[AdminManager] Error saving feature settings:', error);
             if (window.showNotification) {

@@ -5188,8 +5188,9 @@ export function updatePromptsTabCounter() {
         totalCount += items.length;
         disabledCount += items.filter(item => item.disabled).length;
     });
+    const activeCount = totalCount - disabledCount;
     const disabledIndicator = disabledCount > 0 ? '*' : '';
-    tabButton.textContent = `Prompts (${totalCount})${disabledIndicator}`;
+    tabButton.textContent = `Prompts (${activeCount})${disabledIndicator}`;
 }
 
 export function updateToolsTabCounter() {
@@ -5201,8 +5202,9 @@ export function updateToolsTabCounter() {
         totalCount += items.length;
         disabledCount += items.filter(item => item.disabled).length;
     });
+    const activeCount = totalCount - disabledCount;
     const disabledIndicator = disabledCount > 0 ? '*' : '';
-    tabButton.textContent = `Tools (${totalCount})${disabledIndicator}`;
+    tabButton.textContent = `Tools (${activeCount})${disabledIndicator}`;
 }
 
 export function highlightResource(resourceName, type) {

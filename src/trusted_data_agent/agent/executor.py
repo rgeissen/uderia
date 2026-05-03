@@ -662,6 +662,11 @@ class PlanExecutor:
         self.correction_history: list = []   # accumulated failed attempts for current phase (Reflexion pattern)
         self.events_to_yield = []
         self.last_action_str = None
+        # Per-phase isolated state for parallel execution correctness.
+        # Parallel phases share the same PlanExecutor instance but need independent
+        # correction_history and last_action_str so corrections from one phase don't
+        # leak into another's tactical LLM prompt.  Keyed by phase_num (int).
+        self._phase_parallel_state: dict[int, dict] = {}
 
         self.llm_debug_history = []
         self.max_steps = 40
@@ -2582,9 +2587,44 @@ Response:"""
 
     # --- Phase parallelization helpers ---
 
+    def _get_phase_state(self, phase_num: int) -> dict:
+        """Return (or lazily create) isolated per-phase state for parallel execution.
+
+        Parallel phases run in the same PlanExecutor and share its attributes, but
+        each phase must have its own correction_history (Reflexion) and last_action_str
+        (loop-detection) so that failures and loop checks from one phase don't corrupt
+        another.  Sequential phases also use this — the state is just never contended.
+
+        Keys: 'correction_history' (list), 'last_action_str' (str | None)
+        """
+        if phase_num not in self._phase_parallel_state:
+            self._phase_parallel_state[phase_num] = {
+                'correction_history': [],
+                'last_action_str': None,
+            }
+        return self._phase_parallel_state[phase_num]
+
     @staticmethod
     def _phase_referenced_deps(phase: dict) -> set:
-        """Return the set of phase numbers that this phase directly references."""
+        """Return the set of phase numbers that this phase directly depends on.
+
+        Scans every field where the planner is allowed to embed phase references:
+          - arguments   — recursive scan (covers source_data, data, data_to_filter, etc.)
+          - goal        — natural-language description sometimes contains 'result_of_phase_N'
+          - loop_over   — source key for loop iteration phases
+          - conditions  — any conditional logic the LLM might add (defensive)
+          - filter      — any filter field the LLM might add (defensive)
+
+        Pattern matches:
+          result_of_phase_N  — canonical inter-phase reference
+          phase_N            — abbreviated form sometimes emitted by weaker models
+
+        A false positive (unrelated string matching "phase_3") is safe — it just
+        forces sequential execution, which is conservative.  A false negative
+        (missed dependency) would allow two dependent phases to run concurrently,
+        potentially reading stale workflow_state.  The scan is designed to be
+        conservative (over-detect) rather than liberal.
+        """
         _PAT = re.compile(r'result_of_phase_(\d+)|phase_(\d+)')
 
         def _scan(obj):
@@ -2604,16 +2644,39 @@ Response:"""
         refs |= _scan(phase.get('loop_over', ''))
         refs |= _scan(phase.get('arguments', {}))
         refs |= _scan(phase.get('goal', ''))
+        refs |= _scan(phase.get('conditions', ''))   # defensive: non-standard LLM field
+        refs |= _scan(phase.get('filter', ''))       # defensive: non-standard LLM field
         return refs
 
+    # Tools that are always terminal — they synthesize or report on all prior results
+    # and must run AFTER every data-gathering phase.  Terminal phases run alone (never
+    # in a parallel group), even if they have no explicit result_of_phase_N references.
+    #
+    # Non-terminal tools (TDA_Charting, TDA_Canvas, TDA_LLMFilter, TDA_Scheduler, etc.)
+    # are NOT listed here because their phase dependencies are encoded in their arguments
+    # (data / source_data / data_to_filter) which the dependency scan catches.  If they
+    # reference prior phase results, they're automatically placed after those phases.
     _TERMINAL_TOOLS = frozenset({
-        "TDA_FinalReport", "TDA_ComplexPromptReport",
-        "TDA_ContextReport", "TDA_LLMTask",
+        "TDA_FinalReport",          # final answer synthesis
+        "TDA_ComplexPromptReport",  # rich-format final synthesis
+        "TDA_ContextReport",        # context-based answer (uses all collected context)
+        "TDA_LLMTask",              # LLM reasoning over all collected data
     })
 
     @classmethod
     def _is_terminal_phase(cls, phase: dict) -> bool:
-        """A terminal phase cannot share a parallel group with any other phase."""
+        """Return True if this phase must run alone — not in a parallel group.
+
+        Three independent terminal conditions:
+          1. Loop phases  — internally serial; parallel dispatch would break
+             loop-item iteration and shared loop-state tracking.
+          2. Executable-prompt phases  — delegated to a sub-executor; they must
+             run in the sequential path (handled in _run_plan, not _stream_parallel_phases).
+             This check is belt-and-suspenders: _build_phase_groups already isolates them.
+          3. Terminal tools  — synthesis/reporting tools that depend on ALL prior
+             data-gathering phases implicitly (even without explicit result_of_phase_N
+             references in the plan).
+        """
         if phase.get('type') == 'loop':
             return True
         if 'executable_prompt' in phase:
@@ -2692,8 +2755,13 @@ Response:"""
         history_start = len(self.turn_action_history)
 
         async def _collect(phase):
-            """Run one phase generator and collect all SSE events into a list."""
+            """Run one phase generator and collect all SSE events into a list.
+
+            On exception, append a phase_error SSE event so the UI and Live Status
+            panel show the failure rather than silently dropping the phase.
+            """
             events = []
+            pnum = phase.get('phase', '?')
             try:
                 is_delegated = ('executable_prompt' in phase
                                 and self.execution_depth < self.MAX_EXECUTION_DEPTH)
@@ -2705,18 +2773,32 @@ Response:"""
                 async for event in gen:
                     events.append(event)
             except Exception as exc:
-                app_logger.error(f"Parallel phase error (phase {phase.get('phase', '?')}): {exc}",
-                                 exc_info=True)
+                app_logger.error(f"Parallel phase error (phase {pnum}): {exc}", exc_info=True)
+                # Emit a visible error event so the Live Status panel shows the failure.
+                err_event = {
+                    "step": f"Phase {pnum} Failed",
+                    "type": "error",
+                    "details": {
+                        "phase_num": pnum,
+                        "error": str(exc),
+                        "summary": f"Phase {pnum} raised an unexpected exception during parallel execution.",
+                    },
+                }
+                self._log_system_event(err_event)
+                events.append(self._format_sse_with_depth(err_event))
             return events
 
         # Run all phases concurrently; each returns its complete event list
         per_phase_events = await asyncio.gather(
             *[_collect(p) for p in phases], return_exceptions=True)
 
-        # Yield events phase-by-phase so the UI sees clean sequential lifecycles
+        # Yield events phase-by-phase so the UI sees clean sequential lifecycles.
+        # The inner _collect() already catches all exceptions and converts them to
+        # error events, so phase_events should never be an Exception here.  The
+        # isinstance check below is a final safety net for asyncio internals.
         for phase_events in per_phase_events:
             if isinstance(phase_events, Exception):
-                app_logger.error(f"Parallel phase raised: {phase_events}")
+                app_logger.error(f"Parallel phase raised outside _collect (unexpected): {phase_events}")
                 continue
             for event in phase_events:
                 yield event
@@ -2742,6 +2824,11 @@ Response:"""
         parallel_slice = self.turn_action_history[history_start:]
         parallel_slice.sort(key=_entry_phase_num)  # stable sort preserves intra-phase order
         self.turn_action_history[history_start:] = parallel_slice
+
+        # Release per-phase state for this group (prevents unbounded memory growth
+        # across long multi-turn conversations with many parallel groups).
+        for p in phases:
+            self._phase_parallel_state.pop(p.get('phase', -1), None)
 
     # --- End phase parallelization helpers ---
 

@@ -511,6 +511,8 @@
     .rail-item:hover       { color: #0f172a; background: rgba(148,163,184,0.12); }
     .rail-item.active      { color: #F15F22; background: rgba(241,95,34,0.08); }
     .rail-item.active .rail-badge { color: #F15F22; }
+    .rail-mcp-chip         { border-color: rgba(100,116,139,0.35); color: #64748b; }
+    .rail-item.active .rail-mcp-chip { color: #F15F22; border-color: rgba(241,95,34,0.35); background: rgba(241,95,34,0.06); }
     #resource-drawer       { background: #ffffff; }
     .panel-header          { border-color: rgba(148,163,184,0.3); }
     .panel-count           { background: rgba(148,163,184,0.12); color: #64748b; }

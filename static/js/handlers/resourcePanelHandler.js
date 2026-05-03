@@ -135,8 +135,11 @@ function _syncRailBadgesFromTabs() {
         const count = match ? match[1] : '';
         const hasModified = text.includes('*');
 
-        badge.textContent = count;
-        badge.className = 'rail-badge' + (hasModified ? ' rail-badge--modified' : '');
+        // Only overwrite badges that are managed via tab text — skip self-managed ones (e.g. context %)
+        if (count !== '') badge.textContent = count;
+        // Never apply --modified colour to the badge — the count itself shows active vs total.
+        // The asterisk still propagates to panel-count spans below.
+        badge.className = 'rail-badge';
 
         // Also update panel-count span if it exists
         const panelCount = document.getElementById(`${type}-panel-count`) ||
