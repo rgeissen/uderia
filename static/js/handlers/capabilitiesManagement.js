@@ -78,7 +78,7 @@ export async function handleLoadResources(type) {
 
         Object.keys(data).forEach(category => {
             const categoryTab = document.createElement('button');
-            categoryTab.className = 'category-tab px-4 py-2 rounded-md font-semibold text-sm transition-colors hover:bg-[#D9501A]';
+            categoryTab.className = 'category-tab';
             categoryTab.textContent = category;
             categoryTab.dataset.category = category;
             categoryTab.dataset.type = type;
@@ -350,7 +350,7 @@ export function renderResourcePanel(type) {
 
         Object.keys(data).forEach(category => {
             const categoryTab = document.createElement('button');
-            categoryTab.className = 'category-tab px-4 py-2 rounded-md font-semibold text-sm transition-colors hover:bg-[#D9501A]';
+            categoryTab.className = 'category-tab';
             categoryTab.textContent = category;
             categoryTab.dataset.category = category;
             categoryTab.dataset.type = type;

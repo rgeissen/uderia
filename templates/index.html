@@ -871,57 +871,221 @@
                             </button>
                         </div>
 
-                        <header id="tool-header" class="relative rounded-b-2xl shadow-2xl z-20 flex flex-col flex-shrink-0 border-b pt-16 collapsed" style="background: var(--sidebar-bg, rgba(36, 52, 71, 0.98)); border-color: var(--sidebar-border, rgba(148, 163, 184, 0.1));" data-requires-config="true">
-                            <!-- Capabilities Panel Content -->
-                            <nav id="resource-tabs" class="flex justify-center items-center gap-x-4 p-3 border-b border-white/10">
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white active" data-type="tools">Tools</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="prompts">Prompts</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="connectors" style="display:none;">Connectors</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="resources">Resources</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="knowledge-graphs">Knowledge Graphs</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="skills">Skills</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="extensions">Extensions</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="components">Components</button>
-                                <button class="resource-tab px-4 py-2 font-semibold text-sm text-gray-300 transition-colors hover:text-white" data-type="context">Context</button>
+                        <header id="tool-header" class="relative rounded-b-2xl shadow-2xl z-20 flex flex-col flex-shrink-0 border-b collapsed" style="background: var(--sidebar-bg, rgba(36, 52, 71, 0.98)); border-color: var(--sidebar-border, rgba(148, 163, 184, 0.1));" data-requires-config="true">
+                            <!-- Legacy resource-tabs: hidden, kept for JS compatibility (tab switching, counters, highlight functions) -->
+                            <nav id="resource-tabs" aria-hidden="true" style="display:none; position:absolute; pointer-events:none;">
+                                <button class="resource-tab active" data-type="tools">Tools</button>
+                                <button class="resource-tab" data-type="prompts">Prompts</button>
+                                <button class="resource-tab" data-type="connectors">Connectors</button>
+                                <button class="resource-tab" data-type="resources">Resources</button>
+                                <button class="resource-tab" data-type="knowledge-graphs">Knowledge Graphs</button>
+                                <button class="resource-tab" data-type="skills">Skills</button>
+                                <button class="resource-tab" data-type="extensions">Extensions</button>
+                                <button class="resource-tab" data-type="components">Components</button>
+                                <button class="resource-tab" data-type="context">Context</button>
                             </nav>
-                            <div id="panels-container" class="flex-1 min-h-0">
-                                <div id="tools-panel" class="resource-panel flex flex-col h-full">
-                                    <nav id="tools-categories" class="flex justify-center items-center gap-x-2 p-3 border-b border-white/10"></nav>
-                                    <div id="tools-panels-container" class="flex-1 min-h-0 overflow-y-auto p-2"></div>
-                                </div>
-                                <div id="prompts-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <nav id="prompts-categories" class="flex justify-center items-center gap-x-2 p-3 border-b border-white/10"></nav>
-                                    <div id="prompts-panels-container" class="flex-1 min-h-0 overflow-y-auto p-2"></div>
-                                </div>
-                                <div id="connectors-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <nav id="connectors-categories" class="flex justify-center items-center gap-x-2 p-3 border-b border-white/10"></nav>
-                                    <div id="connectors-panels-container" class="flex-1 min-h-0 overflow-y-auto p-2"></div>
-                                </div>
-                                <div id="resources-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <nav id="resources-categories" class="flex justify-center items-center gap-x-2 p-3 border-b border-white/10"></nav>
-                                    <div id="resources-panels-container" class="flex-1 min-h-0 overflow-y-auto p-2"></div>
-                                </div>
-                                <div id="knowledge-graphs-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <div id="knowledge-graphs-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-2"></div>
-                                </div>
-                                <div id="skills-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <div id="skills-panel-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-2"></div>
-                                </div>
-                                <div id="extensions-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <div id="extensions-panel-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-2"></div>
-                                </div>
-                                <div id="components-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <div id="components-panel-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-2"></div>
-                                </div>
-                                <div id="context-panel" class="resource-panel flex-col h-full" style="display: none;">
-                                    <div id="context-panel-content" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-                                        <div class="text-center text-gray-400 text-sm py-8">
-                                            <p>Context window composition for the active profile.</p>
-                                            <p class="text-xs text-gray-500 mt-1">Updated when profile changes or after each query.</p>
-                                        </div>
+
+                            <!-- ══ Resource Panel Root: Icon Rail + Drawer ══ -->
+                            <div id="resource-panel-root">
+
+                                <!-- Icon Rail -->
+                                <nav id="resource-icon-rail" class="resource-rail">
+
+                                    <button class="rail-item active" data-type="tools" title="Tools">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                                                <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-tools"></span>
+                                        </span>
+                                        <span class="rail-label">Tools</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="prompts" title="Prompts">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-prompts"></span>
+                                        </span>
+                                        <span class="rail-label">Prompts</span>
+                                    </button>
+
+                                    <button class="rail-item rail-item--hidden" data-type="connectors" title="Connectors">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-connectors"></span>
+                                        </span>
+                                        <span class="rail-label">Connect</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="resources" title="Resources">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-resources"></span>
+                                        </span>
+                                        <span class="rail-label">Sources</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="knowledge-graphs" title="Knowledge Graphs">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-knowledge-graphs"></span>
+                                        </span>
+                                        <span class="rail-label">Graphs</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="skills" title="Skills">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-skills"></span>
+                                        </span>
+                                        <span class="rail-label">Skills</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="extensions" title="Extensions">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-extensions"></span>
+                                        </span>
+                                        <span class="rail-label">Plugins</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="components" title="Components">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/>
+                                            </svg>
+                                            <span class="rail-badge" id="rail-badge-components"></span>
+                                        </span>
+                                        <span class="rail-label">Comps</span>
+                                    </button>
+
+                                    <button class="rail-item" data-type="context" title="Context">
+                                        <span class="rail-icon-wrap">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-.98.626-1.813 1.5-2.122"/>
+                                            </svg>
+                                        </span>
+                                        <span class="rail-label">Context</span>
+                                    </button>
+
+                                </nav>
+                                <!-- End Icon Rail -->
+
+                                <!-- Drawer -->
+                                <div id="resource-drawer">
+
+                                    <!-- Execution Pulse Strip: shown during query execution -->
+                                    <div id="execution-pulse-strip" class="pulse-strip hidden">
+                                        <div id="pulse-strip-progress"></div>
+                                        <div id="pulse-strip-body"></div>
                                     </div>
+
+                                    <!-- Panel Container -->
+                                    <div id="panels-container">
+
+                                        <div id="tools-panel" class="resource-panel flex flex-col h-full">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Tools</span>
+                                                <span id="tools-panel-count" class="panel-count"></span>
+                                                <button class="density-btn" data-panel="tools" title="Toggle card view">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5"/></svg>
+                                                </button>
+                                            </div>
+                                            <nav id="tools-categories" class="category-pills-row"></nav>
+                                            <div id="tools-panels-container" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="prompts-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Prompts</span>
+                                                <span id="prompts-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <nav id="prompts-categories" class="category-pills-row"></nav>
+                                            <div id="prompts-panels-container" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="connectors-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Connectors</span>
+                                                <span id="connectors-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <nav id="connectors-categories" class="category-pills-row"></nav>
+                                            <div id="connectors-panels-container" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="resources-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Resources</span>
+                                                <span id="resources-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <nav id="resources-categories" class="category-pills-row"></nav>
+                                            <div id="resources-panels-container" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="knowledge-graphs-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Knowledge Graphs</span>
+                                                <span id="kg-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <div id="knowledge-graphs-content" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="skills-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Skills</span>
+                                                <span id="skills-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <div id="skills-panel-content" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="extensions-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Extensions</span>
+                                                <span id="extensions-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <div id="extensions-panel-content" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="components-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Components</span>
+                                                <span id="components-panel-count" class="panel-count"></span>
+                                            </div>
+                                            <div id="components-panel-content" class="panel-content"></div>
+                                        </div>
+
+                                        <div id="context-panel" class="resource-panel flex flex-col h-full" style="display:none;">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Context</span>
+                                            </div>
+                                            <div id="context-panel-content" class="panel-content">
+                                                <div style="text-align:center; color:var(--text-muted); font-size:13px; padding:2rem 1rem;">
+                                                    <p>Context window composition for the active profile.</p>
+                                                    <p style="font-size:11px; margin-top:0.25rem; color:var(--text-tertiary);">Updated when profile changes or after each query.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                    <!-- End Panel Container -->
                                 </div>
+                                <!-- End Drawer -->
+
                             </div>
+                            <!-- End Resource Panel Root -->
                         </header>
 
                         <div class="flex-1 flex flex-col min-h-0">

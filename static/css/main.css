@@ -405,16 +405,537 @@ details.resource-item > summary::-webkit-details-marker { display: none; }
 details.resource-item .chevron { transition: transform 0.2s ease-in-out; }
 details.resource-item[open] > summary .chevron { transform: rotate(90deg); }
 
-details.resource-selected > summary {
-    background-color: var(--teradata-orange-dark) !important;
-    box-shadow: 0 0 12px 2px rgba(241, 95, 34, 0.3);
-    border-left: 4px solid var(--teradata-orange);
+/* Shared keyframe: scanning beam travels down the left accent bar */
+@keyframes left-scan {
+    0%   { background-position: 0 -100%; }
+    100% { background-position: 0 200%; }
+}
+
+/* ── Resource item: SELECTED (last-called tool) ──────────────── */
+details.resource-item.resource-selected {
+    position: relative;
+    border-color: rgba(241, 95, 34, 0.25) !important;
+    background: rgba(241, 95, 34, 0.04);
+    overflow: hidden;
+}
+/* Reset the old ugly opaque-orange summary override */
+details.resource-item.resource-selected > summary {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border-left: none !important;
+}
+/* 3px solid left accent bar */
+details.resource-item.resource-selected::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--teradata-orange);
+    border-radius: 3px 0 0 3px;
+    pointer-events: none;
+}
+/* Name inherits orange on selected */
+details.resource-item.resource-selected > summary > span:first-child {
+    color: var(--teradata-orange);
+    font-weight: 600;
+}
+
+/* ── Resource item: EXECUTING (running right now) ────────────── */
+details.resource-item.resource-executing {
+    position: relative;
+    border-color: rgba(241, 95, 34, 0.3) !important;
+    background: rgba(241, 95, 34, 0.05);
+    overflow: hidden;
+}
+details.resource-item.resource-executing > summary {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    border-left: none !important;
+}
+/* Animated scanning beam on the left edge */
+details.resource-item.resource-executing::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(
+        180deg,
+        transparent 0%,
+        var(--teradata-orange) 50%,
+        transparent 100%
+    );
+    background-size: 100% 300%;
+    animation: left-scan 1.1s ease-in-out infinite;
+    border-radius: 3px 0 0 3px;
+    pointer-events: none;
+}
+details.resource-item.resource-executing > summary > span:first-child {
+    color: var(--teradata-orange);
 }
 
 .resource-tab.active {
     border-bottom: 2px solid var(--teradata-orange);
     color: var(--teradata-orange);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   RESOURCE PANEL — Icon Rail + Drawer Architecture
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Root: fills the tool-header below the hidden legacy nav */
+#resource-panel-root {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ── Icon Rail (horizontal, sits above the drawer) ──────────── */
+.resource-rail {
+    width: 100%;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    padding: 0;
+    gap: 0;
+    background: var(--bg-secondary, #1e293b);
+    border-bottom: 1px solid var(--border-primary);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+.resource-rail::-webkit-scrollbar { display: none; }
+
+.rail-item {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 7px 4px 6px;
+    border-radius: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+    outline: none;
+}
+.rail-item:focus-visible {
+    outline: 2px solid var(--teradata-orange);
+    outline-offset: -2px;
+}
+.rail-item:hover {
+    color: var(--text-primary);
+    background: var(--hover-bg, rgba(255,255,255,0.06));
+}
+.rail-item.active {
+    color: var(--teradata-orange);
+    background: rgba(241, 95, 34, 0.08);
+}
+/* Bottom-edge orange indicator for active item */
+.rail-item.active::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 20%;
+    width: 60%;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--teradata-orange);
+}
+.rail-item.rail-item--hidden {
+    display: none;
+}
+
+/* Icon wrapper (keeps badge positioned relative to icon, not the whole button) */
+.rail-icon-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+.rail-icon-wrap svg {
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+}
+
+/* Label below the icon */
+.rail-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    line-height: 1;
+}
+
+/* Count badge — superscript on the icon */
+.rail-badge {
+    position: absolute;
+    top: -5px;
+    right: -7px;
+    font-size: 7px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+.rail-item.active .rail-badge {
+    color: var(--teradata-orange);
+}
+/* Asterisk modifier badge */
+.rail-item .rail-badge--modified {
+    color: var(--status-warning, #f59e0b);
+}
+
+/* ── Drawer (fills height below the horizontal rail) ────────── */
+#resource-drawer {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ── Panel Container (holds the 9 resource-panel divs) ───────── */
+#panels-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ── Panel Header ────────────────────────────────────────────── */
+.panel-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px 6px 10px;
+    border-bottom: 1px solid var(--border-primary);
+    flex-shrink: 0;
+    min-height: 34px;
+}
+.panel-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+.panel-count {
+    font-size: 10px;
+    color: var(--text-muted);
+    background: var(--hover-bg, rgba(255,255,255,0.06));
+    border-radius: 10px;
+    padding: 1px 6px;
+    line-height: 1.4;
+}
+.density-btn {
+    margin-left: auto;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.1s ease, background 0.1s ease;
+}
+.density-btn:hover {
+    color: var(--text-primary);
+    background: var(--hover-bg, rgba(255,255,255,0.06));
+}
+.density-btn svg {
+    width: 13px;
+    height: 13px;
+}
+/* Rotated icon when in card mode */
+.density-btn.is-card-mode svg {
+    transform: rotate(90deg);
+}
+
+/* ── Category Filter Row ─────────────────────────────────────── */
+.category-pills-row {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    gap: 2px;
+    padding: 5px 8px 5px;
+    border-bottom: 1px solid var(--border-primary);
+    flex-shrink: 0;
+    align-items: center;
+}
+.category-pills-row::-webkit-scrollbar { display: none; }
+
+.category-tab {
+    flex-shrink: 0;
+    padding: 3px 10px 4px;
+    border-radius: 20px;
+    border: 1px solid transparent;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.015em;
+    color: var(--text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+    line-height: 1.5;
+}
+.category-tab:hover {
+    color: var(--text-primary);
+    background: var(--hover-bg, rgba(255,255,255,0.06));
+}
+.category-tab.active {
+    color: var(--teradata-orange);
+    background: rgba(241, 95, 34, 0.1);
+    border-color: rgba(241, 95, 34, 0.25);
+    font-weight: 600;
+}
+
+/* ── Panel Content (scrollable resource list) ────────────────── */
+.panel-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 5px;
+}
+/* Scrollbar styling within panel content */
+.panel-content::-webkit-scrollbar { width: 4px; }
+.panel-content::-webkit-scrollbar-track { background: transparent; }
+.panel-content::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, rgba(255,255,255,0.15)); border-radius: 2px; }
+.panel-content::-webkit-scrollbar-thumb:hover { background: var(--teradata-orange); }
+
+/* ── Compact List Items ──────────────────────────────────────── */
+.compact-item-wrap {
+    display: flex;
+    flex-direction: column;
+}
+.compact-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 8px 0 0;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    overflow: hidden;
+    transition: background 0.1s ease, border-color 0.15s ease;
+}
+.compact-item:hover {
+    background: var(--hover-bg, rgba(255,255,255,0.05));
+}
+/* Left type-colour stripe */
+.compact-item .type-stripe {
+    width: 3px;
+    height: 100%;
+    flex-shrink: 0;
+    border-radius: 3px 0 0 3px;
+    background: var(--border-primary);
+    transition: background 0.15s ease;
+}
+.compact-item .item-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.compact-item .item-category {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--hover-bg, rgba(255,255,255,0.05));
+    white-space: nowrap;
+}
+.compact-item .status-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: transparent;
+}
+.compact-item .status-dot.is-active {
+    background: var(--teradata-orange);
+}
+
+/* Compact item — EXECUTING: scan beam through the type-stripe */
+.compact-item.resource-executing {
+    background: rgba(241, 95, 34, 0.05);
+    border-color: rgba(241, 95, 34, 0.25);
+}
+.compact-item.resource-executing .type-stripe {
+    background: linear-gradient(
+        180deg,
+        transparent 0%,
+        var(--teradata-orange) 50%,
+        transparent 100%
+    ) !important;
+    background-size: 100% 300% !important;
+    animation: left-scan 1.1s ease-in-out infinite;
+}
+
+/* Compact item — SELECTED: static accent + orange name */
+.compact-item.resource-selected {
+    background: rgba(241, 95, 34, 0.06);
+    border-color: rgba(241, 95, 34, 0.2);
+}
+.compact-item.resource-selected .type-stripe {
+    background: var(--teradata-orange) !important;
+}
+.compact-item.resource-selected .item-name {
+    color: var(--teradata-orange);
+    font-weight: 600;
+}
+
+/* Inline detail panel (expanded state) */
+.compact-item-wrap .item-detail {
+    display: none;
+    padding: 7px 10px 9px 13px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    border-left: 2px solid var(--border-primary);
+    margin: 1px 4px 2px 11px;
+    border-radius: 0 0 5px 5px;
+    background: var(--bg-tertiary, rgba(0,0,0,0.12));
+}
+.compact-item-wrap.is-open .item-detail {
+    display: block;
+}
+.compact-item-wrap.is-open .compact-item .type-stripe {
+    border-radius: 3px 0 0 0;
+}
+
+/* ── Execution Pulse Strip ───────────────────────────────────── */
+.pulse-strip {
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(241, 95, 34, 0.2);
+    background: var(--bg-overlay, rgba(15,23,42,0.95));
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    max-height: 120px;
+}
+.pulse-strip.hidden {
+    display: none;
+}
+/* 2px progress bar shown in idle/collapsing state */
+#pulse-strip-progress {
+    height: 2px;
+    width: 0%;
+    background: linear-gradient(90deg, var(--teradata-orange) 0%, rgba(241,95,34,0.3) 100%);
+    transition: width 0.4s ease, opacity 0.3s ease;
+    opacity: 0;
+}
+.pulse-strip.is-idle #pulse-strip-progress {
+    width: 100%;
+    opacity: 1;
+}
+.pulse-strip.is-idle #pulse-strip-body {
+    display: none;
+}
+
+#pulse-strip-body {
+    padding: 5px 8px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Strip header label */
+.pulse-header {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 2px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid var(--border-secondary, rgba(255,255,255,0.06));
+}
+.pulse-header-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--teradata-orange);
+}
+.pulse-header-phase {
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+/* Individual pulse rows */
+.pulse-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 20px;
+    font-size: 11px;
+}
+.pulse-row .pulse-icon {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.pulse-row .pulse-icon svg {
+    width: 13px;
+    height: 13px;
+}
+.pulse-row .pulse-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pulse-row .pulse-meta {
+    font-size: 9px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.pulse-row.is-running .pulse-name { color: var(--teradata-orange); }
+.pulse-row.is-running .pulse-meta { color: var(--teradata-orange); opacity: 0.7; }
+.pulse-row.is-done    { opacity: 0.55; }
+.pulse-row.is-next    { opacity: 0.35; font-style: italic; }
+.pulse-row.is-error   .pulse-name { color: var(--status-error, #ef4444); }
+
+@keyframes spin-cw { to { transform: rotate(360deg); } }
+.spin { animation: spin-cw 0.85s linear infinite; }
 
 /* Modal transitions */
 #prompt-modal-overlay, #info-modal-overlay, #config-modal-overlay, #prompt-editor-overlay, #confirm-modal-overlay, #system-prompt-popup-overlay, #chat-modal-overlay, #view-prompt-modal-overlay, #rag-case-modal-overlay { 

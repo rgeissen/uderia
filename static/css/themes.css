@@ -259,6 +259,20 @@
     /* Flat shadows - elevation only, NO glow */
     --profile-tag-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     --profile-tag-shadow-hover: 0 3px 6px rgba(0, 0, 0, 0.25);
+
+    /* ── Resource Rail (Legacy) ── */
+    .resource-rail         { background: #1e1e1e; border-color: rgba(255,255,255,0.1); }
+    .rail-item:hover       { background: rgba(255,255,255,0.05); }
+    .rail-item.active      { background: rgba(241,95,34,0.09); }
+    #resource-drawer       { background: #262626; }
+    .panel-header          { border-color: rgba(255,255,255,0.09); }
+    .panel-content         { }
+    .compact-item:hover    { background: rgba(255,255,255,0.04); }
+    /* Legacy: no glow, just solid left accent on executing */
+    .compact-item.resource-executing .type-stripe { animation: none; background: var(--teradata-orange) !important; }
+    details.resource-item.resource-executing::before { animation: none; background: var(--teradata-orange); }
+    .pulse-strip           { background: #1a1a1a; border-color: rgba(241,95,34,0.35); backdrop-filter: none; }
+    .item-detail           { background: rgba(0,0,0,0.25); }
 }
 
 /* ============================================================================
@@ -362,6 +376,19 @@
     --tree-line-l0: rgba(241, 95, 34, 0.8);
     --tree-line-l1: rgba(139, 92, 246, 0.8);
     --tree-line-l2: rgba(16, 185, 129, 0.8);
+
+    /* ── Resource Rail (Modern) ── */
+    .resource-rail         { background: rgba(10,16,30,0.95); border-color: rgba(255,255,255,0.07); }
+    .rail-item:hover       { background: rgba(255,255,255,0.05); }
+    .rail-item.active      { background: rgba(241,95,34,0.12); }
+    #resource-drawer       { backdrop-filter: blur(10px); background: rgba(15,23,42,0.5); }
+    .panel-header          { border-color: rgba(148,163,184,0.12); }
+    .compact-item:hover    { background: rgba(255,255,255,0.04); }
+    /* Modern: add outer glow on executing items */
+    details.resource-item.resource-executing,
+    details.resource-item.resource-selected { box-shadow: 0 0 16px rgba(241,95,34,0.12); }
+    .pulse-strip           { background: rgba(10,16,30,0.92); backdrop-filter: blur(10px); border-color: rgba(241,95,34,0.3); }
+    .item-detail           { background: rgba(15,23,42,0.6); }
 }
 
 /* ============================================================================
@@ -477,6 +504,28 @@
     --tree-line-l0: rgba(241, 95, 34, 0.6);
     --tree-line-l1: rgba(139, 92, 246, 0.6);
     --tree-line-l2: rgba(16, 185, 129, 0.6);
+
+    /* ── Resource Rail (Light) ── */
+    .resource-rail         { background: #f1f5f9; border-color: rgba(148,163,184,0.35); }
+    .rail-item             { color: #64748b; }
+    .rail-item:hover       { color: #0f172a; background: rgba(148,163,184,0.12); }
+    .rail-item.active      { color: #F15F22; background: rgba(241,95,34,0.08); }
+    .rail-item.active .rail-badge { color: #F15F22; }
+    #resource-drawer       { background: #ffffff; }
+    .panel-header          { border-color: rgba(148,163,184,0.3); }
+    .panel-count           { background: rgba(148,163,184,0.12); color: #64748b; }
+    .compact-item:hover    { background: rgba(148,163,184,0.08); }
+    /* Light: softer tints — orange is very visible on white */
+    .compact-item.resource-selected { background: rgba(241,95,34,0.05); border-color: rgba(241,95,34,0.18); }
+    .compact-item.resource-executing { background: rgba(241,95,34,0.04); border-color: rgba(241,95,34,0.18); }
+    details.resource-item.resource-selected { background: rgba(241,95,34,0.04); border-color: rgba(241,95,34,0.2) !important; }
+    details.resource-item.resource-executing { background: rgba(241,95,34,0.03); border-color: rgba(241,95,34,0.2) !important; }
+    .item-detail           { background: #f8fafc; border-color: rgba(148,163,184,0.3); }
+    .pulse-strip           { background: #fffbf8; border-color: rgba(241,95,34,0.3); backdrop-filter: none; }
+    .pulse-header-label    { color: #c2410c; }
+    .pulse-row .pulse-name { color: #0f172a; }
+    .panel-content::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); }
+    .category-pills-row    { border-color: rgba(148,163,184,0.25); }
 }
 
 /* CRITICAL FIX: Ensure all profile tag spans inherit text color from parent */
@@ -1367,16 +1416,21 @@
     background-color: var(--button-bg-hover) !important;
 }
 
-/* Light theme - Category tabs (resource tabs) */
+/* Light theme - Category tabs */
 [data-theme="light"] .category-tab {
-    background-color: var(--bg-secondary) !important;
-    color: var(--text-secondary) !important;
+    color: #64748b;
+    background: transparent;
+    border-color: transparent;
 }
-
-[data-theme="light"] .category-tab:hover,
+[data-theme="light"] .category-tab:hover {
+    color: #0f172a;
+    background: rgba(148, 163, 184, 0.12);
+}
 [data-theme="light"] .category-tab.active {
-    background-color: var(--teradata-orange-light-mode) !important;
-    color: white !important;
+    color: var(--teradata-orange);
+    background: rgba(241, 95, 34, 0.08);
+    border-color: rgba(241, 95, 34, 0.3);
+    font-weight: 600;
 }
 
 /* Light theme - Resource tabs */

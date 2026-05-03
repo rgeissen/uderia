@@ -1120,6 +1120,7 @@ async function processStream(responseBody, originSessionId) {
                                     } else {
                                         UI.highlightResource(n, 'tools');
                                     }
+                                    window.resourcePanelHandler?.onSSEEvent('tool_call', { type: 'tool_call', payload: { tool_name: n } });
                                 }
                             }
                         } else if (eventData.type === 'llm_execution' ||
@@ -1179,6 +1180,9 @@ async function processStream(responseBody, originSessionId) {
                                 state.currentTurnNumber = payload.turn_id;
                             }
 
+                            // Pulse strip lifecycle
+                            window.resourcePanelHandler?.onSSEEvent(eventData.type, eventData);
+
                             console.log(`[${eventData.type}] Received for ${profile_type} profile:`, payload);
 
                             // Generate harmonized title
@@ -1197,6 +1201,9 @@ async function processStream(responseBody, originSessionId) {
 
                             // KG Live Animation: end animations on execution complete/error/cancelled
                             if (isFinal) _tryKGAnimateEnd();
+
+                            // Pulse strip: collapse on final lifecycle events
+                            if (isFinal) window.resourcePanelHandler?.onSSEEvent('conversation_agent_complete', eventData);
                         } else if (eventData.type === 'skills_applied') {
                             // Skill pre-processing transparency — emerald green
                             const skillsPayload = eventData.payload || {};
@@ -1336,6 +1343,8 @@ async function processStream(responseBody, originSessionId) {
                             } else {
                                 UI.highlightResource(n, 'tools');
                             }
+                            const evtType = eventName === 'tool_result' ? 'tool_result' : eventName === 'tool_error' ? 'tool_result' : 'tool_call';
+                            window.resourcePanelHandler?.onSSEEvent(evtType, { type: evtType, payload: { tool_name: n, is_error: eventName === 'tool_error' } });
                         }
                     // --- Extension Results (combined event, own SSE type) ---
                     } else if (eventName === 'extension_results') {
@@ -1602,6 +1611,7 @@ async function processStream(responseBody, originSessionId) {
                             } else {
                                 UI.highlightResource(n, 'tools');
                             }
+                            window.resourcePanelHandler?.onSSEEvent('tool_call', { type: 'tool_call', payload: { tool_name: n } });
                         }
 
                         // KG Live Animation: dispatch tool_enabled events (phase_start, plan_generated, kg_enrichment)
@@ -3141,7 +3151,7 @@ export async function handleLoadResources(type) {
 
         Object.keys(data).forEach(category => {
             const categoryTab = document.createElement('button');
-            categoryTab.className = 'category-tab px-4 py-2 rounded-md font-semibold text-sm transition-colors hover:bg-[#D9501A]';
+            categoryTab.className = 'category-tab';
             categoryTab.textContent = category;
             categoryTab.dataset.category = category;
             categoryTab.dataset.type = type;

@@ -29,6 +29,7 @@ import { loadKnowledgeGraphsPanel } from './handlers/knowledgeGraphPanelHandler.
 import { loadContextPanel } from './handlers/contextPanelHandler.js';
 import { initSkillsPanelEvents } from './handlers/skillsPanelHandler.js';
 import { initComponentsPanelEvents } from './handlers/componentsPanelHandler.js';
+import { initResourcePanel } from './handlers/resourcePanelHandler.js';
 
 // Expose capabilities module globally for resource panel updates
 window.capabilitiesModule = capabilitiesModule;
@@ -2325,6 +2326,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeUploadUI();
     initSkillsPanelEvents();
     initComponentsPanelEvents();
+    initResourcePanel();
 
     // Initialize industrial hierarchy path highlighting for session tree
     initializePathHighlighting();
