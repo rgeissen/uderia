@@ -4058,9 +4058,8 @@
                                             <p class="text-sm mt-1" style="color: var(--text-muted);">Pre-processing prompt injections for domain expertise (#sql-expert, #concise, ...)</p>
                                         </div>
                                         <div class="flex items-center gap-2">
-                                            <button id="create-skill-btn" class="skill-emerald-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                                                Create
+                                            <button id="create-skill-btn" class="card-btn card-btn--primary">
+                                                + Add Skill
                                             </button>
                                             <button id="import-skill-btn" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200"
                                                     style="background: var(--hover-bg); border: 1px solid var(--border-subtle); color: var(--text-muted);"
@@ -4237,11 +4236,8 @@
                                             <p class="text-sm text-gray-400 mt-1">Install and manage agent packs</p>
                                         </div>
                                         <div class="flex items-center gap-2">
-                                            <button id="create-agent-pack-btn" onclick="window.agentPackHandler.handleCreateAgentPack()" class="card-btn card-btn--primary flex items-center gap-2">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                                                </svg>
-                                                Create
+                                            <button id="create-agent-pack-btn" onclick="window.agentPackHandler.handleCreateAgentPack()" class="card-btn card-btn--primary">
+                                                + Add Agent Pack
                                             </button>
                                             <button id="install-agent-pack-btn" onclick="window.agentPackHandler.handleInstallAgentPack()" class="card-btn card-btn--info flex items-center gap-2">
                                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -4886,7 +4882,7 @@
                                             <p class="text-sm text-gray-400 mt-1">Configure token limits and rate limiting for different user tiers</p>
                                         </div>
                                         <button type="button" id="create-profile-btn" class="card-btn card-btn--primary">
-                                            + Create Profile
+                                            + Add Profile
                                         </button>
                                     </div>
 
