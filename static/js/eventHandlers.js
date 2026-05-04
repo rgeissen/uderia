@@ -1250,6 +1250,9 @@ async function processStream(responseBody, originSessionId) {
                         } else if (eventData.type === 'context_window_snapshot') {
                             // Context Window Manager snapshot — render budget visualization
                             const snapshotPayload = eventData.payload || {};
+                            if (snapshotPayload.condensations?.some(c => c.strategy === 'rag_offload')) {
+                                UI.pulseContextDotRagBusy();
+                            }
                             const snapshotHtml = renderContextWindowSnapshot(snapshotPayload);
                             UI.updateStatusWindow({
                                 step: eventData.step || 'Context Window Assembly',
@@ -1627,6 +1630,9 @@ async function processStream(responseBody, originSessionId) {
                         // Context Window Assembly from executor.py path (arrives as eventName='message')
                         // Use same rich rendering as the notification handler
                         const snapshotPayload = eventData.payload || {};
+                        if (snapshotPayload.condensations?.some(c => c.strategy === 'rag_offload')) {
+                            UI.pulseContextDotRagBusy();
+                        }
                         const snapshotHtml = renderContextWindowSnapshot(snapshotPayload);
                         UI.updateStatusWindow({
                             step: eventData.step || 'Context Window Assembly',

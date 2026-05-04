@@ -6056,6 +6056,27 @@ export function blinkContextDot() {
 }
 
 /**
+ * Pulses the CTX dot busy (amber + pulsing) while RAG-offload context retrieval is active,
+ * then restores the prior state (idle / locked / temp).
+ */
+export function pulseContextDotRagBusy() {
+    if (!DOM.contextStatusDot) return;
+
+    const dot = DOM.contextStatusDot;
+    const restoreClass = dot.classList.contains('context-last-turn-locked') ? 'context-last-turn-locked'
+        : dot.classList.contains('context-last-turn-temp') ? 'context-last-turn-temp'
+        : 'idle';
+
+    dot.classList.remove('idle', 'context-last-turn-locked', 'context-last-turn-temp', 'blinking-white');
+    dot.classList.add('busy', 'pulsing');
+
+    setTimeout(() => {
+        dot.classList.remove('busy', 'pulsing');
+        dot.classList.add(restoreClass);
+    }, 1500);
+}
+
+/**
  * Provides brief visual feedback on the CCR (Champion Case Retrieval) status dot by making it blink yellow.
  */
 export function blinkCcrDot() {
