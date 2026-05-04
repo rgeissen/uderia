@@ -2729,10 +2729,10 @@ console.log('[main.js] window.initializePanels is now available:', typeof window
 
 async function _buildWelcomeConfigHTML(d) {
     const ifocMap = {
-        'tool_enabled':  { label: '@OPTIMIZE',   color: '#F15F22', border: 'rgba(241,95,34,0.35)',  bg: 'rgba(241,95,34,0.08)' },
+        'tool_enabled':  { label: '@OPTIMIZE',   color: '#9333ea', border: 'rgba(147,51,234,0.35)', bg: 'rgba(147,51,234,0.08)' },
         'llm_only':      { label: '@IDEATE',      color: '#4ade80', border: 'rgba(74,222,128,0.3)',  bg: 'rgba(74,222,128,0.07)' },
         'rag_focused':   { label: '@FOCUS',       color: '#3b82f6', border: 'rgba(59,130,246,0.3)',  bg: 'rgba(59,130,246,0.07)' },
-        'genie':         { label: '@COORDINATE',  color: '#9333ea', border: 'rgba(147,51,234,0.3)',  bg: 'rgba(147,51,234,0.07)' },
+        'genie':         { label: '@COORDINATE',  color: '#F15F22', border: 'rgba(241,95,34,0.35)',  bg: 'rgba(241,95,34,0.08)'  },
     };
     // Reuse the same provider icons already defined in configurationHandler
     let providerIconsMap = {};

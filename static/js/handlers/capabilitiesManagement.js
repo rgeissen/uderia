@@ -15,10 +15,10 @@ import { handleStreamRequest } from '../eventHandlers.js?v=3.4';
 // ── Badge helpers (matching componentsPanelHandler style) ────────────────────
 
 const _IFOC = {
-    tool_enabled: { label: 'Optimize', color: '#F15F22', bg: 'rgba(241,95,34,0.10)',  border: 'rgba(241,95,34,0.25)'  },
-    llm_only:     { label: 'Ideate',   color: '#4ade80', bg: 'rgba(74,222,128,0.10)', border: 'rgba(74,222,128,0.25)' },
-    rag_focused:  { label: 'Focus',    color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.25)' },
-    genie:        { label: 'Coordinate', color: '#9333ea', bg: 'rgba(147,51,234,0.10)', border: 'rgba(147,51,234,0.25)' },
+    tool_enabled: { label: 'Optimize',   color: '#9333ea', bg: 'rgba(147,51,234,0.10)', border: 'rgba(147,51,234,0.25)' },
+    llm_only:     { label: 'Ideate',     color: '#4ade80', bg: 'rgba(74,222,128,0.10)', border: 'rgba(74,222,128,0.25)' },
+    rag_focused:  { label: 'Focus',      color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.25)' },
+    genie:        { label: 'Coordinate', color: '#F15F22', bg: 'rgba(241,95,34,0.10)',  border: 'rgba(241,95,34,0.25)'  },
 };
 
 function _pill(text, color, bg, border, mono = false) {

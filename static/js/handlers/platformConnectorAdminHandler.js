@@ -1375,10 +1375,10 @@ function _accentRgb(hex) {
 }
 
 const _IFOC_LABELS = {
-    tool_enabled: { label: 'Optimize',   color: '#F15F22' },
+    tool_enabled: { label: 'Optimize',   color: '#9333ea' },
     llm_only:     { label: 'Ideate',     color: '#4ade80' },
     rag_focused:  { label: 'Focus',      color: '#3b82f6' },
-    genie:        { label: 'Coordinate', color: '#9333ea' },
+    genie:        { label: 'Coordinate', color: '#F15F22' },
 };
 
 // ── Generic component admin panel (canvas / chart / knowledge_graph / context_window) ──

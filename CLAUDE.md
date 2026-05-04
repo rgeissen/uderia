@@ -371,10 +371,10 @@ All user-facing UI must use IFOC terminology for profile classes — never displ
 |---|---|---|---|
 | `llm_only` | **Ideate** | Green (#4ade80) | IDEATE |
 | `rag_focused` | **Focus** | Blue (#3b82f6) | FOCUS |
-| `tool_enabled` | **Optimize** | Orange (#F15F22) | OPTIMIZE |
-| `genie` | **Coordinate** | Purple (#9333ea) | COORDINATE |
+| `tool_enabled` | **Optimize** | Purple (#9333ea) | OPTIMIZE |
+| `genie` | **Coordinate** | Orange (#F15F22) | COORDINATE |
 
-Canonical JS source: `ifocTagConfig` in `static/js/handlers/configurationHandler.js:5242-5246`.
+Canonical JS source: `static/js/handlers/configurationHandler.js` lines ~5658-5663 and ~5842-5847 (both have the correct mapping).
 When adding profile type badges/labels in any JS handler, use this mapping — do not display `tool_enabled`, `llm_only`, etc. to users.
 
 **The platform supports 4 profile types:**

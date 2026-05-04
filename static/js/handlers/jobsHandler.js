@@ -22,8 +22,8 @@
     const IFOC_COLORS = {
         llm_only:     { bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.3)', text: '#4ade80', label: 'Ideate' },
         rag_focused:  { bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.3)', text: '#3b82f6', label: 'Focus' },
-        tool_enabled: { bg: 'rgba(241,95,34,0.12)',  border: 'rgba(241,95,34,0.3)',  text: '#F15F22', label: 'Optimize' },
-        genie:        { bg: 'rgba(147,51,234,0.12)', border: 'rgba(147,51,234,0.3)', text: '#9333ea', label: 'Coordinate' },
+        tool_enabled: { bg: 'rgba(147,51,234,0.12)', border: 'rgba(147,51,234,0.3)', text: '#9333ea', label: 'Optimize' },
+        genie:        { bg: 'rgba(241,95,34,0.12)',  border: 'rgba(241,95,34,0.3)',  text: '#F15F22', label: 'Coordinate' },
     };
 
     // Interval labels

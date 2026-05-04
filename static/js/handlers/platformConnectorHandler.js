@@ -359,7 +359,7 @@ function _renderDetailPanel(server) {
     // ── Profile assignment rows — IFOC-grouped with type filter chips ──
     const _IFOC_ORDER = { llm_only: 0, rag_focused: 1, tool_enabled: 2, genie: 3 };
     const _IFOC_LABEL = { llm_only: 'Ideate', rag_focused: 'Focus', tool_enabled: 'Optimize', genie: 'Coordinate' };
-    const _IFOC_COLOR = { llm_only: '#4ade80', rag_focused: '#3b82f6', tool_enabled: '#F15F22', genie: '#9333ea' };
+    const _IFOC_COLOR = { llm_only: '#4ade80', rag_focused: '#3b82f6', tool_enabled: '#9333ea', genie: '#F15F22' };
     const _sortedProfiles = [..._pconnuProfiles].sort((a, b) => {
         const tA = _IFOC_ORDER[a.profile_type || a.type || 'llm_only'] ?? 99;
         const tB = _IFOC_ORDER[b.profile_type || b.type || 'llm_only'] ?? 99;
@@ -866,7 +866,7 @@ function _renderDetailProfileRow(server, profile) {
 
     const profileType = profile.profile_type || profile.type || 'llm_only';
     const ifocLabel   = { llm_only: 'Ideate', rag_focused: 'Focus', tool_enabled: 'Optimize', genie: 'Coordinate' };
-    const ifocColor   = { llm_only: '#4ade80', rag_focused: '#3b82f6', tool_enabled: '#F15F22', genie: '#9333ea' };
+    const ifocColor   = { llm_only: '#4ade80', rag_focused: '#3b82f6', tool_enabled: '#9333ea', genie: '#F15F22' };
     const label       = ifocLabel[profileType] || profileType;
     const color       = ifocColor[profileType] || '#9ca3af';
     const tag         = profile.tag || profile.id;

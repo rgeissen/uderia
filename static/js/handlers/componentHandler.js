@@ -29,8 +29,8 @@ const STATUS_FILTERS_ID = 'component-status-filters-top';
 const IFOC_CONFIG = {
     'llm_only':      { label: 'Ideate',     badgeClass: 'bg-green-500/20 text-green-300 comp-lt-green' },
     'rag_focused':   { label: 'Focus',      badgeClass: 'bg-blue-500/20 text-blue-300 comp-lt-blue' },
-    'tool_enabled':  { label: 'Optimize',   badgeClass: 'bg-orange-500/20 text-orange-300 comp-lt-orange' },
-    'genie':         { label: 'Coordinate', badgeClass: 'bg-purple-500/20 text-purple-300 comp-lt-purple' },
+    'tool_enabled':  { label: 'Optimize',   badgeClass: 'bg-purple-500/20 text-purple-300 comp-lt-purple' },
+    'genie':         { label: 'Coordinate', badgeClass: 'bg-orange-500/20 text-orange-300 comp-lt-orange' },
 };
 const IFOC_ORDER = ['llm_only', 'rag_focused', 'tool_enabled', 'genie'];
 
@@ -631,7 +631,7 @@ async function _loadProfileAssignments(comp) {
             return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
         });
 
-        const IFOC_HEX = { llm_only: '#4ade80', rag_focused: '#3b82f6', tool_enabled: '#F15F22', genie: '#9333ea' };
+        const IFOC_HEX = { llm_only: '#4ade80', rag_focused: '#3b82f6', tool_enabled: '#9333ea', genie: '#F15F22' };
 
         function _buildProfileRow(profile) {
             const compConfig = (profile.componentConfig || {})[componentId] || {};
