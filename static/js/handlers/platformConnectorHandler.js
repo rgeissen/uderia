@@ -1262,7 +1262,7 @@ function _pmcpFilterByType(chip, type) {
 function _pmcpApplyFilters() {
     const groups = document.getElementById('pmcp-profile-groups');
     if (!groups) return;
-    const activeChip = groups.closest('div')?.querySelector('.pmcp-ifoc-chip.filter-pill--active');
+    const activeChip = document.querySelector('.pmcp-ifoc-chip.filter-pill--active');
     const activeType = activeChip?.dataset.type || 'all';
     const q = (document.getElementById('pmcp-profile-search')?.value || '').toLowerCase().trim();
 
