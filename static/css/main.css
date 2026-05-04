@@ -1636,10 +1636,6 @@ details.resource-item.resource-executing > summary > span:first-child {
     border-bottom-width: 0;
     opacity: 0;
 }
-/* Floating capabilities toggle tracks panel bottom — top animated in sync with panel max-height */
-#toggle-header-button {
-    transition: top 0.4s ease-in-out;
-}
 
 .menu-item {
     position: relative;

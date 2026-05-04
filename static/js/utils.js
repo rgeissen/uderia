@@ -327,16 +327,6 @@ export function setupPanelToggle(button, panel, checkbox, collapseIcon, expandIc
         }
         if (currentCheckbox) currentCheckbox.checked = isOpen;
 
-        // Float the capabilities toggle button to the panel's bottom edge when open
-        if (panel.id === 'tool-header') {
-            const floatBtn = document.getElementById('toggle-header-button');
-            if (floatBtn) {
-                // scrollHeight gives natural content height regardless of max-height clipping;
-                // cap at 500 to match the CSS max-height so the button stays within the visible panel
-                floatBtn.style.top = isOpen ? `${Math.min(panel.scrollHeight, 500)}px` : '4px';
-            }
-        }
-
         // Save state to localStorage only if user can toggle
         if (saveState && storageKey && userCanToggle) {
             try {
@@ -371,6 +361,33 @@ export function setupPanelToggle(button, panel, checkbox, collapseIcon, expandIc
         } catch (e) {
             console.warn('Failed to restore panel state:', e);
         }
+    }
+
+    // ResizeObserver: keep the floating capabilities toggle pinned to the panel's bottom edge.
+    // Uses offsetHeight (actual rendered px, bounded by max-height) so it tracks correctly during:
+    //   • CSS open/close animation (fires each rendered frame)
+    //   • Dynamic content changes (different rail category selected)
+    //   • Window / layout resizes
+    if (panel.id === 'tool-header') {
+        // Clean up any observer from a previous initializePanels() call
+        if (panel._toggleBtnObserver) {
+            panel._toggleBtnObserver.disconnect();
+            panel._toggleBtnObserver = null;
+        }
+        const updateBtnTop = () => {
+            // Always look up the current element — button is cloned by setupPanelToggle
+            const btn = document.getElementById('toggle-header-button');
+            if (!btn) return;
+            const h = panel.offsetHeight;
+            // Keep button at least 4 px from the top so it never disappears under the app bar
+            btn.style.top = (h > 4) ? `${h}px` : '4px';
+        };
+        const ro = new ResizeObserver(updateBtnTop);
+        ro.observe(panel);
+        panel._toggleBtnObserver = ro;
+        // Set initial position before the button is potentially cloned below;
+        // cloneNode(true) will copy the inline top style to the clone
+        updateBtnTop();
     }
 
     // Configure controls based on userCanToggle
