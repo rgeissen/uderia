@@ -631,15 +631,15 @@ async function _loadProfileAssignments(comp) {
             return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
         });
 
-        const rowsHTML = sortedProfiles.map(profile => {
+        const IFOC_HEX = { llm_only: '#4ade80', rag_focused: '#3b82f6', tool_enabled: '#F15F22', genie: '#9333ea' };
+
+        function _buildProfileRow(profile) {
             const compConfig = (profile.componentConfig || {})[componentId] || {};
             const isEnabled = compConfig.enabled !== undefined ? compConfig.enabled : true;
             const intensity = compConfig.intensity || comp.profile_defaults?.default_intensity || 'medium';
-            const ifocInfo = IFOC_CONFIG[profile.profile_type] || { label: profile.profile_type, badgeClass: 'bg-gray-500/20 text-gray-300 comp-lt-gray' };
-            const typeBadge = ifocInfo.badgeClass;
 
             const intensityLevels = (comp.manifest?.instructions?.intensity_levels || ['none', 'medium', 'heavy'])
-                .filter(l => l !== 'none');  // "none" is redundant — the enable toggle covers disabling
+                .filter(l => l !== 'none');
             const intensityOptions = intensityLevels.map(level => {
                 const label = level.charAt(0).toUpperCase() + level.slice(1);
                 return `<option value="${level}" ${intensity === level ? 'selected' : ''}>${label}</option>`;
@@ -648,7 +648,6 @@ async function _loadProfileAssignments(comp) {
             const intensityTooltip = intensityLevels
                 .map(l => `${l.charAt(0).toUpperCase() + l.slice(1)} — ${manifestTooltips[l] || (l === 'medium' ? 'Use when appropriate' : 'Proactively use at every opportunity')}`)
                 .join('\n');
-            // Scheduler: replace intensity selector with a task count badge (loaded async after render)
             const isScheduler = componentId === 'scheduler';
             const intensitySelect = (isAction && !isScheduler) ? `
                 <select class="profile-comp-intensity text-xs bg-gray-800 border border-gray-600 text-gray-300 comp-lt-select rounded px-2 py-1"
@@ -662,11 +661,10 @@ async function _loadProfileAssignments(comp) {
 
             return `
                 <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-800/30 border border-gray-700/20 comp-lt-row"
-                     data-profile-id="${profile.id}">
+                     data-profile-id="${profile.id}" data-profile-tag="${_escapeHtml(profile.tag || '')}">
                     <div class="flex items-center gap-3 min-w-0">
                         <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 comp-lt-cyan flex-shrink-0">@${_escapeHtml(profile.tag || '?')}</span>
                         <span class="text-sm truncate" style="color:var(--text-primary)">${_escapeHtml(profile.name || profile.id)}</span>
-                        <span class="text-[10px] px-1.5 py-0.5 rounded ${typeBadge} uppercase tracking-wider flex-shrink-0">${ifocInfo.label}</span>
                     </div>
                     <div class="flex items-center gap-3 flex-shrink-0">
                         ${intensitySelect}
@@ -679,7 +677,42 @@ async function _loadProfileAssignments(comp) {
                     </div>
                 </div>
             `;
-        }).join('');
+        }
+
+        // Group by IFOC type (already sorted)
+        const groups = {};
+        sortedProfiles.forEach(p => {
+            const t = p.profile_type || 'llm_only';
+            (groups[t] = groups[t] || []).push(p);
+        });
+        const groupsHtml = IFOC_ORDER
+            .filter(t => groups[t])
+            .map(t => {
+                const color = IFOC_HEX[t] || '#9ca3af';
+                const label = IFOC_CONFIG[t]?.label || t;
+                return `
+                <div class="comp-profile-group mb-4 last:mb-0" data-ifoc-type="${t}">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-[10px] font-semibold uppercase tracking-widest"
+                              style="color:${color}">${label}</span>
+                        <div class="flex-1 h-px" style="background:${color}22"></div>
+                        <span class="text-[10px]" style="color:var(--text-muted)">${groups[t].length}</span>
+                    </div>
+                    <div class="space-y-1.5">
+                        ${groups[t].map(_buildProfileRow).join('')}
+                    </div>
+                </div>`;
+            }).join('');
+
+        // Filter chips — one per present IFOC type + "All"
+        const typeChips = IFOC_ORDER
+            .filter(t => groups[t])
+            .map(t => {
+                const c = IFOC_HEX[t] || '#9ca3af';
+                return `<button class="filter-pill comp-ifoc-chip" data-type="${t}" data-color="${c}"
+                                onclick="window._compFilterByType(this,'${t}')"
+                                style="font-size:11px">${IFOC_CONFIG[t]?.label || t}</button>`;
+            }).join('');
 
         // Replace the loading placeholder, keep the header
         container.innerHTML = `
@@ -687,8 +720,26 @@ async function _loadProfileAssignments(comp) {
                 <h3 class="text-lg font-semibold" style="color:var(--text-primary)">Profile Assignments</h3>
                 <span class="text-xs" style="color:var(--text-muted)">${profiles.length} profiles</span>
             </div>
-            <div class="space-y-2">
-                ${rowsHTML}
+            <div class="flex items-center gap-1.5 flex-wrap mb-2">
+                <button class="filter-pill filter-pill--active comp-ifoc-chip" data-type="all"
+                        onclick="window._compFilterByType(this,'all')"
+                        style="font-size:11px">All</button>
+                ${typeChips}
+            </div>
+            <div class="relative mb-3">
+                <input type="text" id="comp-profile-search" placeholder="Search profiles…"
+                       oninput="window._compApplyFilters()"
+                       class="w-full text-xs px-3 py-1.5 rounded-lg pr-8"
+                       style="background:rgba(255,255,255,0.05);border:1px solid var(--border-secondary);
+                              color:var(--text-primary);outline:none;">
+                <svg class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
+                     style="color:var(--text-muted)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+            </div>
+            <div id="comp-profile-groups">
+                ${groupsHtml}
             </div>
         `;
 
@@ -1217,3 +1268,41 @@ function _filterComponentCards(dimension, filter) {
         card.style.display = visible ? '' : 'none';
     });
 }
+
+// ── IFOC type filter + text search ────────────────────────────────────────────
+
+window._compFilterByType = function(chip, type) {
+    chip.closest('.flex').querySelectorAll('.comp-ifoc-chip').forEach(c => {
+        c.classList.remove('filter-pill--active');
+        c.style.background = '';
+        c.style.color = '';
+        c.style.borderColor = '';
+    });
+    chip.classList.add('filter-pill--active');
+    const color = chip.dataset.color;
+    if (color) {
+        chip.style.background = `${color}20`;
+        chip.style.color = color;
+        chip.style.borderColor = `${color}50`;
+    }
+    window._compApplyFilters();
+};
+
+window._compApplyFilters = function() {
+    const groups = document.getElementById('comp-profile-groups');
+    if (!groups) return;
+    const activeChip = document.querySelector('.comp-ifoc-chip.filter-pill--active');
+    const activeType = activeChip?.dataset.type || 'all';
+    const q = (document.getElementById('comp-profile-search')?.value || '').toLowerCase().trim();
+
+    groups.querySelectorAll('.comp-profile-group').forEach(group => {
+        const typeMatch = activeType === 'all' || group.dataset.ifocType === activeType;
+        let anyRowVisible = false;
+        group.querySelectorAll('[data-profile-tag]').forEach(row => {
+            const tagMatch = !q || (row.dataset.profileTag || '').toLowerCase().includes(q);
+            row.style.display = tagMatch ? '' : 'none';
+            if (tagMatch) anyRowVisible = true;
+        });
+        group.style.display = (typeMatch && anyRowVisible) ? '' : 'none';
+    });
+};

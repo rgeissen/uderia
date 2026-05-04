@@ -356,10 +356,69 @@ function _renderDetailPanel(server) {
     const tools = _resolveTools(server);
     const isBuiltin = server.id.startsWith('uderia-');
 
-    // ── Profile assignment rows ──
-    const profileRows = _pconnuProfiles.length === 0
-        ? '<p class="text-gray-500 text-sm col-span-full">No profiles available.</p>'
-        : _pconnuProfiles.map(p => _renderDetailProfileRow(server, p)).join('');
+    // ── Profile assignment rows — IFOC-grouped with type filter chips ──
+    const _IFOC_ORDER = { llm_only: 0, rag_focused: 1, tool_enabled: 2, genie: 3 };
+    const _IFOC_LABEL = { llm_only: 'Ideate', rag_focused: 'Focus', tool_enabled: 'Optimize', genie: 'Coordinate' };
+    const _IFOC_COLOR = { llm_only: '#4ade80', rag_focused: '#3b82f6', tool_enabled: '#F15F22', genie: '#9333ea' };
+    const _sortedProfiles = [..._pconnuProfiles].sort((a, b) => {
+        const tA = _IFOC_ORDER[a.profile_type || a.type || 'llm_only'] ?? 99;
+        const tB = _IFOC_ORDER[b.profile_type || b.type || 'llm_only'] ?? 99;
+        if (tA !== tB) return tA - tB;
+        return (a.tag || a.id || '').localeCompare(b.tag || b.id || '');
+    });
+    let profileRows;
+    if (_pconnuProfiles.length === 0) {
+        profileRows = '<p style="color:var(--text-muted)" class="text-sm">No profiles available.</p>';
+    } else {
+        const _groups = {};
+        _sortedProfiles.forEach(p => {
+            const t = p.profile_type || p.type || 'llm_only';
+            (_groups[t] = _groups[t] || []).push(p);
+        });
+        const groupsHtml = Object.entries(_groups).map(([type, ps]) => {
+            const color = _IFOC_COLOR[type] || '#9ca3af';
+            return `
+            <div class="pmcp-profile-group mb-3 last:mb-0" data-ifoc-type="${type}">
+                <div class="flex items-center gap-2 mb-1.5">
+                    <span class="text-[10px] font-semibold uppercase tracking-widest"
+                          style="color:${color}">${_IFOC_LABEL[type] || type}</span>
+                    <div class="flex-1 h-px" style="background:${color}22"></div>
+                    <span class="text-[10px]" style="color:var(--text-muted)">${ps.length}</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    ${ps.map(p => _renderDetailProfileRow(server, p)).join('')}
+                </div>
+            </div>`;
+        }).join('');
+        // Filter chips — one per present IFOC type + "All"
+        const presentTypes = Object.keys(_groups);
+        const typeChips = presentTypes.map(t => {
+            const c = _IFOC_COLOR[t] || '#9ca3af';
+            return `<button class="filter-pill pmcp-ifoc-chip" data-type="${t}" data-color="${c}"
+                            onclick="window._pmcpFilterByType(this,'${t}')"
+                            style="font-size:11px">${_IFOC_LABEL[t] || t}</button>`;
+        }).join('');
+        const filterBar = `
+        <div class="flex items-center gap-1.5 flex-wrap mb-2">
+            <button class="filter-pill filter-pill--active pmcp-ifoc-chip" data-type="all"
+                    onclick="window._pmcpFilterByType(this,'all')"
+                    style="font-size:11px">All</button>
+            ${typeChips}
+        </div>
+        <div class="relative mb-3">
+            <input type="text" id="pmcp-profile-search" placeholder="Search profiles…"
+                   oninput="window._pmcpApplyFilters()"
+                   class="w-full text-xs px-3 py-1.5 rounded-lg pr-8"
+                   style="background:rgba(255,255,255,0.05);border:1px solid var(--border-secondary);
+                          color:var(--text-primary);outline:none;">
+            <svg class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
+                 style="color:var(--text-muted)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+        </div>`;
+        profileRows = filterBar + `<div id="pmcp-profile-groups">${groupsHtml}</div>`;
+    }
 
     // ── Tool list ──
     const toolList = tools.length > 0
@@ -438,7 +497,7 @@ function _renderDetailPanel(server) {
                     <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
                         Profile Assignment
                     </h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
                         ${profileRows}
                     </div>
                     ${!server.user_can_configure_tools ? '' : `
@@ -836,13 +895,10 @@ function _renderDetailProfileRow(server, profile) {
 
     return `
         <div class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg"
+             data-profile-tag="${_esc(tag)}"
              style="background:rgba(255,255,255,0.04)">
             <div class="flex items-center gap-2 min-w-0">
-                <span class="inline-block w-2 h-2 rounded-full flex-shrink-0"
-                      style="background:${color}"></span>
-                <span class="text-xs font-medium text-gray-200 truncate">${_esc(tag)}</span>
-                <span class="text-[10px] px-1.5 rounded flex-shrink-0"
-                      style="background:${color}20;color:${color}">${label}</span>
+                <span class="text-xs font-medium truncate" style="color:var(--text-primary)">${_esc(tag)}</span>
             </div>
             ${toggleHtml}
         </div>`;
@@ -1184,6 +1240,44 @@ async function toggleProfileConnectorOptIn(serverId, profileId, wrapEl) {
     }
 }
 
+// ── IFOC type filter + text search ───────────────────────────────────────────
+
+function _pmcpFilterByType(chip, type) {
+    chip.closest('.flex').querySelectorAll('.pmcp-ifoc-chip').forEach(c => {
+        c.classList.remove('filter-pill--active');
+        c.style.background = '';
+        c.style.color = '';
+        c.style.borderColor = '';
+    });
+    chip.classList.add('filter-pill--active');
+    const color = chip.dataset.color;
+    if (color) {
+        chip.style.background = `${color}20`;
+        chip.style.color = color;
+        chip.style.borderColor = `${color}50`;
+    }
+    _pmcpApplyFilters();
+}
+
+function _pmcpApplyFilters() {
+    const groups = document.getElementById('pmcp-profile-groups');
+    if (!groups) return;
+    const activeChip = groups.closest('div')?.querySelector('.pmcp-ifoc-chip.filter-pill--active');
+    const activeType = activeChip?.dataset.type || 'all';
+    const q = (document.getElementById('pmcp-profile-search')?.value || '').toLowerCase().trim();
+
+    groups.querySelectorAll('.pmcp-profile-group').forEach(group => {
+        const typeMatch = activeType === 'all' || group.dataset.ifocType === activeType;
+        let anyRowVisible = false;
+        group.querySelectorAll('[data-profile-tag]').forEach(row => {
+            const tagMatch = !q || (row.dataset.profileTag || '').toLowerCase().includes(q);
+            row.style.display = tagMatch ? '' : 'none';
+            if (tagMatch) anyRowVisible = true;
+        });
+        group.style.display = (typeMatch && anyRowVisible) ? '' : 'none';
+    });
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 window.loadPlatformConnectorPanel           = loadPlatformConnectorPanel;
@@ -1194,3 +1288,5 @@ window.updateProfileConnectorTools  = updateProfileConnectorTools;
 window.toggleProfileConnectorOptIn  = toggleProfileConnectorOptIn;
 window._pmcpSetTypeFilter             = _pmcpSetTypeFilter;
 window._pmcpSetStatusFilter           = _pmcpSetStatusFilter;
+window._pmcpFilterByType              = _pmcpFilterByType;
+window._pmcpApplyFilters              = _pmcpApplyFilters;
