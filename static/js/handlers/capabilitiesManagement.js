@@ -376,8 +376,8 @@ export function renderResourcePanel(type) {
         if (!state.activeGenieProfile && !state.activeRagProfile && !state.activeLlmOnlyProfile) {
             // Restore categories container display and panel title for normal profiles
             categoriesContainer.style.display = 'flex';
-            if (panelTitle && type === 'tools') panelTitle.textContent = 'MCP Tools';
-            setRailLabel('MCP Tools', true);
+            if (panelTitle && type === 'tools') panelTitle.textContent = 'Tools';
+            setRailLabel('Tools', true);
         }
 
         if (type === 'prompts') {
