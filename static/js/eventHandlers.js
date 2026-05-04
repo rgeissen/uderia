@@ -1362,6 +1362,8 @@ async function processStream(responseBody, originSessionId) {
                             const n = eventData.tool_name;
                             if (n.startsWith('generate_')) {
                                 UI.highlightResource(n, 'charts');
+                            } else if (n.includes('__')) {
+                                UI.highlightResource(n, 'connectors');
                             } else {
                                 UI.highlightResource(n, 'tools');
                             }
@@ -1641,6 +1643,8 @@ async function processStream(responseBody, originSessionId) {
                             const n = eventData.details.tool_name;
                             if (n.startsWith('generate_')) {
                                 UI.highlightResource(n, 'charts');
+                            } else if (n.includes('__')) {
+                                UI.highlightResource(n, 'connectors');
                             } else {
                                 UI.highlightResource(n, 'tools');
                             }
