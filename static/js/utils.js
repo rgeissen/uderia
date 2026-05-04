@@ -326,7 +326,17 @@ export function setupPanelToggle(button, panel, checkbox, collapseIcon, expandIc
             if (currentExpandIcon) currentExpandIcon.classList.toggle('hidden', !isCollapsed);
         }
         if (currentCheckbox) currentCheckbox.checked = isOpen;
-        
+
+        // Float the capabilities toggle button to the panel's bottom edge when open
+        if (panel.id === 'tool-header') {
+            const floatBtn = document.getElementById('toggle-header-button');
+            if (floatBtn) {
+                // scrollHeight gives natural content height regardless of max-height clipping;
+                // cap at 500 to match the CSS max-height so the button stays within the visible panel
+                floatBtn.style.top = isOpen ? `${Math.min(panel.scrollHeight, 500)}px` : '4px';
+            }
+        }
+
         // Save state to localStorage only if user can toggle
         if (saveState && storageKey && userCanToggle) {
             try {
