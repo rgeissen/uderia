@@ -5112,11 +5112,10 @@ export function createResourceItem(resource, type) {
 
     const detailsEl = document.createElement('details');
     detailsEl.id = `resource-${type}-${resource.name}`;
-    detailsEl.className = 'resource-item rounded-lg';
+    detailsEl.className = 'resource-item';
     detailsEl.style.cssText = [
-        `background:var(--card-bg,rgba(30,41,59,0.5))`,
-        `border:1px solid var(--border-primary,rgba(148,163,184,0.18))`,
-        `border-left:4px solid ${accent}`,
+        `border-left-width:4px`,
+        `border-left-color:${accent}`,
         resource.disabled ? 'opacity:0.6' : '',
     ].filter(Boolean).join(';');
 
@@ -5131,7 +5130,7 @@ export function createResourceItem(resource, type) {
 
     // ── Inline badge helper ──
     const badge = (text, color, bg, border, mono = false) =>
-        `<span style="font-size:10px;font-weight:${mono ? '400' : '500'};font-family:${mono ? 'monospace' : 'inherit'};padding:1px 6px;border-radius:4px;white-space:nowrap;background:${bg};color:${color};border:1px solid ${border};">${text}</span>`;
+        `<span class="text-[10px] ${mono ? 'font-mono' : 'font-medium'} px-1.5 py-0.5 rounded whitespace-nowrap" style="background:${bg};color:${color};border:1px solid ${border};">${text}</span>`;
 
     // Type badge
     const typeBadge = badge(cfg.label, cfg.color, cfg.bg, cfg.border);
@@ -5168,48 +5167,47 @@ export function createResourceItem(resource, type) {
                 ${arg.description ? `<p style="color:var(--text-muted,#94a3b8);font-size:11px;margin:4px 0 0;">${arg.description}</p>` : ''}
             </li>`;
         }).join('');
-        argsHTML = `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
-            <h5 style="font-size:11px;font-weight:600;color:var(--text-primary,#e5e7eb);margin:0 0 6px;">Parameters</h5>
+        argsHTML = `<div class="pt-2" style="border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
+            <h5 class="text-[10px] font-semibold mb-1.5" style="color:var(--text-primary,#e5e7eb);">Parameters</h5>
             <ul style="list-style:none;margin:0;padding:0;">${rows}</ul>
         </div>`;
     }
 
     // ── Body content ──
-    const borderTop = `border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));`;
-    const bodyStyle = `padding:10px 12px;font-size:12px;color:var(--text-muted,#94a3b8);`;
+    const borderTopStyle = `border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));`;
 
     let contentHTML = '';
     if (type === 'prompts') {
-        contentHTML = `<div style="${bodyStyle}">
-            ${resource.description ? `<p style="margin:0 0 8px;">${resource.description}</p>` : ''}
+        contentHTML = `<div class="px-3 pb-3 pt-2 space-y-2 text-xs" style="color:var(--text-muted,#94a3b8);">
+            ${resource.description ? `<p>${resource.description}</p>` : ''}
             ${argsHTML}
-            <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:10px;padding-top:10px;${borderTop}">
+            <div class="flex justify-end items-center gap-2 pt-2" style="${borderTopStyle}">
                 <button class="prompt-toggle-button" style="padding:4px;color:var(--text-muted,#9ca3af);background:none;border:none;cursor:pointer;border-radius:6px;" title="${resource.disabled ? 'Enable' : 'Disable'} prompt">${toggleIcon}</button>
                 <button class="view-prompt-button" style="padding:3px 10px;font-size:11px;font-weight:600;border-radius:6px;background:var(--hover-bg-strong,rgba(148,163,184,0.15));color:var(--text-primary,#e5e7eb);border:none;cursor:pointer;">Prompt</button>
                 <button class="run-prompt-button" style="padding:3px 10px;font-size:11px;font-weight:600;border-radius:6px;background:#F15F22;color:#fff;border:none;cursor:pointer;" title="Run this prompt.">Run</button>
             </div>
         </div>`;
     } else if (type === 'tools') {
-        contentHTML = `<div style="${bodyStyle}">
-            ${resource.description ? `<p style="margin:0 0 8px;">${resource.description}</p>` : ''}
+        contentHTML = `<div class="px-3 pb-3 pt-2 space-y-2 text-xs" style="color:var(--text-muted,#94a3b8);">
+            ${resource.description ? `<p>${resource.description}</p>` : ''}
             ${argsHTML}
-            <div style="display:flex;justify-content:flex-end;margin-top:10px;padding-top:10px;${borderTop}">
+            <div class="flex justify-end pt-2" style="${borderTopStyle}">
                 <button class="tool-toggle-button" style="padding:4px;color:var(--text-muted,#9ca3af);background:none;border:none;cursor:pointer;border-radius:6px;" title="${resource.disabled ? 'Enable' : 'Disable'} tool">${toggleIcon}</button>
             </div>
         </div>`;
     } else {
         contentHTML = resource.description
-            ? `<div style="${bodyStyle}padding-top:8px;${borderTop}">${resource.description}</div>`
+            ? `<div class="px-3 pb-3 pt-2 text-xs" style="color:var(--text-muted,#94a3b8);${borderTopStyle}">${resource.description}</div>`
             : '';
     }
 
     detailsEl.innerHTML = `
-        <summary style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;border-radius:8px;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;">
-                <span style="font-size:13px;font-weight:500;color:var(--text-primary,#e5e7eb);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${resource.name}</span>
+        <summary class="flex justify-between items-center px-3 py-2.5">
+            <div class="flex items-center gap-2 flex-wrap min-w-0">
+                <span class="text-sm font-medium truncate" style="color:var(--text-primary,#e5e7eb);">${resource.name}</span>
                 ${typeBadge}${argsBadge}${statusBadge}
             </div>
-            <svg class="chevron" style="width:16px;height:16px;flex-shrink:0;color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="chevron w-5 h-5 flex-shrink-0" style="color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
         </summary>

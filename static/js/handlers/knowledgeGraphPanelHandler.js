@@ -66,7 +66,7 @@ function createKnowledgeGraphCard(kg, kgState) {
     const ifoc = IFOC_CONFIG[kg.profile_type] || { label: kg.profile_type || 'Unknown', color: '#6b7280' };
 
     const detailsEl = document.createElement('details');
-    detailsEl.className = 'resource-item kg-panel-card bg-gray-800/50 rounded-lg border border-gray-700/60';
+    detailsEl.className = 'resource-item kg-panel-card';
     detailsEl.dataset.profileId = kg.profile_id;
 
     if (kgState.isActive) {
@@ -77,7 +77,7 @@ function createKnowledgeGraphCard(kg, kgState) {
     // Entity type pills
     const typePills = Object.entries(kg.entity_types || {})
         .map(([type, count]) =>
-            `<span class="text-xs px-2 py-0.5 rounded" style="background: var(--hover-bg, rgba(75,85,99,0.4)); color: var(--text-muted, #9ca3af);">${type} (${count})</span>`
+            `<span class="text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap" style="background:var(--hover-bg,rgba(148,163,184,0.10));color:var(--text-muted,#9ca3af);border:1px solid var(--border-primary,rgba(148,163,184,0.18));">${type} (${count})</span>`
         ).join(' ');
 
     // Active badge (shown in summary line)
@@ -86,7 +86,7 @@ function createKnowledgeGraphCard(kg, kgState) {
         : '';
 
     // IFOC badge
-    const ifocBadge = `<span class="text-xs font-semibold px-1.5 py-0.5 rounded-full" style="color: ${ifoc.color}; background: ${ifoc.color}20; border: 1px solid ${ifoc.color}40;">${ifoc.label}</span>`;
+    const ifocBadge = `<span class="text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap" style="color:${ifoc.color};background:${ifoc.color}20;border:1px solid ${ifoc.color}40;">${ifoc.label}</span>`;
 
     // Profile tag
     const tagLabel = kg.profile_tag
@@ -95,7 +95,7 @@ function createKnowledgeGraphCard(kg, kgState) {
 
     // Owner label
     const ownerLabel = kgState.isOwner
-        ? '<span class="text-xs text-gray-500">(own)</span>'
+        ? '<span class="text-xs" style="color:var(--text-muted,#6b7280);">(own)</span>'
         : '';
 
     // Assigned profiles badges
@@ -114,29 +114,29 @@ function createKnowledgeGraphCard(kg, kgState) {
     }
 
     detailsEl.innerHTML = `
-        <summary class="flex justify-between items-center p-3 font-semibold text-white hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer">
+        <summary class="flex justify-between items-center px-3 py-2.5">
             <div class="flex items-center gap-2 flex-wrap min-w-0">
-                <span class="truncate">${kg.kg_name || kg.profile_name || kg.profile_id}</span>
+                <span class="text-sm font-medium truncate" style="color:var(--text-primary,#e5e7eb);">${kg.kg_name || kg.profile_name || kg.profile_id}</span>
                 ${tagLabel}
                 ${ifocBadge}
                 ${ownerLabel}
                 ${activeBadge}
-                <span class="text-xs font-normal" style="color: var(--text-muted, #6b7280);">${kg.total_entities} entities</span>
+                <span class="text-[10px]" style="color:var(--text-muted,#6b7280);">${kg.total_entities} entities</span>
             </div>
-            <svg class="chevron w-5 h-5 text-[#F15F22] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            <svg class="chevron w-5 h-5 flex-shrink-0" style="color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
         </summary>
-        <div class="p-3 pt-2 text-sm space-y-3" style="color: var(--text-muted, #d1d5db);">
-            <div class="flex gap-4 text-sm">
-                <span>Entities: <strong style="color: var(--text-primary, #fff);">${kg.total_entities}</strong></span>
-                <span>Relationships: <strong style="color: var(--text-primary, #fff);">${kg.total_relationships}</strong></span>
+        <div class="px-3 pb-3 pt-2 space-y-2 text-xs" style="color:var(--text-muted,#9ca3af);">
+            <div class="flex gap-4">
+                <span>Entities: <strong style="color:var(--text-primary,#e5e7eb);">${kg.total_entities}</strong></span>
+                <span>Relationships: <strong style="color:var(--text-primary,#e5e7eb);">${kg.total_relationships}</strong></span>
             </div>
-            <div class="flex flex-wrap gap-1">${typePills || '<span class="text-xs" style="color: var(--text-muted, #6b7280);">No entities</span>'}</div>
+            <div class="flex flex-wrap gap-1">${typePills || '<span style="color:var(--text-muted,#6b7280);">No entities</span>'}</div>
             <div class="flex flex-wrap items-center gap-1">
-                <span class="text-xs" style="color: var(--text-muted, #6b7280);">Shared with:</span>
+                <span style="color:var(--text-muted,#6b7280);">Shared with:</span>
                 ${assignedBadges}
             </div>
-            <div class="text-xs" style="color: var(--text-muted, #6b7280);">Last updated: ${formatTimeAgo(kg.last_updated)}</div>
-            <div class="flex items-center gap-2 pt-2" style="border-top: 1px solid var(--border-primary, rgba(75,85,99,0.6));">
+            <div style="color:var(--text-muted,#6b7280);">Last updated: ${formatTimeAgo(kg.last_updated)}</div>
+            <div class="flex items-center gap-2 pt-2" style="border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
                 ${activateBtn}
                 <button class="kg-inspect-btn px-3 py-1 text-xs font-semibold rounded-md transition-colors"
                         style="background: rgba(147,51,234,0.15); color: #a78bfa; border: 1px solid rgba(147,51,234,0.3);"

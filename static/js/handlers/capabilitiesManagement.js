@@ -30,24 +30,24 @@ function _pill(text, color, bg, border, mono = false) {
 function createKnowledgeCard(collection) {
     const name = collection.name || collection.collection_name || collection.collection_id || 'Unknown';
     const el = document.createElement('details');
-    el.className = 'resource-item rounded-lg';
-    el.style.cssText = 'background:var(--card-bg,rgba(30,41,59,0.5));border:1px solid var(--border-primary,rgba(148,163,184,0.18));border-left:4px solid #3b82f6;';
+    el.className = 'resource-item';
+    el.style.cssText = 'border-left-width:4px;border-left-color:#3b82f6;';
 
     const typeBadge   = _pill('knowledge',   '#3b82f6', 'rgba(59,130,246,0.10)',  'rgba(59,130,246,0.25)');
     const storeBadge  = _pill('vector store', '#34d399', 'rgba(16,185,129,0.12)',  'rgba(16,185,129,0.25)', true);
     const activeBadge = _pill('ACTIVE',       '#4ade80', 'rgba(74,222,128,0.10)',  'rgba(74,222,128,0.2)');
 
     el.innerHTML = `
-        <summary style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;border-radius:8px;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;">
-                <span style="font-size:13px;font-weight:500;color:var(--text-primary,#e5e7eb);">${name}</span>
+        <summary class="flex justify-between items-center px-3 py-2.5">
+            <div class="flex items-center gap-2 flex-wrap min-w-0">
+                <span class="text-sm font-medium truncate" style="color:var(--text-primary,#e5e7eb);">${name}</span>
                 ${typeBadge}${storeBadge}${activeBadge}
             </div>
-            <svg class="chevron" style="width:16px;height:16px;flex-shrink:0;color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="chevron w-5 h-5 flex-shrink-0" style="color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
         </summary>
-        <div style="padding:8px 12px 10px;font-size:11px;color:var(--text-muted,#9ca3af);border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
+        <div class="px-3 pb-3 pt-2 text-xs" style="color:var(--text-muted,#9ca3af);border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
             Semantically searched on every query using this profile.
         </div>`;
     return el;
@@ -59,8 +59,8 @@ function createCoordCard(entry) {
     const ifoc = _IFOC[profileType] || { label: profileType, color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.2)' };
 
     const el = document.createElement('details');
-    el.className = 'resource-item rounded-lg';
-    el.style.cssText = `background:var(--card-bg,rgba(30,41,59,0.5));border:1px solid var(--border-primary,rgba(148,163,184,0.18));border-left:4px solid ${ifoc.color};`;
+    el.className = 'resource-item';
+    el.style.cssText = `border-left-width:4px;border-left-color:${ifoc.color};`;
 
     const tagPill   = UI.renderProfileTag(tag, profileType);
     const ifocBadge = _pill(ifoc.label, ifoc.color, ifoc.bg, ifoc.border);
@@ -73,16 +73,16 @@ function createCoordCard(entry) {
     };
 
     el.innerHTML = `
-        <summary style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;border-radius:8px;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;">
+        <summary class="flex justify-between items-center px-3 py-2.5">
+            <div class="flex items-center gap-2 flex-wrap min-w-0">
                 ${tagPill}
                 ${ifocBadge}
             </div>
-            <svg class="chevron" style="width:16px;height:16px;flex-shrink:0;color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="chevron w-5 h-5 flex-shrink-0" style="color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
         </summary>
-        <div style="padding:8px 12px 10px;font-size:11px;color:var(--text-muted,#9ca3af);border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
+        <div class="px-3 pb-3 pt-2 text-xs" style="color:var(--text-muted,#9ca3af);border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
             ${descriptions[profileType] || 'Child profile coordinated by this profile.'}
         </div>`;
     return el;

@@ -59,7 +59,7 @@ function _getHeaders() {
 
 function createComponentCard(comp) {
     const detailsEl = document.createElement('details');
-    detailsEl.className = 'resource-item bg-gray-800/50 rounded-lg border border-gray-700/60';
+    detailsEl.className = 'resource-item';
     detailsEl.dataset.componentId = comp.component_id;
     if (comp.tool_name) detailsEl.dataset.toolName = comp.tool_name;
 
@@ -96,7 +96,7 @@ function createComponentCard(comp) {
         : '';
 
     const summaryHTML = `
-        <summary class="flex justify-between items-center p-3 text-white hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer">
+        <summary class="flex justify-between items-center px-3 py-2.5">
             <div class="flex items-center gap-2 flex-wrap min-w-0">
                 <span class="text-sm font-medium truncate" style="color:var(--text-primary,#e5e7eb);">${comp.display_name}</span>
                 ${typeBadge}
@@ -131,9 +131,9 @@ function createComponentCard(comp) {
         : '';
 
     const contentHTML = `
-        <div class="p-3 pt-2 text-sm space-y-3" style="color:var(--text-muted,#d1d5db);">
+        <div class="px-3 pb-3 pt-2 space-y-2 text-xs" style="color:var(--text-muted,#9ca3af);">
             ${comp.description ? `<p class="text-xs" style="color:var(--text-muted,#9ca3af);">${comp.description}</p>` : ''}
-            <div class="flex items-center gap-2 pt-2" style="border-top:1px solid var(--border-primary,rgba(75,85,99,0.6));">
+            <div class="flex items-center gap-2 pt-2" style="border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
                 ${toggleBtn}
                 ${adminNote}
             </div>
@@ -147,7 +147,7 @@ function createComponentCard(comp) {
 function renderLoadingState(container) {
     container.innerHTML = `
         <div class="flex items-center justify-center py-12">
-            <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-500 border-t-cyan-500"></div>
+            <div class="animate-spin rounded-full h-6 w-6 border-2" style="border-color:var(--border-primary);border-top-color:#06b6d4;"></div>
             <span class="ml-3 text-sm" style="color:var(--text-muted,#9ca3af);">Loading components...</span>
         </div>
     `;

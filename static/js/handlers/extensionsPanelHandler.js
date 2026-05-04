@@ -37,7 +37,7 @@ function _getHeaders() {
 
 function createExtensionCard(ext) {
     const detailsEl = document.createElement('details');
-    detailsEl.className = 'resource-item bg-gray-800/50 rounded-lg border border-gray-700/60';
+    detailsEl.className = 'resource-item';
     detailsEl.dataset.extName = ext.activation_name;
 
     // Amber left border for activated extensions
@@ -48,7 +48,7 @@ function createExtensionCard(ext) {
     const outputCfg = OUTPUT_TARGET_CONFIG[ext.output_target] || OUTPUT_TARGET_CONFIG.silent;
 
     const summaryHTML = `
-        <summary class="flex justify-between items-center p-3 text-white hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer">
+        <summary class="flex justify-between items-center px-3 py-2.5">
             <div class="flex items-center gap-2 flex-wrap min-w-0">
                 <span class="text-xs font-mono font-semibold px-1.5 py-0.5 rounded" style="background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3);">!${ext.activation_name}</span>
                 <span class="text-sm font-medium truncate">${ext.display_name}</span>
@@ -78,9 +78,9 @@ function createExtensionCard(ext) {
     }
 
     const contentHTML = `
-        <div class="p-3 pt-2 text-sm space-y-2" style="color: var(--text-muted, #d1d5db);">
+        <div class="px-3 pb-3 pt-2 space-y-2 text-xs" style="color:var(--text-muted,#9ca3af);">
             ${detailItems}
-            <div class="text-[10px] pt-1" style="color: var(--text-muted, #6b7280); border-top: 1px solid var(--border-primary, rgba(75,85,99,0.6));">
+            <div class="text-[10px] pt-1" style="color: var(--text-muted, #6b7280); border-top: 1px solid var(--border-primary, rgba(148,163,184,0.18));">
                 Manage in Setup &rarr; Extensions
             </div>
         </div>
@@ -109,7 +109,7 @@ function renderEmptyState(container) {
 function renderLoadingState(container) {
     container.innerHTML = `
         <div class="flex items-center justify-center py-12">
-            <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-500" style="border-top-color: #fbbf24;"></div>
+            <div class="animate-spin rounded-full h-6 w-6 border-2" style="border-color: var(--border-primary); border-top-color: #fbbf24;"></div>
             <span class="ml-3 text-sm" style="color: var(--text-muted, #9ca3af);">Loading extensions...</span>
         </div>
     `;

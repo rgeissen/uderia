@@ -400,7 +400,14 @@ body {
     color: white;
 }
 
-details.resource-item > summary { list-style: none; cursor: pointer; }
+details.resource-item {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: background 0.1s ease, border-color 0.15s ease;
+}
+details.resource-item > summary { list-style: none; cursor: pointer; color: var(--text-primary); }
 details.resource-item > summary::-webkit-details-marker { display: none; }
 details.resource-item > summary:hover { background: var(--hover-bg-strong, rgba(148,163,184,0.12)); border-radius: 0.5rem; }
 details.resource-item .chevron { transition: transform 0.2s ease-in-out; }
@@ -501,8 +508,8 @@ details.resource-item.resource-executing > summary > span:first-child {
     align-items: stretch;
     padding: 0;
     gap: 0;
-    background: var(--bg-secondary, #1e293b);
-    border-bottom: 1px solid var(--border-primary);
+    background: transparent;
+    border-bottom: 1px solid var(--border-secondary);
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
