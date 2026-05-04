@@ -1158,7 +1158,7 @@ async function toggleProfileConnectorOptIn(serverId, profileId, wrapEl) {
     if (card)  card.style.opacity = enabled ? '1' : '0.6';
 
     try {
-        await fetch(
+        const resp = await fetch(
             `/api/v1/profiles/${profileId}/connector-settings/${serverId}`,
             {
                 method: 'PUT',
@@ -1166,6 +1166,14 @@ async function toggleProfileConnectorOptIn(serverId, profileId, wrapEl) {
                 body: JSON.stringify({ opted_in: enabled ? 1 : 0 }),
             }
         );
+        if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).message || 'Update failed');
+
+        // Refresh the resource panel if this profile is currently displayed.
+        // window.currentResourcePanelProfileId is set by updateResourcePanelForProfile in main.js.
+        const displayedProfileId = window.currentResourcePanelProfileId;
+        if (profileId === displayedProfileId && typeof window.updateResourcePanelForProfile === 'function') {
+            window.updateResourcePanelForProfile(profileId);
+        }
     } catch (err) {
         // Revert on failure
         if (track) track.style.background = !enabled ? '#818cf8' : 'rgba(100,100,120,0.35)';

@@ -1118,9 +1118,19 @@ async function processStream(responseBody, originSessionId) {
                                     if (n.startsWith('generate_')) {
                                         UI.highlightResource(n, 'charts');
                                     } else {
-                                        UI.highlightResource(n, 'tools');
+                                        // Bug 3 fix: connector tools use '__' namespace separator and live
+                                        // in state.resourceData.connectors, not state.resourceData.tools
+                                        const panelType = n.includes('__') ? 'connectors' : 'tools';
+                                        UI.highlightResource(n, panelType);
                                     }
-                                    window.resourcePanelHandler?.onSSEEvent('tool_call', { type: 'tool_call', payload: { tool_name: n } });
+                                    window.resourcePanelHandler?.onSSEEvent('notification', { type: 'conversation_tool_invoked', payload: { tool_name: n } });
+                                }
+                                // Bug 2 fix: forward completion events so the pulse-strip spinner stops
+                                if (eventData.type === 'conversation_tool_completed' && payload.tool_name) {
+                                    window.resourcePanelHandler?.onSSEEvent('notification', { type: 'conversation_tool_completed', payload: { tool_name: payload.tool_name, success: payload.success } });
+                                }
+                                if (eventData.type === 'conversation_agent_complete') {
+                                    window.resourcePanelHandler?.onSSEEvent('notification', { type: 'conversation_agent_complete', payload: {} });
                                 }
                             }
                         } else if (eventData.type === 'llm_execution' ||

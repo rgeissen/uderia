@@ -514,6 +514,7 @@ async function initializeRAGAutoCompletion() {
             // This ensures prompts are executed with the correct profile even if
             // window.activeProfileOverrideId is lost (e.g., page refresh)
             state.currentResourcePanelProfileId = profileId;
+            window.currentResourcePanelProfileId = profileId;  // expose for non-module handlers
             console.log(`📦 [Resource Panel] Profile ID stored: ${profileId}`);
 
             // Update Knowledge Graphs panel active indicator (survives @TAG overrides)

@@ -6924,10 +6924,28 @@ async def get_profile_resources(profile_id: str):
                     except Exception:
                         knowledge_collections.append({"id": coll_id, "name": f"Collection {coll_id}"})
 
+            # Include connectors for all profile types — they may have platform connectors enabled
+            _llm_only_connectors = {}
+            try:
+                from trusted_data_agent.core.platform_connector_registry import get_effective_tools as _get_pct
+                _conn_tools = _get_pct(profile_id)
+                for _ct in _conn_tools:
+                    _cat = _ct.get("_category", "Platform Tools")
+                    _label = _cat[len("Platform: "):] if _cat.startswith("Platform: ") else _cat
+                    _llm_only_connectors.setdefault(_label, []).append({
+                        "name": _ct["name"],
+                        "description": _ct.get("description", ""),
+                        "arguments": _ct.get("arguments", []),
+                        "disabled": False,
+                    })
+            except Exception:
+                pass
+
             return jsonify({
                 "status": "success",
                 "tools": {},
                 "prompts": {},
+                "connectors": _llm_only_connectors,
                 "profile_type": "llm_only",
                 "profile_tag": profile.get("tag"),
                 "knowledge_collections": knowledge_collections
@@ -6935,10 +6953,27 @@ async def get_profile_resources(profile_id: str):
 
         # Genie profiles coordinate child profiles and don't have direct MCP tools
         if profile.get("profile_type") == "genie":
+            _genie_connectors = {}
+            try:
+                from trusted_data_agent.core.platform_connector_registry import get_effective_tools as _get_pct
+                _conn_tools = _get_pct(profile_id)
+                for _ct in _conn_tools:
+                    _cat = _ct.get("_category", "Platform Tools")
+                    _label = _cat[len("Platform: "):] if _cat.startswith("Platform: ") else _cat
+                    _genie_connectors.setdefault(_label, []).append({
+                        "name": _ct["name"],
+                        "description": _ct.get("description", ""),
+                        "arguments": _ct.get("arguments", []),
+                        "disabled": False,
+                    })
+            except Exception:
+                pass
+
             return jsonify({
                 "status": "success",
                 "tools": {},
                 "prompts": {},
+                "connectors": _genie_connectors,
                 "profile_type": "genie",
                 "profile_tag": profile.get("tag"),
                 "slave_profiles": profile.get("genieConfig", {}).get("slaveProfiles", [])
@@ -6970,10 +7005,27 @@ async def get_profile_resources(profile_id: str):
                     except Exception:
                         knowledge_collections.append({"id": coll_id, "name": f"Collection {coll_id}"})
 
+            _rag_connectors = {}
+            try:
+                from trusted_data_agent.core.platform_connector_registry import get_effective_tools as _get_pct
+                _conn_tools = _get_pct(profile_id)
+                for _ct in _conn_tools:
+                    _cat = _ct.get("_category", "Platform Tools")
+                    _label = _cat[len("Platform: "):] if _cat.startswith("Platform: ") else _cat
+                    _rag_connectors.setdefault(_label, []).append({
+                        "name": _ct["name"],
+                        "description": _ct.get("description", ""),
+                        "arguments": _ct.get("arguments", []),
+                        "disabled": False,
+                    })
+            except Exception:
+                pass
+
             return jsonify({
                 "status": "success",
                 "tools": {},
                 "prompts": {},
+                "connectors": _rag_connectors,
                 "profile_type": "rag_focused",
                 "profile_tag": profile.get("tag"),
                 "knowledge_collections": knowledge_collections
