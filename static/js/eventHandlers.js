@@ -25,11 +25,12 @@ import { getPendingAttachments, clearPendingAttachments, renderAttachmentChips, 
 import { renderComponent, hasRenderer } from './componentRenderers.js';
 import { createSubWindow, updateSubWindow, closeSubWindow } from './subWindowManager.js';
 import { getOpenCanvasState } from '/api/v1/components/canvas/renderer';
-import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick } from './handlers/knowledgeGraphPanelHandler.js';
+import { loadKnowledgeGraphsPanel, handleKnowledgeGraphPanelClick, highlightKnowledgeGraphCard } from './handlers/knowledgeGraphPanelHandler.js';
 import { loadContextPanel, renderContextWindowSnapshot } from './handlers/contextPanelHandler.js';
 import { loadSkillsPanel, highlightSkill } from './handlers/skillsPanelHandler.js?v=1.1';
 import { loadExtensionsPanel, highlightExtension } from './handlers/extensionsPanelHandler.js?v=1.1';
 import { highlightComponent } from './handlers/componentsPanelHandler.js?v=1.2';
+import { highlightCoordCard, highlightKnowledgeCard } from './handlers/capabilitiesManagement.js';
 import { openContextAnalyticsModal } from './handlers/contextAnalyticsModal.js';
 
 // ─── KG Live Animation Bridge (lazy-loaded) ────────────────────────────
@@ -1152,8 +1153,9 @@ async function processStream(responseBody, originSessionId) {
                             console.log(`[${eventData.type}] Received during execution:`, payload);
 
                             // Update knowledge indicator for completion events
-                            if (eventData.type === 'knowledge_retrieval_complete' || eventData.type === 'knowledge_retrieval') {
-                                const collections = payload.collections || [];
+                            if (eventData.type === 'knowledge_retrieval_complete' || eventData.type === 'knowledge_retrieval' ||
+                                eventData.type === 'knowledge_retrieval_start') {
+                                const collections = payload.collections || payload.collection_names || [];
                                 const documentCount = payload.document_count || 0;
                                 // Only blink during live execution, not when viewing historical turns
                                 if (!state.isViewingHistoricalTurn) {
@@ -1162,6 +1164,10 @@ async function processStream(responseBody, originSessionId) {
                                 UI.updateKnowledgeIndicator(collections, documentCount);
                                 // Store the knowledge event for potential replay
                                 state.pendingKnowledgeRetrievalEvent = payload;
+                                // Highlight the collection card(s) in the Knowledge/Tools tab for rag_focused profiles
+                                if (state.activeRagProfile && collections.length > 0) {
+                                    highlightKnowledgeCard(collections[0]);
+                                }
                             }
 
                             // Update token display for cost tracking (rag_focused profiles)
@@ -1250,6 +1256,12 @@ async function processStream(responseBody, originSessionId) {
                                 details: snapshotHtml,
                                 type: 'context_window_snapshot'
                             }, true, 'context_window');
+                        } else if (eventData.type === 'kg_enrichment') {
+                            // KG panel: highlight the card whose KG was applied (notification path for all non-genie profiles)
+                            const enrichments = (eventData.details || eventData).enrichments || [];
+                            if (enrichments[0]?.kg_owner_profile_id) {
+                                highlightKnowledgeGraphCard(enrichments[0].kg_owner_profile_id);
+                            }
                         }
                     } else if (eventName === 'rag_retrieval') {
                         state.lastRagCaseData = eventData; // Store the full CCR (Champion Case Retrieval) data
@@ -1486,9 +1498,20 @@ async function processStream(responseBody, originSessionId) {
                             _tryKGAnimate(eventName, eventData);
                         }
 
-                        // Resource Panel: highlight component tool invoked by genie coordinator (TDA_Charting etc.)
+                        // Resource Panel: highlight slave profile card when a slave is invoked
+                        if (eventName === 'genie_slave_invoked' && eventData.profile_tag) {
+                            highlightCoordCard(eventData.profile_tag);
+                        }
+                        // Resource Panel: highlight component card when coordinator invokes a component tool
                         if (eventName === 'genie_component_invoked' && eventData.tool_name) {
-                            UI.highlightResource(eventData.tool_name, 'tools');
+                            highlightComponent(eventData.tool_name);
+                        }
+                        // Resource Panel: highlight KG card when KG enrichment is applied by the coordinator
+                        if (eventName === 'kg_enrichment') {
+                            const enrichments = eventData.enrichments || [];
+                            if (enrichments[0]?.kg_owner_profile_id) {
+                                highlightKnowledgeGraphCard(enrichments[0].kg_owner_profile_id);
+                            }
                         }
                         // KG Live Animation: end animations on genie coordination complete
                         if (eventName === 'genie_coordination_complete') _tryKGAnimateEnd();
@@ -1622,6 +1645,14 @@ async function processStream(responseBody, originSessionId) {
                                 UI.highlightResource(n, 'tools');
                             }
                             window.resourcePanelHandler?.onSSEEvent('tool_call', { type: 'tool_call', payload: { tool_name: n } });
+                        }
+
+                        // KG panel: highlight the card whose KG was applied during this turn
+                        if (eventData.type === 'kg_enrichment') {
+                            const enrichments = (eventData.details || eventData).enrichments || [];
+                            if (enrichments[0]?.kg_owner_profile_id) {
+                                highlightKnowledgeGraphCard(enrichments[0].kg_owner_profile_id);
+                            }
                         }
 
                         // KG Live Animation: dispatch tool_enabled events (phase_start, plan_generated, kg_enrichment)

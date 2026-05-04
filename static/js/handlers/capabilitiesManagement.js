@@ -31,6 +31,7 @@ function createKnowledgeCard(collection) {
     const name = collection.name || collection.collection_name || collection.collection_id || 'Unknown';
     const el = document.createElement('details');
     el.className = 'resource-item';
+    el.dataset.collectionName = name;
     el.style.cssText = 'border-left-width:4px;border-left-color:#3b82f6;';
 
     const typeBadge   = _pill('knowledge',   '#3b82f6', 'rgba(59,130,246,0.10)',  'rgba(59,130,246,0.25)');
@@ -60,22 +61,19 @@ function createCoordCard(entry) {
 
     const el = document.createElement('details');
     el.className = 'resource-item';
+    el.dataset.profileTag = tag;
     el.style.cssText = `border-left-width:4px;border-left-color:${ifoc.color};`;
 
     const tagPill   = UI.renderProfileTag(tag, profileType);
     const ifocBadge = _pill(ifoc.label, ifoc.color, ifoc.bg, ifoc.border);
-
-    const descriptions = {
-        tool_enabled: 'Multi-step planning with MCP tool execution.',
-        llm_only:     'Direct LLM conversation, optional tool access.',
-        rag_focused:  'Knowledge retrieval from document collections.',
-        genie:        'Nested coordination across multiple profiles.',
-    };
+    const profileName = entry.name || '';
+    const profileDesc = entry.description || '';
 
     el.innerHTML = `
         <summary class="flex justify-between items-center px-3 py-2.5">
             <div class="flex items-center gap-2 flex-wrap min-w-0">
                 ${tagPill}
+                ${profileName ? `<span class="text-sm font-medium truncate" style="color:var(--text-primary,#e5e7eb);">${profileName}</span>` : ''}
                 ${ifocBadge}
             </div>
             <svg class="chevron w-5 h-5 flex-shrink-0" style="color:var(--text-muted,#9ca3af);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,9 +81,47 @@ function createCoordCard(entry) {
             </svg>
         </summary>
         <div class="px-3 pb-3 pt-2 text-xs" style="color:var(--text-muted,#9ca3af);border-top:1px solid var(--border-primary,rgba(148,163,184,0.18));">
-            ${descriptions[profileType] || 'Child profile coordinated by this profile.'}
+            ${profileDesc || 'Child profile coordinated by this profile.'}
         </div>`;
     return el;
+}
+
+export function highlightCoordCard(profileTag) {
+    // Switch to Tools tab (which is repurposed as COORDINATE for genie profiles)
+    document.querySelectorAll('.resource-tab').forEach(t => t.classList.remove('active'));
+    const tabBtn = document.querySelector('.resource-tab[data-type="tools"]');
+    if (tabBtn) tabBtn.classList.add('active');
+    document.querySelectorAll('.resource-panel').forEach(p => {
+        p.style.display = p.id === 'tools-panel' ? 'flex' : 'none';
+    });
+
+    const card = document.querySelector(`[data-profile-tag="${CSS.escape(profileTag)}"]`);
+    if (!card) return;
+
+    if (state?.currentlySelectedResource) state.currentlySelectedResource.classList.remove('resource-selected');
+    card.open = true;
+    card.classList.add('resource-selected');
+    if (state) state.currentlySelectedResource = card;
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+}
+
+export function highlightKnowledgeCard(collectionName) {
+    // Switch to Tools tab (which is repurposed as KNOWLEDGE for rag_focused profiles)
+    document.querySelectorAll('.resource-tab').forEach(t => t.classList.remove('active'));
+    const tabBtn = document.querySelector('.resource-tab[data-type="tools"]');
+    if (tabBtn) tabBtn.classList.add('active');
+    document.querySelectorAll('.resource-panel').forEach(p => {
+        p.style.display = p.id === 'tools-panel' ? 'flex' : 'none';
+    });
+
+    const card = document.querySelector(`[data-collection-name="${CSS.escape(collectionName)}"]`);
+    if (!card) return;
+
+    if (state?.currentlySelectedResource) state.currentlySelectedResource.classList.remove('resource-selected');
+    card.open = true;
+    card.classList.add('resource-selected');
+    if (state) state.currentlySelectedResource = card;
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
 }
 
 /**

@@ -236,6 +236,32 @@ export async function refreshKnowledgeGraphsPanel() {
     await loadKnowledgeGraphsPanel();
 }
 
+// ── Resource Panel — Dynamic highlight on kg_enrichment event ──────────────
+
+export function highlightKnowledgeGraphCard(ownerProfileId) {
+    // Switch to Knowledge Graphs tab
+    document.querySelectorAll('.resource-tab').forEach(t => t.classList.remove('active'));
+    const tabBtn = document.querySelector('.resource-tab[data-type="knowledge-graphs"]');
+    if (tabBtn) tabBtn.classList.add('active');
+    document.querySelectorAll('.resource-panel').forEach(p => {
+        p.style.display = p.id === 'knowledge-graphs-panel' ? 'flex' : 'none';
+    });
+
+    const card = document.querySelector(`#knowledge-graphs-content [data-profile-id="${CSS.escape(ownerProfileId)}"]`);
+    if (!card) {
+        // Panel not yet populated — load it and let the indicator update handle visual state
+        const content = document.getElementById('knowledge-graphs-content');
+        if (!content || content.children.length === 0) loadKnowledgeGraphsPanel();
+        return;
+    }
+
+    if (state?.currentlySelectedResource) state.currentlySelectedResource.classList.remove('resource-selected');
+    card.open = true;
+    card.classList.add('resource-selected');
+    if (state) state.currentlySelectedResource = card;
+    setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+}
+
 // ── Resource Panel — Active indicator update (DOM-only, no re-fetch) ───────
 
 export function updateKnowledgeGraphActiveIndicator() {

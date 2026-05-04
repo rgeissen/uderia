@@ -12,6 +12,8 @@
  * the rail, keeping both in sync regardless of which code path triggered the switch.
  */
 
+import { highlightComponent } from './componentsPanelHandler.js?v=1.2';
+
 // ── Resource-type colour map (IFOC + type-specific) ─────────────────────────
 const TYPE_COLORS = {
     tools:              '#F15F22',
@@ -450,12 +452,12 @@ export function onSSEEvent(eventType, eventData) {
     // ── Conversation-agent profile tool events (llm_only + tools) ─
     if (type === 'conversation_tool_invoked') {
         const n = payload.tool_name || payload.name;
-        if (n) { highlightCompactItem(n, 'executing'); }
+        if (n) { _highlightToolOrComponent(n, 'executing'); }
         return;
     }
     if (type === 'conversation_tool_completed') {
         const n = payload.tool_name || payload.name;
-        if (n) { highlightCompactItem(n, payload.success === false ? 'selected' : 'selected'); }
+        if (n) { _highlightToolOrComponent(n, 'selected'); }
         return;
     }
 
@@ -478,14 +480,26 @@ export function onSSEEvent(eventType, eventData) {
     }
 
     if (type === 'tool_call' || type === 'tool_start' || eventType === 'tool_call') {
-        highlightCompactItem(toolName, 'executing');
+        _highlightToolOrComponent(toolName, 'executing');
     } else if (type === 'tool_result' || type === 'tool_end') {
         const isError = payload.is_error || payload.error;
         if (isError) {
             _markPulseRowError(toolName);
         } else {
-            highlightCompactItem(toolName, 'selected');
+            _highlightToolOrComponent(toolName, 'selected');
         }
+    }
+}
+
+// Route a tool event to the Components panel if the tool is a platform component,
+// otherwise fall back to the compact-item highlight in the Tools panel.
+function _highlightToolOrComponent(toolName, itemState) {
+    // Component panel cards are `details` elements with data-tool-name inside #components-panel-content.
+    // Compact-item rows (tools panel) are divs — avoid matching those by scoping to the components panel.
+    if (document.querySelector(`#components-panel-content [data-tool-name="${CSS.escape(toolName)}"]`)) {
+        highlightComponent(toolName);
+    } else {
+        highlightCompactItem(toolName, itemState);
     }
 }
 
